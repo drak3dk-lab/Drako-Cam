@@ -1,5 +1,7 @@
 # Visomaster Fusion - Quick Start Guide
 
+Drako Cam no usa esta guía en la pantalla principal. Ahí el flujo es una foto o un perfil, y **EN VIVO**. La cara de enfrente se elige sola. Los pasos de Find Faces de abajo son del programa heredado y no aparecen en el uso normal.
+
 > Your first successful face swap in a few minutes.
 
 ---

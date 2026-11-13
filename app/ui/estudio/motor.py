@@ -1,7 +1,6 @@
 """Conecta la pantalla sencilla con el motor que ya existe.
 
-Elige la foto, elige la cámara, pulsa EN VIVO. La detección, el
-seguimiento y la cámara virtual siguen siendo los de siempre.
+Foto o perfil, y EN VIVO. La cara de enfrente se elige sola.
 """
 
 from __future__ import annotations
@@ -28,6 +27,14 @@ from app.ui.estudio.logica import (
 from app.ui.estudio.logica import CaraVista
 
 
+class _CaraPerfil:
+    def __init__(self, ident: str, ruta: Path):
+        self.id = ident
+        self.ruta = Path(ruta)
+        self.nombre = self.ruta.stem
+        self.favorita = False
+
+
 class MotorEnVivo:
     def __init__(self, ventana, biblioteca: Biblioteca):
         self.ventana = ventana
@@ -41,6 +48,10 @@ class MotorEnVivo:
         self._calidad = str(self.biblioteca.estado().get("calidad") or "Auto")
         self._aspecto = str(self.biblioteca.estado().get("aspecto") or "auto")
         self._perfil_id = ""
+        self._ruta_perfil: Path | None = None
+        self._todas = False
+        self._persona = "principal"
+        self.ventana._estudio_activo = True
         self._sin_cara: float | None = None
         self._loader = None
         self._entrando = False
@@ -101,6 +112,7 @@ class MotorEnVivo:
 
     def elegir_cara(self, ident: str) -> None:
         self._cara_id = ident
+        self._ruta_perfil = None
         self.biblioteca.recordar(ultima_cara=ident)
         guardados = self.biblioteca.ajustes_de(ident)
         if guardados:
@@ -164,6 +176,8 @@ class MotorEnVivo:
             self.mensaje = ""
             return ""
         foto = self._foto_seleccionada()
+        if foto is not None and not self._camara_abierta() and self.camaras():
+            self.elegir_camara(max(self.indice_camara(), 0))
         aviso = puede_entrar_en_vivo(foto is not None, self._camara_abierta())
         if aviso:
             self.mensaje = aviso
@@ -270,6 +284,7 @@ class MotorEnVivo:
 
         perfil = AlmacenPerfiles(directorio_perfiles()).cargar(ident)
         self._perfil_id = perfil.id
+        self._ruta_perfil = perfil.fotos[0] if perfil.fotos else None
         self._aspecto = perfil.aspecto
         self._calidad = perfil.calidad
         self._aplicar_mapa(perfil.ajustes, guardar=False)
@@ -293,6 +308,7 @@ class MotorEnVivo:
         elif accion == "borrar":
             if self._perfil_id == ident:
                 self._perfil_id = ""
+                self._ruta_perfil = None
             almacen.borrar(ident)
         elif accion == "exportar" and extra:
             almacen.exportar(ident, Path(extra))
@@ -345,6 +361,7 @@ class MotorEnVivo:
         if nombre == "mejorar":
             self._poner_toggle("FaceRestorerEnableToggle", activo)
         elif nombre == "varias":
+            self._todas = bool(activo)
             self._poner_valor("MaxFacesToDetectSlider", 5 if activo else 1)
             if self.en_vivo:
                 self._aplicar_cara(redetectar=True)
@@ -365,6 +382,16 @@ class MotorEnVivo:
             self._poner_valor("PrecisionTensorRTSelection", str(valor))
         elif clave == "detector":
             self._poner_valor("DetectorModelSelection", str(valor))
+        elif clave == "persona":
+            texto = str(valor)
+            if "izquierda" in texto:
+                self._persona = "izquierda"
+            elif "derecha" in texto:
+                self._persona = "derecha"
+            else:
+                self._persona = "principal"
+            if self.en_vivo:
+                self._aplicar_cara(redetectar=True)
         elif clave == "volver_camara":
             self._preparar_camaras()
             posicion = self.indice_camara()
@@ -448,34 +475,73 @@ class MotorEnVivo:
             return
         boton = self._boton_entrada(foto.ruta)
         if boton is None:
+            self.mensaje = MENSAJE_CARGANDO
             self._pedir_embedding(foto.ruta)
+            self._reintentar_si_sigue()
             return
         self._marcar_entrada(boton)
         if redetectar or not getattr(self.ventana, "target_faces", None):
+            self._poner_valor("MaxFacesToDetectSlider", 5)
             try:
                 from app.ui.widgets.actions import card_actions
 
                 card_actions.find_target_faces(self.ventana)
             except Exception as exc:
                 self.mensaje = f"No pude detectar la cara. {exc}"
+                self._reintentar_si_sigue()
                 return
+            finally:
+                if not self._todas:
+                    self._poner_valor("MaxFacesToDetectSlider", 1)
         caras = list(getattr(self.ventana, "target_faces", {}).values())
         if not caras:
-            self.mensaje = aviso_cara_perdida(0.0, 10.0) or ""
+            self.mensaje = "No te veo. Ponte frente a la cámara."
+            self._reintentar_si_sigue()
             return
-        varias = int(self.ventana.control.get("MaxFacesToDetectSlider", 1)) > 1
-        for posicion, destino in enumerate(caras):
-            if not varias and posicion > 0:
-                destino.assigned_input_faces.clear()
-            else:
+        elegidas = self._elegir_destinos(caras)
+        for destino in caras:
+            if destino in elegidas:
                 destino.assigned_input_faces = {boton.face_id: boton.embedding_store}
+            else:
+                destino.assigned_input_faces.clear()
             try:
                 destino.calculate_assigned_input_embedding()
             except Exception:
                 pass
-        self.ventana.selected_target_face_id = caras[0].face_id
-        self.ventana.cur_selected_target_face_button = caras[0]
+        principal = elegidas[0]
+        self.ventana.selected_target_face_id = principal.face_id
+        self.ventana.cur_selected_target_face_button = principal
         self.mensaje = ""
+
+    def _elegir_destinos(self, caras: list):
+        from app.ui.estudio.logica import indice_persona
+
+        if self._todas:
+            return caras
+        cajas_guardadas = getattr(self.ventana, "_cajas_destino", {}) or {}
+        marco = getattr(self.ventana, "_marco_destino", (1280, 720)) or (1280, 720)
+        con_caja = [
+            (cara, cajas_guardadas[cara.face_id])
+            for cara in caras
+            if cara.face_id in cajas_guardadas
+        ]
+        if not con_caja:
+            return [caras[0]]
+        indice = indice_persona(
+            [caja for _, caja in con_caja],
+            float(marco[0]),
+            float(marco[1]),
+            self._persona,
+        )
+        return [con_caja[indice][0]]
+
+    def _reintentar_si_sigue(self) -> None:
+        if self.en_vivo:
+            QtCore.QTimer.singleShot(800, self._reintentar_deteccion)
+
+    def _reintentar_deteccion(self) -> None:
+        if self.en_vivo and self._foto_seleccionada() is not None:
+            self._aplicar_cara(redetectar=True)
 
     def _usar_video(self) -> None:
         for boton in getattr(self.ventana, "target_videos", {}).values():
@@ -662,6 +728,8 @@ class MotorEnVivo:
                 pass
 
     def _foto_seleccionada(self):
+        if self._ruta_perfil is not None:
+            return _CaraPerfil(self._perfil_id or "perfil", self._ruta_perfil)
         if not self._cara_id:
             return None
         for foto in self.biblioteca.listar():
