@@ -121,6 +121,60 @@ fallo de compilación. FP8 e INT8 quedan apagados por el mismo motivo:
 no hay una calibración que conserve la identidad, y activarlos sería
 bajar la calidad a cambio de velocidad.
 
+### Gafas, manos y el parpadeo del borde
+
+El suavizado temporal de la máscara final no existía: el bloque
+«Final Mask Smoothing» de `frame_worker_pipeline` sigue comentado
+porque era un desenfoque de textura, no un promedio entre fotogramas.
+Ahora el directo hace otra cosa, en `app/drako/rendimiento/suavizado.py`:
+
+- La máscara se promedia en el recorte ya alineado (la transformación
+  afín lleva cada fotograma al mismo sitio). Si la cara cambia o el
+  centro salta más de un 35 % del tamaño, se olvida el fotograma
+  anterior.
+- La pluma crece cuando la cara ocupa pocos píxeles, para que el pelo
+  no parpadee de lejos.
+- El color del cambio se promedia entre fotogramas. El EMA que ya
+  había solo corría con el color automático encendido.
+- Si una mano tapa la cara, se sostiene el último cambio bueno y
+  ByteTrack interpola la caja en vez de soltarla.
+- La oclusión, con tamaño adaptativo, queda encendida en Auto,
+  Equilibrado y Máxima calidad. XSeg y ORFormer solo en Máxima
+  calidad: XSeg afina montura y dedos; ORFormer está hecho para caras
+  tapadas.
+
+ORFormer no vuelve a la lista de FP16. En FP16 la compilación no
+termina (acceso inválido, medido en el propio `models_data`). En FP32
+cuesta unos 6 ms por cara en una RTX 4090. En las RTX 50 no está
+medido. El oclusor y XSeg ya se descargan con el resto de modelos; no
+hace falta marcarlos como imprescindibles aparte.
+
+Coste del suavizado de máscara, sin red neuronal, en esta máquina
+(CPU, máscara de 512 reducida a 96, 30 repeticiones): **0,25 ms** por
+fotograma. Entra de sobra en un presupuesto de 33 ms (30 FPS) o de
+16 ms (60 FPS). La oclusión y XSeg son otra historia: son una pasada
+de red cada fotograma, por eso el panel los marca como pesados y
+Máximo FPS los deja apagados. ORFormer, si se enciende, suma esos
+~6 ms de la 4090; no los sumo al 0,25 ms.
+
+### Hablar
+
+El directo usa el auto-mouth en modo **Face Parser Only**. Al abrir la
+boca, y solo entonces, dilata el interior y los labios (dientes y
+lengua) con una entrada proporcional al promedio temporal que ya
+tenía el estado. Con la boca cerrada esas dilataciones valen 0: se
+queda la forma de los labios de la cara nueva, no una boca pegada.
+
+El otro modo, Expression Restorer, mueve los labios con LivePortrait
+en cada fotograma. El propio ajuste lo describe como más lento. No
+entra en el presupuesto de 30 FPS junto al cambio, así que el preset
+no lo enciende. Está en el grupo Boca por si la tarjeta sobra.
+
+El estado de apertura (EMA, histéresis y la dilatación) no llega a
+0,05 ms por fotograma en esta CPU. La máscara de la boca, cuando se
+abre, sí es una pasada del parser de cara: pesa, y solo corre mientras
+se habla.
+
 ### GPU dedicada en un portátil híbrido
 
 `python.exe` no puede exportar `NvOptimusEnablement`: ese símbolo tiene

@@ -44,6 +44,8 @@ class PipelineProcessor:
             OrderedDict()
         )
         self._COLOR_STATS_EMA_MAX: int = 32
+        # Último cambio válido por cara, para aguantar una mano encima.
+        self._ultimos_swap: dict[str, torch.Tensor] = {}
 
         # OPTIMIZATION: Cached Convolution Kernels (VRAM)
         self._kernel_lap: torch.Tensor | None = None
@@ -1598,12 +1600,12 @@ class PipelineProcessor:
         _base_strength = params.get("AutoMouthExpressionStrengthDecimalSlider", 1.00)
         _normalize = params.get("AutoMouthNormalizeLipsToggle", True)
         _restore_mode = params.get(
-            "AutoMouthRestoreModeSelection", "Expression Restorer"
+            "AutoMouthRestoreModeSelection", "Face Parser Only"
         )
-        # Proportional strength ramp: smooth fade-in from threshold to threshold+ramp.
-        _ramp_range = max(_threshold * 0.5, 0.04)
-        _proportion = min(1.0, max(0.0, (_ema_value - _threshold) / _ramp_range))
-        _strength = _base_strength * _proportion
+        from app.processors.mouth_openness import fuerza_al_hablar
+
+        _strength = fuerza_al_hablar(_ema_value, _threshold, _base_strength)
+        _proportion = 0.0 if _base_strength <= 0 else _strength / float(_base_strength)
 
         # Skip entirely when strength is negligible — avoids a full warp-decode cycle.
         # Still apply FaceParser overrides (teeth exclusion) even at low strength.
@@ -1618,15 +1620,31 @@ class PipelineProcessor:
         _p = dict(params)
 
         # --- Face-parser mouth override (applied in both modes) ---
-        _mouth_val = int(params.get("AutoMouthMouthParserSlider", 1))
-        _upper_val = int(params.get("AutoMouthUpperLipParserSlider", 3))
-        _lower_val = int(params.get("AutoMouthLowerLipParserSlider", 17))
+        from app.processors.mouth_openness import dilatacion_al_hablar
+
+        _mouth_val = dilatacion_al_hablar(
+            int(params.get("AutoMouthMouthParserSlider", 8)), _proportion
+        )
+        _upper_val = dilatacion_al_hablar(
+            int(params.get("AutoMouthUpperLipParserSlider", 2)), _proportion
+        )
+        _lower_val = dilatacion_al_hablar(
+            int(params.get("AutoMouthLowerLipParserSlider", 10)), _proportion
+        )
         if _mouth_val > 0 or _upper_val > 0 or _lower_val > 0 or _exclude_upper_teeth:
             _p["FaceParserEnableToggle"] = True
         _p["MouthParserSlider"] = _mouth_val
         _p["UpperLipParserSlider"] = _upper_val
         _p["LowerLipParserSlider"] = _lower_val
         _p["AutoMouthUpperTeethExcludeActive"] = _exclude_upper_teeth
+        # La lengua no debe desaparecer mientras se habla. Al cerrar, estos
+        # parámetros no se tocan: vuelven los de la cara en reposo.
+        if _proportion >= 0.2:
+            _p["OccluderTonguePriorityToggle"] = True
+        if _proportion >= 0.35:
+            _p["MouthParserStretchToggle"] = True
+            _p["MouthParserStretchOriginalToggle"] = False
+            _p["MouthParserStretchDecimalSlider"] = 1.02
 
         if _restore_mode == "Face Parser Only":
             # Mask-only mode: do not touch the expression restorer.
@@ -1689,6 +1707,98 @@ class PipelineProcessor:
         return _p
 
     @torch.no_grad()
+    def _estabilizar_directo(self, swap, swap_mask, parameters: dict):
+        """Suaviza la máscara y el color entre fotogramas. Si va mal, deja el fotograma igual."""
+        try:
+            from app.drako.rendimiento.suavizado import (
+                MEMORIA,
+                centro_de_caja,
+                lado_de_caja,
+                peso_ultimo_swap,
+                pluma_adaptativa,
+                preparar_mascara,
+            )
+
+            cara = str(parameters.get("_cara_id") or "principal")
+            caja = parameters.get("_caja")
+            lado = lado_de_caja(caja)
+            centro = centro_de_caja(caja)
+            dispositivo = swap_mask.device
+            tipo = swap_mask.dtype
+            forma = swap_mask.shape
+            plano = swap_mask.detach().float()
+            if plano.ndim == 3:
+                plano = plano[0]
+            alto, ancho = int(plano.shape[0]), int(plano.shape[1])
+            reinicio = False
+            if parameters.get("SuavizadoMascaraEnableToggle", True):
+                MEMORIA.alfa_mascara = float(
+                    parameters.get(
+                        "SuavizadoMascaraAlfaDecimalSlider", MEMORIA.alfa_mascara
+                    )
+                )
+                grande, reinicio = preparar_mascara(
+                    MEMORIA, cara, plano.cpu().numpy(), centro, lado
+                )
+                salida = torch.from_numpy(np.ascontiguousarray(grande)).to(
+                    device=dispositivo, dtype=tipo
+                )
+                swap_mask = salida.unsqueeze(0) if forma and len(forma) == 3 else salida
+            if parameters.get("SuavizadoPlumaEnableToggle", True):
+                sigma = pluma_adaptativa(lado)
+                nucleo = max(3, min(31, int(round(sigma)) * 2 + 1))
+                if nucleo % 2 == 0:
+                    nucleo += 1
+                swap_mask = v2.functional.gaussian_blur(
+                    swap_mask.float(),
+                    kernel_size=[nucleo, nucleo],
+                    sigma=[sigma, sigma],
+                ).to(dtype=tipo)
+            if reinicio:
+                self._ultimos_swap.pop(cara, None)
+            media_mascara = float(swap_mask.detach().float().mean())
+            if parameters.get("MantenerSwapOclusionEnableToggle", True):
+                peso = peso_ultimo_swap(media_mascara)
+                previo = self._ultimos_swap.get(cara)
+                if (
+                    peso > 0
+                    and previo is not None
+                    and not reinicio
+                    and tuple(previo.shape) == tuple(swap.shape)
+                ):
+                    swap = swap.float() * (1.0 - peso) + previo.to(swap.device).float() * peso
+                elif media_mascara > 0.75:
+                    self._ultimos_swap[cara] = swap.detach().float().cpu()
+            if parameters.get("SuavizadoColorEnableToggle", True):
+                swap = self._estabilizar_color(swap, swap_mask, cara, reinicio)
+            return swap, swap_mask
+        except Exception as exc:
+            print(f"[AVISO] El suavizado del directo no se aplicó: {exc}")
+            return swap, swap_mask
+
+    def _estabilizar_color(self, swap, swap_mask, cara: str, reinicio: bool):
+        from app.drako.rendimiento.suavizado import MEMORIA
+
+        pesos = swap_mask.detach().float()
+        if pesos.ndim == 2:
+            pesos = pesos.unsqueeze(0)
+        while pesos.ndim < swap.ndim:
+            pesos = pesos.unsqueeze(0)
+        if pesos.shape[-2:] != swap.shape[-2:]:
+            return swap
+        suma = pesos.sum().clamp(min=1.0)
+        imagen = swap.detach().float()
+        media = (imagen * pesos).sum(dim=(1, 2)) / suma
+        desvio = (((imagen - media[:, None, None]) ** 2) * pesos).sum(dim=(1, 2)) / suma
+        desvio = desvio.sqrt().clamp(min=1e-3)
+        media_s, desvio_s = MEMORIA.paso_color(
+            cara, media.cpu().numpy(), desvio.cpu().numpy(), reinicio
+        )
+        media_s_t = torch.from_numpy(media_s).to(imagen.device, imagen.dtype).view(3, 1, 1)
+        desvio_s_t = torch.from_numpy(desvio_s).to(imagen.device, imagen.dtype).view(3, 1, 1)
+        corregida = (imagen - media.view(3, 1, 1)) * (desvio_s_t / desvio.view(3, 1, 1)) + media_s_t
+        return corregida.clamp(0.0, 255.0).to(dtype=swap.dtype)
+
     def swap_core(
         self,
         img: torch.Tensor,
@@ -2271,9 +2381,16 @@ class PipelineProcessor:
 
         # Occluder
         if parameters["OccluderEnableToggle"]:
+            from app.drako.rendimiento.suavizado import lado_de_caja, tamano_oclusion
+
+            cantidad_oclusion = tamano_oclusion(
+                lado_de_caja(parameters.get("_caja")),
+                int(parameters.get("OccluderSizeSlider", 0)),
+                bool(parameters.get("OclusionAdaptativaEnableToggle", True)),
+            )
             mask = self.worker.function_worker.apply_occlusion(
                 original_face_256,
-                parameters["OccluderSizeSlider"],
+                cantidad_oclusion,
                 parameters=parameters,
                 original_face_512=swap_restorecalc,
             )
@@ -3469,9 +3586,11 @@ class PipelineProcessor:
         k_size = int(b_val * 2 + 1)
         s_val = float((b_val + 1) * 0.2)
         # OPTIMIZATION: Functional blur
-        swap_mask = v2.functional.gaussian_blur(
-            swap_mask, kernel_size=[k_size, k_size], sigma=[s_val, s_val]
-        )
+        if k_size >= 3:
+            swap_mask = v2.functional.gaussian_blur(
+                swap_mask, kernel_size=[k_size, k_size], sigma=[s_val, s_val]
+            )
+        swap, swap_mask = self._estabilizar_directo(swap, swap_mask, parameters)
 
         if border_mask.shape[-1] != swap_mask.shape[-1]:
             border_mask = _resize_func(

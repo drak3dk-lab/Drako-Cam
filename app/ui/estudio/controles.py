@@ -119,6 +119,13 @@ GRUPOS: tuple[Grupo, ...] = (
             _slider("MouthParserStretchSharpenDecimalSlider", "Nitidez de dientes y labios", "Marca el borde de los dientes sin granear la piel. 0 lo deja neutro.", 0, 5, 0, paso=0.1, decimales=2, muestra_si=_ENCAJE),
             _slider("MouthOriginalCavityBlurSlider", "Desenfoque del interior", "Si usas tu boca, difumina el fondo de la cavidad. Más alto quita dientes falsos.", 0, 50, 15, muestra_si=_BOCA_ORIGINAL),
             _slider("MouthOriginalCavityBlendingDecimalSlider", "Textura original del interior", "0 es sombra artificial. 1 devuelve los dientes y la textura reales.", 0, 1, 0, paso=0.05, decimales=2, muestra_si=_BOCA_ORIGINAL),
+            _toggle("AutoMouthExpressionEnableToggle", "Hablar", "Al abrir la boca se ven dientes y lengua, y los labios de la cara nueva siguen ahí cuando la cierras. Entra suave, sin parpadeo."),
+            _eleccion("AutoMouthRestoreModeSelection", "Al hablar", "Solo la boca cabe en el directo. Mover los labios pasa por LivePortrait en cada fotograma y no entra en 30 FPS junto al cambio.", ("Face Parser Only", "Expression Restorer"), "Face Parser Only", muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthOpenThresholdDecimalSlider", "A partir de qué apertura", "0,22 coge una conversación. Por encima de 0,60 solo una boca muy abierta.", 0.01, 0.99, 0.22, paso=0.01, decimales=2, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthEMAAlphaDecimalSlider", "Suavizado al hablar", "Bajo: entra y sale despacio, sin parpadeo. 1 sigue el fotograma al instante.", 0.05, 1.0, 0.35, paso=0.01, decimales=2, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthMouthParserSlider", "Interior de la boca", "Cuánto se abre el hueco de dientes y lengua. 0 lo deja cerrado.", 0, 30, 8, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthUpperLipParserSlider", "Labio de arriba", "Poco: se ve el habla sin cambiar la forma del labio nuevo.", 0, 30, 2, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthLowerLipParserSlider", "Labio de abajo", "Acompaña la mandíbula al hablar. Más alto abre más.", 0, 30, 10, muestra_si="AutoMouthExpressionEnableToggle"),
         ),
     ),
     Grupo(
@@ -232,7 +239,29 @@ GRUPOS: tuple[Grupo, ...] = (
         (
             _slider("OccluderSizeSlider", "Tamaño de la oclusión", "Negativo encoge la zona tapada. Positivo la agranda. 0 es el tamaño detectado.", -100, 100, 0, muestra_si=_OCLUSION),
             _toggle("OccluderTonguePriorityToggle", "No borrar la boca por dentro", "Evita que la lengua desaparezca al agrandar la oclusión.", muestra_si=_OCLUSION),
-            _slider("OccluderXSegBlurSlider", "Suavizado del objeto", "Difumina el borde del objeto que tapa la cara.", 0, 100, 0, muestra_si=_OCLUSION),
+            _slider("OccluderXSegBlurSlider", "Suavizado del objeto", "Difumina el borde del objeto que tapa la cara.", 0, 100, 8, muestra_si=_OCLUSION),
+            _toggle("OclusionAdaptativaEnableToggle", "Tamaño según la cara", "Con la cara grande, la máscara se encoge un poco para no comerse los ojos detrás de las gafas.", True, muestra_si=_OCLUSION),
+            _toggle("DFLXSegEnableToggle", "Máscara XSeg", "Otra máscara, más fina, para monturas, cristales y dedos. Pesa más que la oclusión simple.", muestra_si=_OCLUSION),
+            _toggle("XSegExcludeInnerMouthToggle", "Proteger la boca por dentro", "XSeg no debe borrar lengua ni dientes.", True, muestra_si="DFLXSegEnableToggle"),
+            _toggle("XSegExcludeInnerObstaclesToggle", "Cambiar también gafas y manos", "Apagado: gafas y manos se quedan de la cámara. Enciéndelo solo si la oclusión se come los ojos.", False, muestra_si="DFLXSegEnableToggle"),
+            _slider("DFLXSegSizeSlider", "Tamaño XSeg", "Negativo agranda lo que tapa. Positivo lo encoge.", -20, 20, 0, muestra_si="DFLXSegEnableToggle"),
+        ),
+    ),
+    Grupo(
+        "estabilidad",
+        "Estabilidad del borde",
+        "ligero",
+        "Quita el parpadeo del pelo. El promedio de la máscara son 0,25 ms por fotograma, sin la red.",
+        "SuavizadoMascaraEnableToggle",
+        (
+            _slider("SuavizadoMascaraAlfaDecimalSlider", "Cuánto manda este fotograma", "Bajo: el borde se queda quieto y tarda un poco en seguirte. 0,45 es el punto de partida.", 0.15, 0.9, 0.45, paso=0.05, decimales=2, muestra_si="SuavizadoMascaraEnableToggle"),
+            _toggle("SuavizadoPlumaEnableToggle", "Pluma según el tamaño", "Si estás lejos, el borde del pelo se suaviza más para que no parpadee.", True),
+            _toggle("SuavizadoColorEnableToggle", "Color estable", "El tono de la cara no salta de un fotograma a otro.", True),
+            _toggle("MantenerSwapOclusionEnableToggle", "Aguantar el cambio si te tapas", "Mientras una mano cubre la cara, se sostiene el último cambio bueno.", True),
+            _toggle("SeguirCajaOclusionEnableToggle", "Seguir la caja", "Si el detector suelta la cara, la caja no salta: se acerca poco a poco.", True),
+            _toggle("FaceTrackingEnableToggle", "Seguir la identidad", "ByteTrack recuerda quién eres durante el tapón. Ligero.", True),
+            _slider("ByteTrackTrackBufferSlider", "Cuántos fotogramas recuerda", "45 son cerca de un segundo y medio a 30 FPS. Más alto aguanta oclusiones más largas.", 1, 120, 45, muestra_si="FaceTrackingEnableToggle"),
+            _toggle("LandmarkDetectToggle", "Puntos con la cara tapada", "Usa ORFormer, pensado para caras medio tapadas. Unos 6 ms por cara en una RTX 4090; en las RTX 50 no está medido. No va en FP16: en FP16 no compila.", False),
         ),
     ),
 )
@@ -262,9 +291,38 @@ def valores_iniciales() -> dict[str, object]:
     return {control.clave: control.predeterminado for control in todos()}
 
 
+_ESTABLE = {
+    "SuavizadoMascaraEnableToggle": True,
+    "SuavizadoMascaraAlfaDecimalSlider": 0.45,
+    "SuavizadoPlumaEnableToggle": True,
+    "SuavizadoColorEnableToggle": True,
+    "MantenerSwapOclusionEnableToggle": True,
+    "SeguirCajaOclusionEnableToggle": True,
+    "FaceTrackingEnableToggle": True,
+    "ByteTrackTrackBufferSlider": 45,
+    "OclusionAdaptativaEnableToggle": True,
+    "OccluderEnableToggle": True,
+    "OccluderTonguePriorityToggle": True,
+    "OccluderXSegBlurSlider": 8,
+    "DFLXSegEnableToggle": False,
+    "XSegExcludeInnerMouthToggle": True,
+    "XSegExcludeInnerObstaclesToggle": False,
+    "LandmarkDetectToggle": False,
+    "AutoMouthExpressionEnableToggle": True,
+    "AutoMouthRestoreModeSelection": "Face Parser Only",
+    "AutoMouthOpenThresholdDecimalSlider": 0.22,
+    "AutoMouthEMAAlphaDecimalSlider": 0.35,
+    "AutoMouthMouthParserSlider": 8,
+    "AutoMouthUpperLipParserSlider": 2,
+    "AutoMouthLowerLipParserSlider": 10,
+    "RestoreMouthEnableToggle": False,
+}
+
+
 def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, object]:
     """Un preset deja cada control en un valor concreto, no solo tres."""
     valores = valores_iniciales()
+    valores.update(_ESTABLE)
     if nombre == "Máxima calidad":
         valores.update(
             {
@@ -273,12 +331,15 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
                 "FaceRestorerTypeSelection": "GFPGAN-v1.4",
                 "FaceRestorerDetTypeSelection": "Blend",
                 "FaceRestorerBlendSlider": 80,
-                "RestoreMouthEnableToggle": True,
-                "RestoreMouthBlendAmountSlider": 55,
+                "RestoreMouthEnableToggle": False,
                 "BordermaskEnableToggle": True,
                 "FinalBorderBlendEnableToggle": True,
                 "FinalBorderBlendAmountSlider": 8,
-                "OccluderEnableToggle": bool(permite_alto),
+                "OccluderEnableToggle": True,
+                "DFLXSegEnableToggle": True,
+                "LandmarkDetectToggle": True,
+                "LandmarkDetectModelSelection": "orformer98",
+                "SuavizadoMascaraAlfaDecimalSlider": 0.4,
                 "SimilarityThresholdSlider": 60,
                 "PreSwapSharpnessDecimalSlider": 1.0,
             }
@@ -292,6 +353,10 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
                 "RestoreEyesEnableToggle": False,
                 "FaceParserEnableToggle": False,
                 "OccluderEnableToggle": False,
+                "DFLXSegEnableToggle": False,
+                "LandmarkDetectToggle": False,
+                "FaceTrackingEnableToggle": True,
+                "SuavizadoMascaraAlfaDecimalSlider": 0.7,
                 "TransferTextureEnableToggle": False,
                 "ColorEnableToggle": False,
                 "BordermaskEnableToggle": True,

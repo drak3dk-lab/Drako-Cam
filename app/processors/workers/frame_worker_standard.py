@@ -515,6 +515,11 @@ class StandardProcessor:
                             target_face,
                             face_bbox=best_fface["bbox"],
                         )
+                        _params_for_swap_a = dict(_params_for_swap_a)
+                        _params_for_swap_a["_cara_id"] = str(
+                            getattr(target_face, "face_id", "principal")
+                        )
+                        _params_for_swap_a["_caja"] = best_fface.get("bbox")
                         try:
                             (
                                 img,
@@ -662,6 +667,11 @@ class StandardProcessor:
                             best_target,
                             face_bbox=fface["bbox"],
                         )
+                        _params_for_swap_b = dict(_params_for_swap_b)
+                        _params_for_swap_b["_cara_id"] = str(
+                            getattr(best_target, "face_id", "principal")
+                        )
+                        _params_for_swap_b["_caja"] = fface.get("bbox")
                         try:
                             img, fface["original_face"], fface["swap_mask"] = (
                                 self.worker.swap_core(

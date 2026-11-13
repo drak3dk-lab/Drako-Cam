@@ -32,6 +32,18 @@ def compute_lip_open_ratio_203(kps: np.ndarray | None) -> float | None:
     return vert / (span + 1e-6)
 
 
+def dilatacion_al_hablar(base: int, proporcion: float) -> int:
+    """0 con la boca cerrada. Sube seguido hasta el valor pedido, sin salto."""
+    return int(round(max(0, int(base)) * max(0.0, min(1.0, float(proporcion)))))
+
+
+def fuerza_al_hablar(ema: float, umbral: float, base: float = 1.0) -> float:
+    """Entrada suave: justo en el umbral vale casi cero, y crece al abrir más."""
+    rampa = max(float(umbral) * 0.5, 0.04)
+    proporcion = min(1.0, max(0.0, (float(ema) - float(umbral)) / rampa))
+    return float(base) * proporcion
+
+
 def compute_lip_open_ratio_68(kps: np.ndarray | None) -> float | None:
     """Compute lip-open ratio using 68-point landmarks.
 

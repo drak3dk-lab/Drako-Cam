@@ -196,7 +196,10 @@ class PanelAjustes(QtWidgets.QWidget):
                 activos[clave] = fila.editor.isChecked()
         for grupo in GRUPOS:
             cuerpo = self._cuerpos[grupo.ident]
-            cuerpo.setVisible(self._maestros[grupo.maestro].isChecked() or grupo.ident == "nitidez")
+            cuerpo.setVisible(
+                self._maestros[grupo.maestro].isChecked()
+                or grupo.ident in ("nitidez", "estabilidad", "boca")
+            )
         for clave, fila in self._filas.items():
             depende = fila.control.muestra_si
             if depende is None:
