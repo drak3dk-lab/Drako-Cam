@@ -173,8 +173,9 @@ La primera vez se abre un asistente. También está en **Cómo añadirlo**.
 
 1. Instala [OBS Studio](https://obsproject.com). Si puedes, instala también [Unity Capture](https://github.com/schellingb/UnityCapture): es la cámara que OBS lista como fuente y no se mezcla con la salida del propio OBS.
 2. Pulsa **EN VIVO** en Drako Cam. La salida se abre sola, a un tamaño y unos FPS fijos. No los cambies en mitad del directo: OBS perdería la fuente.
-3. En OBS, en Fuentes, pulsa **+** → **Dispositivo de captura de vídeo** → elige **Unity Video Capture**. Si no está, elige **OBS Virtual Camera**. Si ninguna aparece, pulsa **Ventana** y en OBS usa **Captura de ventana** sobre «Drako Cam — salida». No la minimices: si lo haces, el programa la devuelve detrás y te avisa.
-4. **Probar salida** manda un recuadro claro para comprobar que OBS la ve.
+3. En OBS, en Fuentes, pulsa **+** → **Dispositivo de captura de vídeo** → elige **Unity Video Capture**. Si no está, elige **OBS Virtual Camera**. La cámara virtual se enciende sola al pulsar **EN VIVO**.
+4. Si prefieres no usar cámara virtual, pulsa **Ventana OBS** (o Ctrl+O). Se abre una ventana aparte, sin botones ni marco, titulada exactamente **Drako Cam - Salida OBS**. En OBS: **+** → **Captura de ventana** → elige ese título. El vídeo ocupa toda la ventana, con la relación de aspecto correcta y negro si sobra espacio, así que no hace falta recortar. Puedes cambiarle el tamaño; Drako Cam recuerda el tamaño y el sitio. Déjala detrás de otras ventanas: sigue pintando. Si la minimizas, Windows a veces deja de componerla y OBS se queda con el último fotograma; en ese caso déjala detrás, no en la barra de tareas. Ctrl+O o **Cerrar ventana** la cierra sin apagar la cámara virtual.
+5. **Probar salida** manda un recuadro claro para comprobar que OBS la ve.
 
 Si se pierde la cara, la salida no se corta. Cerrar el panel de ajustes tampoco. El indicador dice **OBS recibiendo** cuando OBS está abierto y la salida va, o **Salida activa** si la salida va y OBS todavía no.
 

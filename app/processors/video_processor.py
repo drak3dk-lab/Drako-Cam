@@ -494,6 +494,7 @@ class VideoProcessor(QObject):
         Removed sleep_until_next_frame() to prevent blocking the Main GUI Thread.
         The UI metronome (QTimer) already handles perfect timing and synchronization.
         """
+        publicado = frame
         if self.main_window.control.get("SendVirtCamFramesEnableToggle", False):
             # JIT Initialization: Ensure VirtCam is spun up if toggle is active but uninitialized.
             # We use a Circuit Breaker (_virtcam_error_latch) to prevent infinite loops if initialization completely fails.
@@ -530,6 +531,7 @@ class VideoProcessor(QObject):
                     from app.drako.rendimiento.camara_virtual import encajar
 
                     frame = encajar(frame, self.virtcam.width, self.virtcam.height)
+                publicado = frame
 
                 if self.virtcam:
                     try:
@@ -541,6 +543,9 @@ class VideoProcessor(QObject):
                         # If the driver crashes midway, trip the circuit breaker and disable to prevent spam.
                         self._virtcam_error_latch = True
                         self.disable_virtualcam()
+        entrega = getattr(self, "entrega_ventana", None)
+        if entrega is not None:
+            entrega.publicar(publicado)
 
     def set_number_of_threads(self, value):
         """Updates the thread count for the *next* worker pool."""
