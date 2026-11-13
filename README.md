@@ -28,7 +28,32 @@ La interfaz heredada de VisoMaster (paneles, controles y manual) sigue en inglé
 
 Sin CUDA el programa avisa y puede abrirse, pero el directo no irá a velocidad de cámara.
 
-## Instalar en Windows con NVIDIA
+## Instalación fácil
+
+Para Windows 10 u 11, de 64 bits, con internet. No hace falta instalar Python, FFmpeg ni nada más antes. La carpeta puede tener espacios, por ejemplo `C:\Users\SEXTO PISO\Downloads\Drako-Cam`.
+
+### Doble clic en Instalar.bat
+
+1. Copia la carpeta de Drako Cam a tu equipo.
+2. Doble clic en `Instalar.bat`.
+3. Espera. La primera vez descarga varios gigabytes (Python, FFmpeg 7.1.1 y los componentes) y puede tardar. No cierres la ventana.
+4. Si algo falla, la ventana se queda abierta con el motivo. El detalle queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
+5. Al terminar hay un acceso directo **Drako Cam** en el escritorio y en el menú Inicio. Ábrelo: no sale una ventana de consola.
+6. Si no hay una GPU NVIDIA con CUDA, la instalación termina igual y lo dice con claridad. El programa puede abrirse, pero el directo no irá a velocidad de cámara.
+
+Volver a ejecutar `Instalar.bat` repara o actualiza lo que falte (componentes y accesos directos).
+
+### Con el instalador .exe
+
+Cuando se publica una versión (una etiqueta `v*` en GitHub), el archivo `DrakoCam-Setup-….exe` queda adjunto a esa release. Doble clic, siguiente, siguiente. Copia el programa a tu carpeta personal y ejecuta la misma preparación al final.
+
+Para quitarlo: Configuración de Windows → Aplicaciones → Drako Cam → Desinstalar. Pregunta antes de borrar la contraseña y los registros. El archivo `.exe` no incluye los pesos de los modelos: se descargan la primera vez que se abre el programa.
+
+### Quitar lo instalado con Instalar.bat
+
+Doble clic en `Desinstalar.bat`. Borra el entorno de Python y los accesos directos. No borra `%APPDATA%\DrakoCam` (contraseña, registros y avisos) salvo que escribas `SI` cuando lo pregunte. La carpeta del programa no se borra: puedes eliminarla a mano si ya no la quieres.
+
+## Instalación manual
 
 Abre PowerShell en la carpeta del proyecto.
 
@@ -60,7 +85,9 @@ o descomprime [ffmpeg 7.1.1 essentials](https://www.gyan.dev/ffmpeg/builds/packa
 
 ## Ejecutar
 
-Doble clic en `Start.bat`, o desde la carpeta del proyecto:
+Después de la instalación fácil, abre el acceso directo **Drako Cam**.
+
+También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto:
 
 ```powershell
 python main.py
@@ -124,7 +151,6 @@ Cubren la contraseña, el cifrado y la firma del registro, la cola de Telegram s
 - Favoritos
 - Biblioteca
 - Face Picker
-- Instalador de un clic
 - Traducción al español del resto de paneles heredados de VisoMaster
 
 ## Aviso de uso

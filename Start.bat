@@ -1,5 +1,6 @@
 @echo off
 cd /d "%~dp0"
+if exist "%~dp0dependencies\ffmpeg\ffmpeg-7.1.1-essentials_build\bin\ffmpeg.exe" set "PATH=%~dp0dependencies\ffmpeg\ffmpeg-7.1.1-essentials_build\bin;%PATH%"
 REM Busca el entorno de Python
 IF EXIST ".venv" (
     echo Entorno .venv encontrado. Activando...

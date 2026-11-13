@@ -1,0 +1,16 @@
+﻿Drako Cam se copiará a tu equipo. Al final del asistente se abrirá una
+ventana negra que instala lo que falte:
+
+  - uv y Python 3.12
+  - FFmpeg 7.1.1
+  - los componentes del programa (varios gigabytes)
+  - un acceso directo «Drako Cam» en el escritorio y en el menú Inicio
+
+Hace falta Windows 10 u 11, de 64 bits, y conexión a internet.
+No tienes que instalar nada antes.
+
+La carpeta propuesta no pide permisos de administrador.
+Si Drako Cam está abierto, ciérralo antes de seguir.
+
+La primera vez puede tardar bastante. No cierres la ventana negra
+hasta que te pida una tecla.
