@@ -351,17 +351,12 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
                 "FaceRestorerEnableToggle": False,
                 "RestoreMouthEnableToggle": False,
                 "RestoreEyesEnableToggle": False,
-                "FaceParserEnableToggle": False,
                 "OccluderEnableToggle": False,
                 "DFLXSegEnableToggle": False,
                 "LandmarkDetectToggle": False,
                 "FaceTrackingEnableToggle": True,
                 "SuavizadoMascaraAlfaDecimalSlider": 0.7,
-                "TransferTextureEnableToggle": False,
-                "ColorEnableToggle": False,
-                "BordermaskEnableToggle": True,
                 "SimilarityThresholdSlider": 45,
-                "PreSwapSharpnessDecimalSlider": 1.0,
             }
         )
     elif nombre == "Equilibrado":
@@ -377,6 +372,27 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
             }
         )
     return valores
+
+
+CLAVES_RENDIMIENTO = frozenset(
+    {
+        "SwapperResSelection",
+        "FaceRestorerEnableToggle",
+        "FaceRestorerTypeSelection",
+        "FaceRestorerDetTypeSelection",
+        "FaceRestorerBlendSlider",
+        "SimilarityThresholdSlider",
+        "OccluderEnableToggle",
+        "DFLXSegEnableToggle",
+        "LandmarkDetectToggle",
+        "LandmarkDetectModelSelection",
+        "SuavizadoMascaraEnableToggle",
+        "SuavizadoMascaraAlfaDecimalSlider",
+        "FaceTrackingEnableToggle",
+        "ByteTrackTrackBufferSlider",
+        "RestoreEyesEnableToggle",
+    }
+)
 
 
 CLAVES_DE_DRAKO = (

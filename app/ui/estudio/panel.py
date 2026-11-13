@@ -225,6 +225,10 @@ class Estudio(QtWidgets.QWidget):
     pedir_original = QtCore.Signal(bool)
     pedir_virtual = QtCore.Signal(bool)
     pedir_calidad = QtCore.Signal(str)
+    pedir_aspecto = QtCore.Signal(str)
+    pedir_perfil = QtCore.Signal(str)
+    pedir_guardar_perfil = QtCore.Signal(str)
+    pedir_accion_perfil = QtCore.Signal(str, str, str)
     pedir_fuerza = QtCore.Signal(int)
     pedir_nitidez = QtCore.Signal(int)
     pedir_frente = QtCore.Signal(int)
@@ -467,6 +471,50 @@ class Estudio(QtWidgets.QWidget):
         self.calidad.setMinimumHeight(44)
         self.calidad.currentTextChanged.connect(self._pulsar_calidad)
         caja.addWidget(self.calidad)
+        caja.addWidget(QtWidgets.QLabel("Aspecto"))
+        self.aspecto = QtWidgets.QComboBox()
+        self.aspecto.setMinimumHeight(44)
+        from app.drako.perfiles.aspecto import ETIQUETAS
+
+        for ident, texto in ETIQUETAS:
+            self.aspecto.addItem(texto, ident)
+        self.aspecto.currentIndexChanged.connect(self._pulsar_aspecto)
+        caja.addWidget(self.aspecto)
+        self.nota_aspecto = QtWidgets.QLabel("Independiente de la velocidad. Auto mira el tono y la barba.")
+        self.nota_aspecto.setWordWrap(True)
+        self.nota_aspecto.setObjectName("pista")
+        caja.addWidget(self.nota_aspecto)
+        caja.addWidget(QtWidgets.QLabel("Perfiles"))
+        self.lista_perfiles = QtWidgets.QListWidget()
+        self.lista_perfiles.setIconSize(QtCore.QSize(48, 48))
+        self.lista_perfiles.setFixedHeight(132)
+        self.lista_perfiles.itemClicked.connect(self._pulsar_perfil)
+        caja.addWidget(self.lista_perfiles)
+        botones = QtWidgets.QHBoxLayout()
+        guardar = BotonPildora("Guardar")
+        guardar.clicked.connect(self._guardar_perfil)
+        duplicar = BotonPildora("Duplicar")
+        duplicar.clicked.connect(lambda: self._accion_perfil("duplicar"))
+        borrar = BotonPildora("Borrar")
+        borrar.clicked.connect(self._borrar_perfil)
+        botones.addWidget(guardar)
+        botones.addWidget(duplicar)
+        botones.addWidget(borrar)
+        caja.addLayout(botones)
+        archivos = QtWidgets.QHBoxLayout()
+        exportar = BotonPildora("Exportar")
+        exportar.clicked.connect(self._exportar_perfil)
+        importar = BotonPildora("Importar")
+        importar.clicked.connect(self._importar_perfil)
+        favorito = BotonPildora("Favorito")
+        favorito.clicked.connect(lambda: self._accion_perfil("favorito"))
+        renombrar = BotonPildora("Renombrar")
+        renombrar.clicked.connect(self._renombrar_perfil)
+        archivos.addWidget(renombrar)
+        archivos.addWidget(favorito)
+        archivos.addWidget(exportar)
+        archivos.addWidget(importar)
+        caja.addLayout(archivos)
         self.nota_calidad = QtWidgets.QLabel("Según la tarjeta que haya en el equipo.")
         self.nota_calidad.setWordWrap(True)
         self.nota_calidad.setObjectName("pista")
@@ -862,6 +910,94 @@ class Estudio(QtWidgets.QWidget):
 
     def _pulsar_calidad(self, texto: str) -> None:
         self.pedir_calidad.emit(texto)
+
+    def _pulsar_aspecto(self, indice: int) -> None:
+        ident = self.aspecto.itemData(indice)
+        if ident:
+            self.pedir_aspecto.emit(str(ident))
+
+    def mostrar_perfiles(self, perfiles: list[tuple[str, str, str, bool]]) -> None:
+        firma = tuple(perfiles)
+        if firma == getattr(self, "_firma_perfiles", None):
+            return
+        self._firma_perfiles = firma
+        self.lista_perfiles.clear()
+        for ident, nombre, ruta, favorito in perfiles:
+            texto = f"★ {nombre}" if favorito else nombre
+            item = QtWidgets.QListWidgetItem(texto)
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, ident)
+            if ruta:
+                icono = QtGui.QIcon(ruta)
+                if not icono.isNull():
+                    item.setIcon(icono)
+            self.lista_perfiles.addItem(item)
+
+    def mostrar_aspecto(self, frase: str) -> None:
+        self.nota_aspecto.setText(frase)
+
+    def _perfil_seleccionado(self) -> str:
+        item = self.lista_perfiles.currentItem()
+        if item is None:
+            return ""
+        return str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+
+    def _pulsar_perfil(self, item: QtWidgets.QListWidgetItem) -> None:
+        ident = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+        if ident:
+            self.pedir_perfil.emit(ident)
+
+    def _guardar_perfil(self) -> None:
+        nombre, ok = QtWidgets.QInputDialog.getText(
+            self, "Guardar perfil", "Nombre, por ejemplo La cara de Juanito"
+        )
+        if ok and nombre.strip():
+            self.pedir_guardar_perfil.emit(nombre.strip())
+
+    def _renombrar_perfil(self) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        nombre, ok = QtWidgets.QInputDialog.getText(self, "Renombrar perfil", "Nombre")
+        if ok and nombre.strip():
+            self.pedir_accion_perfil.emit(ident, "renombrar", nombre.strip())
+
+    def _borrar_perfil(self) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        respuesta = QtWidgets.QMessageBox.question(
+            self,
+            "Borrar perfil",
+            "¿Borrar este perfil de este PC? Las fotos originales no se tocan.",
+        )
+        if respuesta == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.pedir_accion_perfil.emit(ident, "borrar", "")
+
+    def _exportar_perfil(self) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        ruta, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Exportar perfil", "perfil.zip", "Perfil (*.zip)"
+        )
+        if ruta:
+            self.pedir_accion_perfil.emit(ident, "exportar", ruta)
+
+    def _importar_perfil(self) -> None:
+        ruta, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Importar perfil", "", "Perfil (*.zip)"
+        )
+        if ruta:
+            self.pedir_accion_perfil.emit("", "importar", ruta)
+
+    def _accion_perfil(self, accion: str) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        extra = ""
+        if accion == "favorito":
+            extra = "1"
+        self.pedir_accion_perfil.emit(ident, accion, extra)
 
     def _pulsar_fps(self, texto: str) -> None:
         self.pedir_fps.emit(int(texto))
