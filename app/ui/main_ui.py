@@ -997,6 +997,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.initialize_widgets()
         self.load_last_workspace()
         self._aplicar_perfil_vram()
+        self._abrir_pantalla_sencilla()
+
+    def _abrir_pantalla_sencilla(self) -> None:
+        """La ventana heredada sigue ahí si la pantalla nueva no puede abrirse."""
+        try:
+            from app.ui.estudio.instalar import instalar
+
+            instalar(self)
+        except Exception as exc:
+            print(f"[AVISO] No se pudo abrir la pantalla sencilla: {exc}")
 
     def _aplicar_perfil_vram(self) -> None:
         """Elige el perfil de VRAM sin interrumpir el acceso ni la licencia."""

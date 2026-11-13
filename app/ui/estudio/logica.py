@@ -1,0 +1,153 @@
+"""Reglas de la pantalla sencilla, sin Qt ni modelos.
+
+El directo pide tres cosas: una foto, una cámara y EN VIVO.
+Todo lo demás es un ajuste, no un paso.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+CALIDADES = ("Auto", "Máxima calidad", "Equilibrado", "Máximo FPS")
+FONDOS = ("Normal", "Verde", "Transparente")
+EXTENSIONES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp"})
+
+MENSAJE_FOTO = "Elige una foto de la cara."
+MENSAJE_CAMARA = "Elige una cámara."
+MENSAJE_CARA_PERDIDA = "No te veo bien. Acércate un poco y mira a la cámara."
+MENSAJE_CARGANDO = "Preparando la foto. Un momento."
+
+_FONDO_MOTOR = {
+    "Normal": "Ninguno",
+    "Verde": "Verde",
+    "Transparente": "Transparente",
+}
+
+
+@dataclass(frozen=True)
+class AjusteCalidad:
+    resolucion: str | None
+    fps: str | None
+    deteccion_cada: int | None
+    mejorar_cara: bool | None
+    nota: str
+
+
+@dataclass(frozen=True)
+class CaraVista:
+    id: str
+    nombre: str
+    ruta: str
+    favorita: bool
+    atajo: str
+
+
+def extension_admitida(nombre: str) -> bool:
+    punto = nombre.rfind(".")
+    if punto < 0:
+        return False
+    return nombre[punto:].lower() in EXTENSIONES
+
+
+def nombre_seguro(original: str) -> str:
+    """Nombre de archivo, sin carpetas ni caracteres raros."""
+    base = original.replace("\\", "/").split("/")[-1].strip()
+    if not base or base in {".", ".."}:
+        base = "cara"
+    limpio = []
+    for caracter in base:
+        if caracter.isalnum() or caracter in "._- ":
+            limpio.append(caracter)
+        else:
+            limpio.append("_")
+    texto = "".join(limpio).strip(" .")
+    return texto or "cara"
+
+
+def puede_entrar_en_vivo(tiene_foto: bool, tiene_camara: bool) -> str | None:
+    if not tiene_foto:
+        return MENSAJE_FOTO
+    if not tiene_camara:
+        return MENSAJE_CAMARA
+    return None
+
+
+def aviso_cara_perdida(
+    sin_cara_desde: float | None, ahora: float, gracia: float = 1.2
+) -> str | None:
+    """Aviso solo si la cara lleva un rato fuera. El arranque no cuenta."""
+    if sin_cara_desde is None:
+        return None
+    if ahora - sin_cara_desde < gracia:
+        return None
+    return MENSAJE_CARA_PERDIDA
+
+
+def ajuste_calidad(nombre: str, permite_60: bool) -> AjusteCalidad:
+    if nombre == "Máxima calidad":
+        return AjusteCalidad(
+            "1920x1080",
+            "30",
+            1,
+            True,
+            "Más detalle. La cara se restaura en cada fotograma.",
+        )
+    if nombre == "Equilibrado":
+        return AjusteCalidad(
+            "1920x1080",
+            "30",
+            2,
+            False,
+            "1080p a 30. Es el punto estable.",
+        )
+    if nombre == "Máximo FPS":
+        fps = "60" if permite_60 else "30"
+        nota = (
+            "Prioriza los fotogramas."
+            if permite_60
+            else "Esta tarjeta se queda en 30 FPS para no ir a tirones."
+        )
+        return AjusteCalidad("1280x720", fps, 4, False, nota)
+    return AjusteCalidad(None, None, None, None, "Según la tarjeta que haya en el equipo.")
+
+
+def fuerza_a_motor(valor: int) -> int:
+    """0–100 de la pantalla → pasadas del modelo. 50 es una pasada."""
+    valor = max(0, min(100, int(valor)))
+    return valor * 2
+
+
+def nitidez_a_motor(valor: int) -> float:
+    """0–100 → 0.0–2.0. 50 deja la nitidez neutra."""
+    valor = max(0, min(100, int(valor)))
+    return round(valor / 50.0, 2)
+
+
+def frente_a_motor(valor: int) -> int:
+    """0–100 → recorte superior 0–40. Más alto conserva más frente original."""
+    valor = max(0, min(100, int(valor)))
+    return int(round(valor * 0.4))
+
+
+def fondo_a_motor(nombre: str) -> str:
+    return _FONDO_MOTOR.get(nombre, "Ninguno")
+
+
+def texto_para_obs(resolucion: str, fps: str, fondo: str) -> str:
+    resolucion = (resolucion or "1920x1080").replace("x", " × ")
+    return (
+        "En OBS:\n"
+        "Fuentes → Añadir → Dispositivo de captura de vídeo\n"
+        "Dispositivo: Drako Cam\n"
+        f"Resolución: {resolucion}\n"
+        f"FPS: {fps or '30'}\n"
+        f"Fondo: {fondo or 'Normal'}\n"
+    )
+
+
+def atajos_de_favoritas(ids_favoritas: list[str], limite: int = 8) -> dict[str, str]:
+    """Las ocho primeras favoritas reciben F1…F8, en ese orden."""
+    return {
+        ident: f"F{indice + 1}"
+        for indice, ident in enumerate(ids_favoritas[:limite])
+    }

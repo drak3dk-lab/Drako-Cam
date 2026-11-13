@@ -52,6 +52,8 @@ MODULOS_DRAKO = (
     "app.drako.rendimiento.tensorrt",
     "app.drako.rendimiento.dgpu",
     "app.drako.rendimiento.watchdog",
+    "app.ui.estudio.logica",
+    "app.ui.estudio.biblioteca",
 )
 
 
