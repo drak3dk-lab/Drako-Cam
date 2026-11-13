@@ -308,6 +308,24 @@ _ESTABLE = {
     "XSegExcludeInnerMouthToggle": True,
     "XSegExcludeInnerObstaclesToggle": False,
     "LandmarkDetectToggle": False,
+    "KPSSmoothingEnableToggle": True,
+    "KPSEmaAlphaSlider": 25,
+    "BordermaskEnableToggle": True,
+    "TopBorderBlurSlider": 16,
+    "BottomBorderBlurSlider": 16,
+    "LeftBorderBlurSlider": 16,
+    "RightBorderBlurSlider": 16,
+    "FaceParserEnableToggle": True,
+    "HairParserSlider": 12,
+    "NeckParserSlider": 10,
+    "AutoColorEnableToggle": True,
+    "AutoColorTransferTypeSelection": "Reinhard Transfer (Masked)",
+    "AutoColorBlendAmountSlider": 65,
+    "RestoreMouthEnableToggle": True,
+    "RestoreMouthBlendAmountSlider": 40,
+    "RestoreMouthFeatherBlendSlider": 18,
+    "MouthParserStretchToggle": True,
+    "MouthParserStretchOriginalToggle": True,
     "AutoMouthExpressionEnableToggle": True,
     "AutoMouthRestoreModeSelection": "Face Parser Only",
     "AutoMouthOpenThresholdDecimalSlider": 0.22,
@@ -315,8 +333,18 @@ _ESTABLE = {
     "AutoMouthMouthParserSlider": 8,
     "AutoMouthUpperLipParserSlider": 2,
     "AutoMouthLowerLipParserSlider": 10,
-    "RestoreMouthEnableToggle": False,
 }
+
+
+def valores_de_seis_gb() -> dict[str, object]:
+    """Cara nítida en 6 GB sin el restaurador a tope, que la deja de plástico."""
+    return {
+        "SwapperResSelection": "256",
+        "FaceRestorerEnableToggle": True,
+        "FaceRestorerTypeSelection": "GFPGAN-v1.4",
+        "FaceRestorerDetTypeSelection": "Blend",
+        "FaceRestorerBlendSlider": 55,
+    }
 
 
 def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, object]:
@@ -331,14 +359,12 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
                 "FaceRestorerTypeSelection": "GFPGAN-v1.4",
                 "FaceRestorerDetTypeSelection": "Blend",
                 "FaceRestorerBlendSlider": 80,
-                "RestoreMouthEnableToggle": False,
                 "BordermaskEnableToggle": True,
                 "FinalBorderBlendEnableToggle": True,
                 "FinalBorderBlendAmountSlider": 8,
                 "OccluderEnableToggle": True,
                 "DFLXSegEnableToggle": True,
-                "LandmarkDetectToggle": True,
-                "LandmarkDetectModelSelection": "orformer98",
+                "LandmarkDetectToggle": False,
                 "SuavizadoMascaraAlfaDecimalSlider": 0.4,
                 "SimilarityThresholdSlider": 60,
                 "PreSwapSharpnessDecimalSlider": 1.0,
@@ -349,7 +375,6 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
             {
                 "SwapperResSelection": "128",
                 "FaceRestorerEnableToggle": False,
-                "RestoreMouthEnableToggle": False,
                 "RestoreEyesEnableToggle": False,
                 "OccluderEnableToggle": False,
                 "DFLXSegEnableToggle": False,

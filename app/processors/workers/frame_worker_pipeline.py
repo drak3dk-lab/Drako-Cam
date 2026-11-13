@@ -1757,6 +1757,12 @@ class PipelineProcessor:
             if reinicio:
                 self._ultimos_swap.pop(cara, None)
             media_mascara = float(swap_mask.detach().float().mean())
+            try:
+                self.worker.main_window.control["_OclusionReciente"] = max(
+                    0.0, 1.0 - media_mascara
+                )
+            except Exception:
+                pass
             if parameters.get("MantenerSwapOclusionEnableToggle", True):
                 peso = peso_ultimo_swap(media_mascara)
                 previo = self._ultimos_swap.get(cara)

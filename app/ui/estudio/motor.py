@@ -67,9 +67,33 @@ class MotorEnVivo:
         self._poner_toggle("ForceSwapToggle", True)
         self._poner_toggle("KeepInputToggle", True)
         self._aplicar_mapa(valores_de_calidad(self._calidad, self._permite_60()), guardar=False)
+        self._aplicar_perfil_gpu()
         self._preparar_camaras()
         if self._virtual:
             QtCore.QTimer.singleShot(800, lambda: self.camara_virtual(True))
+
+    def _aplicar_perfil_gpu(self) -> None:
+        from app.drako.rendimiento.perfiles import (
+            ID_6GB,
+            con_captura,
+            detectar_hardware,
+            resolver_perfil,
+        )
+        from app.ui.estudio.controles import valores_de_seis_gb
+
+        hw = detectar_hardware()
+        if hw is None:
+            return
+        nombre, vram = hw
+        perfil = con_captura(
+            resolver_perfil(getattr(self.ventana, "control", {}), nombre, vram),
+            nombre,
+            vram,
+        )
+        self._poner_valor("WebcamMaxResSelection", perfil.resolucion)
+        self._poner_valor("WebCamMaxFPSSelection", str(perfil.fps))
+        if perfil.id == ID_6GB:
+            self._aplicar_mapa(valores_de_seis_gb(), guardar=False)
 
     def caras(self) -> tuple[list[CaraVista], str]:
         fotos = self.biblioteca.listar()
@@ -540,6 +564,36 @@ class MotorEnVivo:
             "original": self.original,
             "ventana_abierta": self._ventana_salida is not None and self._ventana_salida.esta_abierta(),
         }
+
+    def _anotar_diagnostico(self) -> None:
+        if not self.en_vivo:
+            return
+        ahora = time.monotonic()
+        if ahora - getattr(self, "_diag_t", 0.0) < 2.0:
+            return
+        self._diag_t = ahora
+        cron = getattr(getattr(self.ventana, "video_processor", None), "cronometro_en_vivo", None)
+        fps = None
+        latencia = None
+        if cron is not None and hasattr(cron, "resumen"):
+            medida = cron.resumen("directo")
+            if medida is not None:
+                fps = medida.fps
+                latencia = medida.latencia_ms
+        from app.drako.rendimiento.diagnostico import anexar, linea
+        from app.drako.rutas import directorio_datos
+
+        texto = linea(
+            "directo",
+            fps,
+            latencia,
+            "De la captura a la salida. Sin modelos, esta cifra no es el FPS de la GPU.",
+        )
+        print(f"[DIAG] {texto}")
+        try:
+            anexar(directorio_datos(), texto)
+        except OSError:
+            pass
 
     def _activar(self) -> str:
         self._poner_toggle("AutoSwapToggle", True)

@@ -1,3 +1,29 @@
+# Rendimiento
+
+## Directo en 6 GB
+
+En una RTX 4050 de 6 GB la captura queda en 1280×720, la cola de
+inferencia en 1 fotograma y la detección corre cada 2 fotogramas, con
+el seguimiento entre medias. One Euro usa el ajuste 25: en reposo
+suaviza, y si la cabeza se mueve el punto sigue el fotograma. ORFormer
+solo entra si la máscara se cae (oclusión). La boca de la cámara se
+restaura (Restore Mouth y Mouth Fit & Align). El restaurador va al 55 %.
+
+El registro `diagnostico.log`, en la carpeta de datos, anota FPS y
+latencia del directo cada dos segundos. Esta máquina no tiene la GPU
+de Drako: la cifra de abajo es solo la sobrecarga del canal, sin los
+modelos.
+
+| | RTX 4050, versión 0.1.0, medido por Drako | Canal en esta VM, 1280×720, sin modelos |
+| --- | --- | --- |
+| FPS | 12–13 | 1982 de sobrecarga del canal |
+| Latencia | la cara iba por detrás; sin cifra | 0,32 ms (p95 2,6 ms) |
+
+Los 12–13 FPS de la 4050 son el tiempo de los modelos, no el de la cola.
+Esta VM no tiene esa GPU, así que no se puede prometer aquí el salto a
+25–30 FPS. El cambio de esta versión quita la cola de más, la detección
+cada 4 fotogramas y el landmark pesado en cada fotograma.
+
 # Rendimiento del directo
 
 Webcam → cambio de cara → cámara virtual de OBS. La estabilidad va primero

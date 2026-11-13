@@ -557,45 +557,7 @@ class Estudio(QtWidgets.QWidget):
         self.ajustes.hide()
         self.ajustes.cambiado.connect(self.pedir_control.emit)
         caja.addWidget(self.ajustes)
-        caja.addWidget(self._linea())
-        caja.addWidget(self._rotulo_valor("Fuerza", "fuerzaValor"))
-        self.fuerza = self._slider(50, self.pedir_fuerza.emit)
-        self.fuerza.valueChanged.connect(self.fijar_fuerza_texto)
-        caja.addWidget(self.fuerza)
-        extremos = QtWidgets.QHBoxLayout()
-        suave = QtWidgets.QLabel("Suave")
-        suave.setObjectName("pista")
-        fuerte = QtWidgets.QLabel("Fuerte")
-        fuerte.setObjectName("pista")
-        extremos.addWidget(suave)
-        extremos.addStretch(1)
-        extremos.addWidget(fuerte)
-        caja.addLayout(extremos)
-        caja.addWidget(QtWidgets.QLabel("FPS de salida"))
-        self.fps_salida = Segmento(["30", "60"])
-        self.fps_salida.grupo.buttonClicked.connect(
-            lambda boton: self._pulsar_fps(boton.text())
-        )
-        self.fps_salida.button(0).setChecked(True)
-        caja.addWidget(self.fps_salida)
-        caja.addWidget(QtWidgets.QLabel("Fondo"))
-        self.fondo = Segmento(list(FONDOS))
-        self.fondo.grupo.buttonClicked.connect(
-            lambda boton: self._pulsar_fondo(boton.text())
-        )
-        self.fondo.button(0).setChecked(True)
-        caja.addWidget(self.fondo)
-        caja.addWidget(self._linea())
         self.toggles: dict[str, QtWidgets.QCheckBox] = {}
-        for clave, texto in (
-            ("fps", "Mostrar FPS"),
-        ):
-            caja_toggle = QtWidgets.QCheckBox(texto)
-            caja_toggle.toggled.connect(lambda activo, nombre=clave: self.pedir_toggle.emit(nombre, activo))
-            self.toggles[clave] = caja_toggle
-            caja.addWidget(caja_toggle)
-        self.toggles["fps"].setChecked(True)
-        caja.addWidget(self._linea())
         self.avanzado = QtWidgets.QToolButton()
         self.avanzado.setText("Avanzado")
         self.avanzado.setCheckable(True)
@@ -616,6 +578,29 @@ class Estudio(QtWidgets.QWidget):
         nota.setWordWrap(True)
         nota.setObjectName("pista")
         avanzado.addWidget(nota)
+        avanzado.addWidget(self._rotulo_valor("Fuerza", "fuerzaValor"))
+        self.fuerza = self._slider(50, self.pedir_fuerza.emit)
+        self.fuerza.valueChanged.connect(self.fijar_fuerza_texto)
+        avanzado.addWidget(self.fuerza)
+        avanzado.addWidget(QtWidgets.QLabel("FPS de salida"))
+        self.fps_salida = Segmento(["30", "60"])
+        self.fps_salida.grupo.buttonClicked.connect(
+            lambda boton: self._pulsar_fps(boton.text())
+        )
+        self.fps_salida.button(0).setChecked(True)
+        avanzado.addWidget(self.fps_salida)
+        avanzado.addWidget(QtWidgets.QLabel("Fondo"))
+        self.fondo = Segmento(list(FONDOS))
+        self.fondo.grupo.buttonClicked.connect(
+            lambda boton: self._pulsar_fondo(boton.text())
+        )
+        self.fondo.button(0).setChecked(True)
+        avanzado.addWidget(self.fondo)
+        mostrar = QtWidgets.QCheckBox("Mostrar FPS")
+        mostrar.toggled.connect(lambda activo: self.pedir_toggle.emit("fps", activo))
+        mostrar.setChecked(True)
+        self.toggles["fps"] = mostrar
+        avanzado.addWidget(mostrar)
         self.resolucion = self._combo(
             "Resolución",
             ["1280x720", "1920x1080", "2560x1440"],
