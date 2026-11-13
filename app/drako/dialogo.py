@@ -145,7 +145,12 @@ def _nombre_equipo(contexto: ContextoArranque) -> str:
     return equipo() if callable(equipo) else str(equipo)
 
 
-def instalar_menu(ventana, contexto: ContextoArranque, claves: ClavesAuditoria) -> None:
+def instalar_menu(
+    ventana,
+    contexto: ContextoArranque,
+    claves: ClavesAuditoria,
+    al_cambiar_codigo=None,
+) -> None:
     barra = ventana.menuBar()
     menu = barra.addMenu("Drako")
     cambiar = menu.addAction("Cambiar contraseña…")
@@ -154,6 +159,9 @@ def instalar_menu(ventana, contexto: ContextoArranque, claves: ClavesAuditoria) 
         lambda: _dialogo_cambiar(ventana, contexto, claves)
     )
     telegram.triggered.connect(lambda: _dialogo_telegram(ventana, contexto))
+    if al_cambiar_codigo is not None:
+        codigo = menu.addAction("Cambiar código de acceso…")
+        codigo.triggered.connect(al_cambiar_codigo)
 
 
 def _dialogo_cambiar(ventana, contexto: ContextoArranque, claves: ClavesAuditoria) -> None:
