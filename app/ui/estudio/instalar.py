@@ -119,7 +119,6 @@ def _refrescar(estudio: Estudio, motor: MotorEnVivo) -> None:
         estudio.mostrar_caras(caras, seleccion)
         estudio.mostrar_camaras(motor.camaras(), motor.indice_camara())
         estudio.mostrar_perfiles(motor.perfiles())
-        estudio.poner_halo(motor.caja_halo())
         estado = motor.estado()
         estudio.mostrar_estado(
             sesion=bool(estado["cambio_activo"]),

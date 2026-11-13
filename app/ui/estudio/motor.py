@@ -609,26 +609,6 @@ class MotorEnVivo:
         self.ventana.cur_selected_target_face_button = principal
         self.mensaje = ""
 
-    def caja_halo(self) -> tuple[float, float, float, float] | None:
-        caja = self._caja_principal()
-        marco = getattr(self.ventana, "_marco_destino", None)
-        if caja is None or not marco:
-            return None
-        ancho, alto = float(marco[0]), float(marco[1])
-        if ancho <= 0 or alto <= 0:
-            return None
-        x1, y1, x2, y2 = caja
-        return (x1 / ancho, y1 / alto, (x2 - x1) / ancho, (y2 - y1) / alto)
-
-    def _caja_principal(self):
-        from app.ui.estudio.logica import indice_principal
-
-        cajas = list((getattr(self.ventana, "_cajas_destino", {}) or {}).values())
-        marco = getattr(self.ventana, "_marco_destino", None)
-        if not cajas or not marco:
-            return None
-        return cajas[indice_principal(cajas, float(marco[0]), float(marco[1]))]
-
     def _elegir_destinos(self, caras: list):
         from app.ui.estudio.logica import indice_principal
 

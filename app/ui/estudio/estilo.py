@@ -55,7 +55,6 @@ ESTILO = """
 #Estudio QPushButton#enVivo {
     min-height: 52px;
     min-width: 180px;
-    padding-left: 44px;
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 1px;

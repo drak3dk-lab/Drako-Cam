@@ -9,7 +9,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.estudio.ajuste_panel import PanelAjustes
-from app.ui.estudio.ojo import BotonIris, HaloCara, MarcaOjo
+from app.ui.estudio.ojo import BotonIris, MarcaOjo
 from app.ui.estudio.estilo import ESTILO
 from app.ui.estudio.logica import (
     CALIDADES,
@@ -341,16 +341,10 @@ class Estudio(QtWidgets.QWidget):
         self.hueco_vista = QtWidgets.QWidget()
         self.vista_caja = QtWidgets.QVBoxLayout(self.hueco_vista)
         self.vista_caja.setContentsMargins(0, 0, 0, 0)
-        self.aviso_vacio = QtWidgets.QWidget()
-        vacio_caja = QtWidgets.QVBoxLayout(self.aviso_vacio)
-        vacio_caja.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        vacio_caja.addWidget(MarcaOjo(72), alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-        vacio_texto = QtWidgets.QLabel("La cámara se verá aquí")
-        vacio_texto.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        vacio_texto.setObjectName("secundario")
-        vacio_caja.addWidget(vacio_texto)
+        self.aviso_vacio = QtWidgets.QLabel("La cámara se verá aquí")
+        self.aviso_vacio.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.aviso_vacio.setObjectName("secundario")
         self.vista_caja.addWidget(self.aviso_vacio)
-        self.halo = HaloCara(self.marco)
         marco_caja.addWidget(self.hueco_vista, 1)
         self.banner = QtWidgets.QLabel(self.marco)
         self.banner.setWordWrap(True)
@@ -427,10 +421,8 @@ class Estudio(QtWidgets.QWidget):
         self.boton_anadir.setFixedSize(120, 128)
         self.boton_anadir.clicked.connect(self._pedir_archivos)
         self.tira_caja.addWidget(self.boton_anadir)
-        self.vacio = QtWidgets.QLabel("O suelta aquí una foto")
-        self.ojo_vacio = MarcaOjo(28)
+        self.vacio = QtWidgets.QLabel("O suelta aquí una foto JPG, PNG, WEBP o BMP")
         self.vacio.setObjectName("pista")
-        self.tira_caja.addWidget(self.ojo_vacio)
         self.tira_caja.addWidget(self.vacio)
         self.tira_caja.addStretch(1)
         self.scroll.setWidget(self.tira)
@@ -449,7 +441,6 @@ class Estudio(QtWidgets.QWidget):
         caja.setContentsMargins(18, 18, 18, 18)
         caja.setSpacing(14)
         fila = QtWidgets.QHBoxLayout()
-        fila.addWidget(MarcaOjo(18))
         etiqueta = QtWidgets.QLabel("Salida a OBS")
         etiqueta.setObjectName("pista")
         fila.addWidget(etiqueta)
@@ -752,7 +743,6 @@ class Estudio(QtWidgets.QWidget):
         self._caras.clear()
         self._vaciar(self.favoritos)
         self.vacio.setVisible(not caras)
-        self.ojo_vacio.setVisible(not caras)
         favoritas = 0
         for cara in caras:
             ficha = FichaCara(cara)
@@ -926,7 +916,6 @@ class Estudio(QtWidgets.QWidget):
         self.chip_fps.move(self.marco.width() - self.chip_fps.sizeHint().width() - 28, self.marco.height() - 48)
         self.chip_vivo.raise_()
         self.chip_fps.raise_()
-        self.halo.colocar(self.halo._caja)
 
     def _marcar_original(self, original: bool) -> None:
         boton = self.segmento_vista.button(0 if original else 1)
@@ -1064,9 +1053,6 @@ class Estudio(QtWidgets.QWidget):
         from app.ui.estudio.logica import texto_para_obs
 
         return texto_para_obs(resolucion, fps, fondo)
-
-    def poner_halo(self, caja: tuple[float, float, float, float] | None) -> None:
-        self.halo.colocar(caja)
 
     def _abrir_ajustes(self, abierto: bool) -> None:
         self.ajustes.setVisible(abierto)
