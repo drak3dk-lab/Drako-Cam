@@ -128,17 +128,19 @@ export async function llamarTelegram(
   env: Env,
   metodo: string,
   cuerpo: Record<string, unknown>,
-): Promise<void> {
+): Promise<boolean> {
   const token = (env.TELEGRAM_BOT_TOKEN || "").trim();
-  if (!token || !tokenPareceValido(token) || !/^[A-Za-z]+$/.test(metodo)) return;
+  if (!token || !tokenPareceValido(token) || !/^[A-Za-z]+$/.test(metodo)) return false;
   try {
-    await fetch(`https://api.telegram.org/bot${token}/${metodo}`, {
+    const respuesta = await fetch(`https://api.telegram.org/bot${token}/${metodo}`, {
       method: "POST",
       headers: { "content-type": "application/json; charset=utf-8" },
       body: JSON.stringify(cuerpo),
     });
+    return respuesta.ok;
   } catch {
     // El acceso no depende de que Telegram conteste.
+    return false;
   }
 }
 

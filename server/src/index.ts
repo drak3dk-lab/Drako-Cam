@@ -2,7 +2,7 @@ import { prepararFirmante } from "./crypto";
 import { leerLugar } from "./lugar";
 import { atenderLicencia } from "./licencia";
 import { atenderSolicitud } from "./solicitud";
-import { atenderWebhook } from "./telegram";
+import { atenderComandos, atenderWebhook } from "./telegram";
 import type { Env } from "./tipos";
 
 function json(datos: unknown, estado = 200): Response {
@@ -36,6 +36,10 @@ export async function atender(
       if (request.method !== "POST") return json({ error: "metodo" }, 405);
       const lugar = leerLugar(request, env);
       return await atenderWebhook(request, env, lugar.ahora);
+    }
+    if (url.pathname === "/telegram/comandos") {
+      if (request.method !== "POST") return json({ error: "metodo" }, 405);
+      return await atenderComandos(request, env);
     }
     if (url.pathname === "/v1/solicitud") {
       if (request.method !== "POST") return json({ error: "metodo" }, 405);

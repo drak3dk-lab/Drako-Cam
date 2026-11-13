@@ -11,6 +11,8 @@ import hashlib
 import hmac
 import json
 import logging
+import platform
+import sys
 import threading
 import time
 import urllib.error
@@ -108,6 +110,19 @@ class _SinRedireccion(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def agente_http() -> str:
+    """User-Agent explícito. workers.dev responde 403 al agente por defecto de urllib."""
+    from app.drako import __version__
+
+    if sys.platform == "win32":
+        sistema = "Windows"
+    else:
+        sistema = platform.system() or "Windows"
+    sistema = "".join(caracter for caracter in sistema if caracter.isalnum()) or "Windows"
+    version = (__version__ or "0").strip() or "0"
+    return f"DrakoCam/{version} ({sistema})"
+
+
 class TransporteUrllib:
     def __init__(self, timeout: float = 12.0):
         self.timeout = timeout
@@ -121,7 +136,7 @@ class TransporteUrllib:
             headers={
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
-                "User-Agent": "DrakoCam-Licencia/1",
+                "User-Agent": agente_http(),
             },
             method="POST",
         )
@@ -132,7 +147,12 @@ class TransporteUrllib:
                 bruto = respuesta.read(65536)
         except urllib.error.HTTPError as exc:
             estado = int(exc.code)
-            bruto = exc.read(65536)
+            try:
+                bruto = exc.read(65536)
+            except (TimeoutError, OSError) as lectura:
+                raise ErrorDeRed("Sin conexión con el servidor de acceso.") from lectura
+            if estado in {401, 403, 408, 429} or estado >= 500:
+                raise ErrorDeRed("El servidor de acceso no aceptó la conexión.") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ErrorDeRed("Sin conexión con el servidor de acceso.") from exc
         try:

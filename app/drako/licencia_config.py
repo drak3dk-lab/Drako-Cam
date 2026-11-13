@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import os
 
-URL_SERVIDOR = ""
-CLAVE_PUBLICA_HEX = ""
+URL_SERVIDOR = "https://drako-cam-licencias.drakocam.workers.dev"
+CLAVE_PUBLICA_HEX = "151b6d87e1d578df4584774b7d13eb02ea47665aad01cff8cbd30c83d2d97155"
+CONTACTO_TELEGRAM = "Drako_XX"
 
 GRACIA_HORAS_DEFECTO = 24
 LATIDO_SEGUNDOS_DEFECTO = 60
@@ -66,6 +67,43 @@ def resolver_clave(datos: dict, entorno: dict | None = None) -> bytes | None:
     if de_entorno:
         return parsear_clave_publica(de_entorno)
     return parsear_clave_publica(str(_bloque(datos).get("clave_publica_hex", "")))
+
+
+def contacto_telegram() -> str:
+    """Usuario público de Telegram, sin @. Vacío si el valor no es un usuario válido."""
+    texto = CONTACTO_TELEGRAM.strip().lstrip("@")
+    if not texto or len(texto) > 32:
+        return ""
+    if any(caracter not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_" for caracter in texto):
+        return ""
+    return texto
+
+
+def url_contacto_telegram() -> str:
+    usuario = contacto_telegram()
+    if not usuario:
+        return ""
+    return f"https://t.me/{usuario}"
+
+
+def mensaje_contacto_telegram() -> str:
+    usuario = contacto_telegram()
+    if not usuario:
+        return ""
+    return (
+        "Para recibir tu código de acceso, contacta con el administrador "
+        f"por Telegram: @{usuario}"
+    )
+
+
+def anexo_contacto_telegram() -> str:
+    frase = mensaje_contacto_telegram()
+    url = url_contacto_telegram()
+    if not frase:
+        return ""
+    if not url:
+        return frase
+    return f"{frase}\n{url}"
 
 
 def gracia_local_segundos(datos: dict, entorno: dict | None = None) -> int | None:

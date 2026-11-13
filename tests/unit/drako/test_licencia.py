@@ -16,6 +16,8 @@ from app.drako.licencia import (
     ErrorDeRed,
     GestorLicencia,
     RespuestaLicencia,
+    TransporteUrllib,
+    agente_http,
     canonico,
     evaluar,
     hash_codigo,
@@ -469,7 +471,7 @@ def test_el_aviso_nombra_ip_uso_y_ubicacion_y_no_hay_secretos_en_el_repo():
     ):
         assert obligatorio in guia
     esquema = (RAIZ / "server" / "src" / "esquema.ts").read_text(encoding="utf-8")
-    for nombre in ("0001_inicio.sql", "0002_solicitudes.sql"):
+    for nombre in ("0001_inicio.sql", "0002_solicitudes.sql", "0003_bot_estado.sql"):
         sql = (RAIZ / "server" / "migrations" / nombre).read_text(encoding="utf-8").strip()
         assert sql in esquema
     toml = (RAIZ / "server" / "wrangler.toml").read_text(encoding="utf-8")
@@ -488,3 +490,126 @@ def test_el_aviso_nombra_ip_uso_y_ubicacion_y_no_hay_secretos_en_el_repo():
         if __import__("re").search(r"\d{6,}:[A-Za-z0-9_-]{20,}", contenido):
             sospechosos.append(str(ruta.relative_to(RAIZ)))
     assert sospechosos == []
+
+
+def test_el_agente_en_windows_nombra_el_sistema(monkeypatch):
+    from app.drako import __version__
+
+    monkeypatch.setattr("app.drako.licencia.sys.platform", "win32")
+    assert agente_http() == f"DrakoCam/{__version__} (Windows)"
+    assert "Python-urllib" not in agente_http()
+
+
+def test_un_403_o_un_timeout_dejan_la_gracia_de_24_horas(tmp_path):
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    servidor = ServidorFalso()
+    servidor.dar(CODIGO)
+    vistos: list[str] = []
+    modo = {"valor": "ok"}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            largo = int(self.headers.get("Content-Length") or 0)
+            bruto = self.rfile.read(largo)
+            vistos.append(self.headers.get("User-Agent") or "")
+            if modo["valor"] == "espera":
+                import time as _time
+
+                _time.sleep(1.2)
+            if modo["valor"] == "403":
+                cuerpo = b"<html>forbidden</html>"
+                self.send_response(403)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(cuerpo)))
+                self.end_headers()
+                self.wfile.write(cuerpo)
+                return
+            datos = _json.loads(bruto.decode("utf-8"))
+            estado, respuesta = servidor.post("https://licencias.test" + self.path, datos)
+            crudo = _json.dumps(respuesta).encode("utf-8")
+            self.send_response(estado)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(crudo)))
+            self.end_headers()
+            self.wfile.write(crudo)
+
+        def log_message(self, formato, *args):
+            return
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    hilo = threading.Thread(target=httpd.serve_forever, daemon=True)
+    hilo.start()
+    try:
+        puerto = httpd.server_address[1]
+        marca = {"t": float(servidor.ahora)}
+        config = ConfiguracionLocal(tmp_path)
+        cliente = ClienteLicencia(
+            f"http://127.0.0.1:{puerto}",
+            servidor.publica,
+            TransporteUrllib(timeout=0.4),
+        )
+        gestor = GestorLicencia(
+            config,
+            generar_claves(),
+            cliente,
+            HUELLA,
+            "PC-CASA",
+            reloj=lambda: marca["t"],
+        )
+        gestor.aceptar_aviso()
+        assert gestor.probar_codigo(CODIGO).permitir
+        assert vistos[0] == agente_http()
+        assert vistos[0].startswith("DrakoCam/")
+        assert "(" in vistos[0] and vistos[0].endswith(")")
+
+        modo["valor"] = "403"
+        marca["t"] += 3600
+        bloqueado = gestor.comprobar_latido()
+        assert bloqueado.permitir and bloqueado.motivo == "gracia"
+        assert vistos[-1] == agente_http()
+
+        modo["valor"] = "espera"
+        marca["t"] += 60
+        por_tiempo = gestor.comprobar_latido()
+        assert por_tiempo.permitir and por_tiempo.motivo == "gracia"
+
+        modo["valor"] = "403"
+        marca["t"] += 24 * 3600
+        assert not gestor.comprobar_latido().permitir
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_el_contacto_de_telegram_sale_del_config(capsys, monkeypatch):
+    from app.drako.licencia_config import (
+        CONTACTO_TELEGRAM,
+        mensaje_contacto_telegram,
+        url_contacto_telegram,
+    )
+    from app.drako.solicitud_instalador import main
+
+    assert CONTACTO_TELEGRAM == "Drako_XX"
+    assert (
+        mensaje_contacto_telegram()
+        == "Para recibir tu código de acceso, contacta con el administrador por Telegram: @Drako_XX"
+    )
+    assert url_contacto_telegram() == "https://t.me/Drako_XX"
+    assert main(["--contacto"]) == 0
+    salida = capsys.readouterr().out
+    assert "https://t.me/Drako_XX" in salida
+    assert "@Drako_XX" in salida
+    for relativo in (
+        "app/drako/dialogo_licencia.py",
+        "app/drako/textos_licencia.py",
+        "app/drako/solicitud_instalador.py",
+        "scripts/instalar.ps1",
+    ):
+        assert "Drako_XX" not in (RAIZ / relativo).read_text(encoding="utf-8")
+    dialogo = (RAIZ / "app/drako/dialogo_licencia.py").read_text(encoding="utf-8")
+    assert "mensaje_contacto_telegram" in dialogo
+    assert "QDesktopServices.openUrl" in dialogo
+    assert "--contacto" in (RAIZ / "scripts/instalar.ps1").read_text(encoding="utf-8")

@@ -7,7 +7,7 @@ Las horas de los avisos están en **Europe/Bucharest** (hora de Bucarest).
 Hay dos cosas distintas:
 
 - **Contraseña de administrador.** La elige cada persona la primera vez que abre el programa en su PC. No está en este repositorio y no debes escribirla aquí.
-- **Código de acceso.** Lo creas tú con el bot de Telegram (`/nuevo Ana`). Ese código es el permiso.
+- **Código de acceso.** Lo creas tú con el bot de Telegram, con el botón **Nuevo acceso** o con `/nuevo Ana`. Ese código es el permiso.
 
 Nada de esto se despliega solo. Los pasos de abajo los haces tú, una vez, en una cuenta gratuita de Cloudflare.
 
@@ -73,19 +73,13 @@ npx wrangler login
 npx wrangler d1 create drako-cam-licencias
 ```
 
-Verás un identificador parecido a esto:
-
-```text
-database_id = "8f3e1c2a-0000-4000-8000-000000000000"
-```
-
-Abre el archivo `server/wrangler.toml` con el Bloc de notas. Busca la línea que dice:
+En este repositorio la base `drako-cam-licencias` ya está apuntada en `server/wrangler.toml`:
 
 ```toml
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "c827480d-03fe-4e51-9d2a-d4544d3774a1"
 ```
 
-Sustituye los ceros por el identificador que te dio el comando. Guarda el archivo. Ese identificador no es una contraseña: puede estar en el archivo.
+Ese identificador no es una contraseña: puede estar en el archivo. Si creas otra base, sustituye esa línea por el `database_id` que imprima el comando. No hace falta tocar el nombre del Worker ni los nombres de los secretos.
 
 Crea las tablas:
 
@@ -94,6 +88,8 @@ npx wrangler d1 migrations apply drako-cam-licencias --remote
 ```
 
 Si pregunta si quieres continuar, escribe `yes` y pulsa Enter.
+
+Si la base ya existía, ejecuta el mismo comando otra vez. La migración nueva es `migrations/0003_bot_estado.sql`. Crea la tabla donde el bot recuerda, durante 10 minutos, que estás escribiendo el nombre de una persona. Sin esa tabla, el botón **Nuevo acceso** no puede preguntarte el nombre.
 
 ## 6. Generar las claves de firma
 
@@ -167,6 +163,16 @@ Tiene que contestar algo como `ok : True`.
 
 Cierra esa ventana de PowerShell cuando termines: el token ha quedado en la memoria de esa sesión, no en un archivo.
 
+Al pulsar `/start` o `/ayuda`, el bot registra los comandos en el menú de Telegram (el botón junto al campo de texto). Si quieres hacerlo una sola vez, sin abrir el chat, y con el mismo secreto del webhook:
+
+```powershell
+$secreto = Read-Host "Pega TELEGRAM_WEBHOOK_SECRET"
+$direccion = Read-Host "Pega la URL del Worker, sin barra al final"
+Invoke-RestMethod -Method Post -Uri "$direccion/telegram/comandos" -Headers @{ "X-Telegram-Bot-Api-Secret-Token" = $secreto }
+```
+
+Tiene que contestar `ok : True`. Ese secreto no se escribe en ningún archivo.
+
 Si más adelante quieres comprobarlo:
 
 ```powershell
@@ -178,21 +184,22 @@ La URL tiene que ser la de tu Worker, terminada en `/telegram/webhook`.
 
 ## 10. Poner la URL y la clave pública en la app
 
-Abre `app/drako/licencia_config.py` con el Bloc de notas. Arriba del todo hay dos líneas vacías. Déjalas así, con tus datos:
+En `app/drako/licencia_config.py` ya están la dirección, la clave pública y el contacto de Telegram. No son secretos:
 
 ```python
-URL_SERVIDOR = "https://drako-cam-licencias.tu-cuenta.workers.dev"
-CLAVE_PUBLICA_HEX = "pega-aqui-los-64-caracteres"
+URL_SERVIDOR = "https://drako-cam-licencias.drakocam.workers.dev"
+CLAVE_PUBLICA_HEX = "151b6d87e1d578df4584774b7d13eb02ea47665aad01cff8cbd30c83d2d97155"
+CONTACTO_TELEGRAM = "Drako_XX"
 ```
 
-Guarda. Esas dos cosas **no son secretos**. La URL es la dirección del servidor. La clave pública solo sirve para comprobar firmas; con ella no se puede firmar.
+La clave pública solo sirve para comprobar firmas; con ella no se puede firmar. `CONTACTO_TELEGRAM` es el usuario que ven el instalador y la app, con un botón que abre `https://t.me/Drako_XX`. Si cambia el usuario, se cambia solo esa línea.
 
 La clave privada (`SIGNING_SEED`), el token del bot, tu chat id y el secreto del webhook **no** se escriben en ese archivo ni en ningún otro del proyecto.
 
 También puedes pasar la URL sin tocar el archivo, en PowerShell, antes de abrir el programa:
 
 ```powershell
-$env:DRAKO_CAM_LICENCIA_URL = "https://drako-cam-licencias.tu-cuenta.workers.dev"
+$env:DRAKO_CAM_LICENCIA_URL = "https://drako-cam-licencias.drakocam.workers.dev"
 ```
 
 Si `CLAVE_PUBLICA_HEX` en el archivo está vacío, la clave pública puede ir en:
@@ -212,8 +219,20 @@ $env:DRAKO_CAM_LICENCIA_GRACIA_HORAS = "6"
 ## 11. Probar el bot
 
 1. Abre tu bot en Telegram.
-2. Escribe `/ayuda`.
-3. Tiene que contestarte la lista de comandos. Si no contesta, mira la sección «Si algo falla».
+2. Escribe `/start` o pulsa **Iniciar**.
+3. Tiene que salir un mensaje corto y estos botones: **➕ Nuevo acceso**, **👥 Personas**, **🟢 Conectados ahora**, **⏳ Pendientes** y **❓ Ayuda**. El menú de comandos, junto al campo de texto, enseña los mismos comandos. Si no contesta, mira la sección «Si algo falla».
+
+Botones:
+
+| Botón | Qué hace |
+| --- | --- |
+| ➕ Nuevo acceso | Pide el nombre y contesta con el código en un texto que se puede copiar. |
+| 👥 Personas | Lista paginada. Cada persona tiene Historial, Revocar y Borrar. Revocar y Borrar piden confirmación. |
+| 🟢 Conectados ahora | Quién lo está usando ahora. |
+| ⏳ Pendientes | Solicitudes sin decidir, con Aprobar y Rechazar. |
+| ❓ Ayuda | Vuelve a enseñar el menú corto. |
+
+Los comandos escritos siguen funcionando. Un mensaje que el bot no entiende vuelve a enseñar ese menú corto, no la lista larga de comandos.
 
 Comandos:
 
@@ -226,7 +245,7 @@ Comandos:
 | `/historial DRAKO-....` | Últimas sesiones: inicio, duración, PC, oficina, ciudad, país e IP. |
 | `/pendientes` | Solicitudes que aún no has aprobado ni rechazado. |
 | `/borrar DRAKO-....` | Borra a esa persona y su historial. El código deja de existir. |
-| `/ayuda` | Vuelve a mostrar la lista. |
+| `/ayuda` | Vuelve a mostrar el menú corto y registra los comandos. |
 
 Al final de `Instalar.bat` se pregunta el nombre de la persona y el de la oficina, y se envía una solicitud. Si la URL o la clave pública aún no están en `app/drako/licencia_config.py`, la instalación termina igual y lo explica. La misma pregunta aparece al abrir Drako Cam si todavía no hay código.
 
@@ -242,7 +261,7 @@ El primer PC que lo active se queda ligado a ese código. Otro PC con el mismo c
 
 1. La primera vez, el programa pide **crear** la contraseña de administrador de ese PC. La elige ella. Tú no la ves y no va en el código.
 2. Después sale el **aviso de privacidad**. Explica que se registran el uso, la IP y la ubicación aproximada (país y ciudad). Tiene que marcar la casilla y aceptar. Si sale, el programa no se abre.
-3. Luego pide el **código** que tú le diste. Solo la primera vez. Se guarda cifrado en su PC.
+3. Luego pide el **código** que tú le diste. En esa pantalla, y también mientras espera la aprobación, ve el mensaje para contactarte por Telegram y un botón que abre el chat. Solo la primera vez se guarda el código, cifrado, en su PC.
 4. A partir de ahí el programa abre con la contraseña de siempre y, en silencio, comprueba el código al arrancar y más o menos cada minuto.
 5. Si revocas el código y hay internet, ve un mensaje claro y el programa se cierra.
 6. Si no hay internet, puede seguir usándolo durante las horas de gracia desde la última comprobación buena. Por defecto son **24 horas**. Pasadas esas horas, si sigue sin red, no entra.
@@ -287,7 +306,9 @@ La contraseña de administrador de la app tampoco se escribe en ningún archivo.
 
 **`wrangler` no entra.** Repite `npx wrangler login` y acepta en el navegador. El comando hay que lanzarlo desde la carpeta `server`.
 
-**El deploy se queja de la base de datos.** `database_id` en `wrangler.toml` sigue siendo todo ceros. Pega el id del paso 5.
+**El deploy se queja de la base de datos.** El `database_id` de `wrangler.toml` no es el de la base que estás usando. Para la base ya creada es `c827480d-03fe-4e51-9d2a-d4544d3774a1`.
+
+**Nuevo acceso dice que no puede guardar el nombre.** Falta aplicar `migrations/0003_bot_estado.sql`. En la carpeta `server`: `npx wrangler d1 migrations apply drako-cam-licencias --remote`.
 
 **La app dice que el servidor no está configurado.** `URL_SERVIDOR` o `CLAVE_PUBLICA_HEX` están vacíos en `app/drako/licencia_config.py`, y tampoco están las variables de entorno.
 

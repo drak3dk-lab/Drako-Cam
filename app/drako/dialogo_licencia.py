@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.drako.licencia import DecisionAcceso, GestorLicencia, crear_gestor
 from app.drako.textos_licencia import (
@@ -34,10 +34,18 @@ QLabel#cuerpo { color: #f0f0f0; font-size: 15px; }
 QLabel#punto { color: #f0f0f0; font-size: 15px; font-weight: 600; }
 QLabel#detalle { color: #c6c6c6; font-size: 14px; }
 QLabel#error { color: #ffb4b4; font-size: 14px; }
+QDialog { background-color: #141414; color: #f0f0f0; }
+QLabel#contacto { color: #e6e6e6; font-size: 16px; }
+QLabel#contacto a { color: #8fd4e4; text-decoration: underline; }
 QLineEdit {
     font-size: 16px;
     min-height: 44px;
     padding: 8px 10px;
+    background-color: #1e1e1e;
+    color: #f0f0f0;
+    border: 1px solid #3a3a3a;
+    selection-background-color: #156a7d;
+    selection-color: #f0f0f0;
 }
 QLineEdit#codigo {
     font-family: "Cascadia Mono", "Consolas", monospace;
@@ -55,7 +63,13 @@ QPushButton#primario:disabled {
     color: #6a6a6a;
     border: 1px solid #363636;
 }
-QPushButton#secundario { min-height: 44px; padding: 6px 16px; }
+QPushButton#secundario {
+    min-height: 44px;
+    padding: 6px 16px;
+    background-color: #242424;
+    color: #f0f0f0;
+    border: 1px solid #3a3a3a;
+}
 QCheckBox::indicator { width: 22px; height: 22px; }
 QLabel#casilla { color: #f0f0f0; font-size: 16px; }
 """
@@ -223,6 +237,49 @@ def _pedir_privacidad(padre) -> bool:
     return dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted and casilla.isChecked()
 
 
+def _mostrar_espera(error: QtWidgets.QLabel, decision: DecisionAcceso) -> None:
+    espera = decision.motivo in {"enviada", "ya_pendiente", "ya_aprobada"}
+    error.setObjectName("cuerpo" if espera else "error")
+    error.style().unpolish(error)
+    error.style().polish(error)
+    error.setText(decision.mensaje)
+    error.show()
+
+
+def _bloque_contacto(dialogo) -> None:
+    from app.drako.licencia_config import (
+        contacto_telegram,
+        mensaje_contacto_telegram,
+        url_contacto_telegram,
+    )
+
+    frase = mensaje_contacto_telegram()
+    url = url_contacto_telegram()
+    usuario = contacto_telegram()
+    if not frase or not url or not usuario:
+        return
+    etiqueta = QtWidgets.QLabel(dialogo)
+    etiqueta.setObjectName("contacto")
+    etiqueta.setWordWrap(True)
+    etiqueta.setTextFormat(QtCore.Qt.TextFormat.RichText)
+    etiqueta.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
+    etiqueta.setOpenExternalLinks(True)
+    etiqueta.setAccessibleName(frase)
+    etiqueta.setText(
+        "Para recibir tu código de acceso, contacta con el administrador por Telegram: "
+        f'<a href="{url}">@{usuario}</a>'
+    )
+    dialogo.layout().addWidget(etiqueta)
+    boton = QtWidgets.QPushButton("Abrir Telegram", dialogo)
+    boton.setObjectName("secundario")
+    boton.setMinimumHeight(44)
+    boton.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+    boton.setAccessibleName(frase)
+    boton.setToolTip(url)
+    boton.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)))
+    dialogo.layout().addWidget(boton)
+
+
 def _campo(dialogo, nombre: str, placeholder: str, accesible: str, codigo: bool = False) -> QtWidgets.QLineEdit:
     campo = QtWidgets.QLineEdit(dialogo)
     if codigo:
@@ -259,6 +316,7 @@ def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
     error = _etiqueta("", "error", dialogo)
     error.hide()
     dialogo.layout().addWidget(error)
+    _bloque_contacto(dialogo)
     fila = QtWidgets.QHBoxLayout()
     fila.setSpacing(10)
     salir = QtWidgets.QPushButton("Salir", dialogo)
@@ -279,6 +337,7 @@ def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
     def al_entrar() -> None:
         entrar.setEnabled(False)
         pedir.setEnabled(False)
+        error.setObjectName("error")
         error.setText("Comprobando el código…")
         error.show()
         try:
@@ -306,6 +365,7 @@ def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
             return
         entrar.setEnabled(False)
         pedir.setEnabled(False)
+        error.setObjectName("error")
         error.setText("Enviando la solicitud…")
         error.show()
         try:
@@ -320,8 +380,7 @@ def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
             entrar.setEnabled(True)
             pedir.setEnabled(True)
             return
-        error.setText(decision.mensaje)
-        error.show()
+        _mostrar_espera(error, decision)
         entrar.setEnabled(True)
         pedir.setEnabled(True)
 

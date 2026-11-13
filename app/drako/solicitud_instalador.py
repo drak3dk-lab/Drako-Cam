@@ -12,7 +12,7 @@ import sys
 
 from app.drako.huella import huella_equipo
 from app.drako.licencia import ClienteLicencia, ErrorConfiguracionLicencia, ErrorDeRed, TransporteUrllib
-from app.drako.licencia_config import resolver_clave, resolver_url
+from app.drako.licencia_config import anexo_contacto_telegram, resolver_clave, resolver_url
 from app.drako.textos_licencia import (
     MENSAJE_SIN_CONFIGURAR,
     MENSAJE_SOLICITUD_APROBADA,
@@ -26,6 +26,13 @@ MENSAJE_INSTALADOR_SIN_SERVIDOR = (
     "La instalación ha terminado igual. Cuando esté configurado, "
     "pide el código al abrir Drako Cam."
 )
+
+
+def _con_contacto(texto: str) -> str:
+    extra = anexo_contacto_telegram()
+    if not extra or extra in texto:
+        return texto
+    return f"{texto}\n\n{extra}"
 
 
 def servidor_configurado(entorno: dict | None = None) -> bool:
@@ -50,14 +57,16 @@ def enviar(nombre: str, oficina: str, transporte=None, entorno: dict | None = No
     except ErrorConfiguracionLicencia:
         return 10, MENSAJE_INSTALADOR_SIN_SERVIDOR
     except ErrorDeRed:
-        return 1, "No se pudo enviar la solicitud. Podrás pedirla al abrir Drako Cam."
+        return 1, _con_contacto(
+            "No se pudo enviar la solicitud. Podrás pedirla al abrir Drako Cam."
+        )
     if not respuesta.firma_ok or str(respuesta.carga.get("huella") or "") != huella:
         return 1, "La respuesta del servidor de acceso no es auténtica. No se ha dado por enviada."
     motivo = str(respuesta.carga.get("motivo") or "")
     textos = {
-        "enviada": MENSAJE_SOLICITUD_ENVIADA,
-        "ya_pendiente": MENSAJE_SOLICITUD_PENDIENTE,
-        "ya_aprobada": MENSAJE_SOLICITUD_APROBADA,
+        "enviada": _con_contacto(MENSAJE_SOLICITUD_ENVIADA),
+        "ya_pendiente": _con_contacto(MENSAJE_SOLICITUD_PENDIENTE),
+        "ya_aprobada": _con_contacto(MENSAJE_SOLICITUD_APROBADA),
         "limitada": MENSAJE_SOLICITUD_LIMITADA,
         "mal_formato": "Escribe el nombre de la persona y el de la oficina.",
     }
@@ -69,9 +78,13 @@ def enviar(nombre: str, oficina: str, transporte=None, entorno: dict | None = No
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Solicita el código de acceso de Drako Cam.")
     parser.add_argument("--estado", action="store_true", help="Solo dice si el servidor está configurado.")
+    parser.add_argument("--contacto", action="store_true", help="Muestra cómo pedir el código por Telegram.")
     parser.add_argument("--nombre", default="")
     parser.add_argument("--oficina", default="")
     args = parser.parse_args(argv)
+    if args.contacto:
+        print(anexo_contacto_telegram() or "No hay un contacto de Telegram configurado.")
+        return 0
     if args.estado:
         if servidor_configurado():
             print("Servidor de acceso configurado.")

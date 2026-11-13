@@ -548,6 +548,7 @@ function Pedir-Acceso {
             Write-Host "No pude pedir el código de acceso porque falta Python. Podrás hacerlo al abrir Drako Cam."
             return
         }
+        & $python -m app.drako.solicitud_instalador --contacto
         & $python -m app.drako.solicitud_instalador --estado
         if ($LASTEXITCODE -eq 10) {
             Write-Host ""

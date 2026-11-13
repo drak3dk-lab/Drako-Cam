@@ -66,3 +66,14 @@ CREATE TABLE IF NOT EXISTS solicitudes (
 CREATE INDEX IF NOT EXISTS idx_solicitudes_ip ON solicitudes (ip, creada_en);
 CREATE INDEX IF NOT EXISTS idx_solicitudes_huella ON solicitudes (huella, estado);
 `;
+
+/** Igual que `migrations/0003_bot_estado.sql`. */
+export const ESQUEMA_BOT = `
+CREATE TABLE IF NOT EXISTS bot_estado (
+  chat_id TEXT PRIMARY KEY,
+  paso TEXT NOT NULL,
+  expira_en INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_estado_expira ON bot_estado (expira_en);
+`;

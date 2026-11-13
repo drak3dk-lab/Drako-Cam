@@ -11,7 +11,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "drako-cam-licencias"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "c827480d-03fe-4e51-9d2a-d4544d3774a1"
 migrations_dir = "migrations"
 
 [vars]

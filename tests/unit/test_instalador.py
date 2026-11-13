@@ -63,6 +63,7 @@ def test_instalar_cubre_lo_que_drako_necesita():
         "Microsoft Store",
         "Lo reutilizo",
         "solicitud_instalador",
+        "--contacto",
         "Nombre de la persona",
         "Nombre de la oficina donde se instala",
         "Falta la configuración del servidor de acceso",

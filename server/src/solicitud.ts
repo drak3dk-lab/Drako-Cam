@@ -286,7 +286,12 @@ export async function contestarCallback(
     });
   }
   if (decision.codigo) {
-    await enviarTelegram(env, decision.aviso);
+    const extra: Record<string, unknown> = {};
+    const offset = decision.aviso.indexOf(decision.codigo);
+    if (offset >= 0) {
+      extra.entities = [{ type: "code", offset, length: decision.codigo.length }];
+    }
+    await enviarTelegram(env, decision.aviso, extra);
   } else if (datos.messageId === null) {
     await enviarTelegram(env, decision.aviso);
   }

@@ -1,7 +1,7 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { atenderWebhook } from "../src/telegram";
+import { atenderComandos, atenderWebhook } from "../src/telegram";
 import { canonico, firmarCarga, prepararFirmante } from "../src/crypto";
 import { leerLugar } from "../src/lugar";
 import worker from "../src/index";
@@ -28,9 +28,10 @@ beforeEach(async () => {
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("https://api.telegram.org/")) {
-      const cuerpo = JSON.parse(String(init?.body || "{}")) as { text?: string };
-      cuerpos.push(cuerpo);
-      if (cuerpo.text) avisos.push(String(cuerpo.text));
+      const cuerpo = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+      const metodo = url.split("?")[0].split("/").pop() || "";
+      cuerpos.push({ ...cuerpo, _metodo: metodo });
+      if (typeof cuerpo.text === "string" && cuerpo.text) avisos.push(cuerpo.text);
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
     return fetchOriginal(input, init);
@@ -39,6 +40,7 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM sesiones").run();
   await env.DB.prepare("DELETE FROM solicitudes").run();
   await env.DB.prepare("DELETE FROM personas").run();
+  await env.DB.prepare("DELETE FROM bot_estado").run();
 });
 
 afterEach(() => {
@@ -422,4 +424,200 @@ describe("acceso", () => {
     });
     expect(limitada.datos.carga?.motivo).toBe("limitada");
   });
+
+  it("el menú de botones crea, pagina, confirma y solo obedece a Drako", async () => {
+    const inicio = await bot("/start");
+    expect(inicio.respuesta.status).toBe(200);
+    const altaComandos = cuerpos.find((cuerpo) => cuerpo._metodo === "setMyCommands");
+    const comandos = (altaComandos?.commands || []) as { command: string }[];
+    expect(comandos.map((comando) => comando.command)).toEqual([
+      "start",
+      "nuevo",
+      "lista",
+      "activos",
+      "pendientes",
+      "revocar",
+      "historial",
+      "borrar",
+      "ayuda",
+    ]);
+    expect(altaComandos?.scope).toEqual({ type: "chat", chat_id: "4242" });
+    const menu = cuerpos.find((cuerpo) => {
+      const marca = cuerpo.reply_markup as { keyboard?: { text: string }[][] } | undefined;
+      return Boolean(marca?.keyboard);
+    });
+    const teclas = ((menu?.reply_markup as { keyboard: { text: string }[][] }).keyboard || [])
+      .flat()
+      .map((boton) => boton.text);
+    expect(teclas).toEqual([
+      "➕ Nuevo acceso",
+      "👥 Personas",
+      "🟢 Conectados ahora",
+      "⏳ Pendientes",
+      "❓ Ayuda",
+    ]);
+    expect(avisos.at(-1)).not.toContain("/revocar");
+    expect(avisos.at(-1)).not.toContain("Comandos de Drako Cam");
+
+    avisos = [];
+    await bot("/ayuda");
+    expect(cuerpos.filter((cuerpo) => cuerpo._metodo === "setMyCommands").length).toBeGreaterThan(1);
+    expect(avisos.at(-1)).not.toContain("/borrar");
+
+    avisos = [];
+    await bot("➕ Nuevo acceso");
+    expect(avisos.at(-1)).toContain("Escribe el nombre");
+    const pendiente = await env.DB.prepare("SELECT paso FROM bot_estado WHERE chat_id = ?")
+      .bind("4242")
+      .first<{ paso: string }>();
+    expect(pendiente?.paso).toBe("nombre");
+
+    avisos = [];
+    await bot("Ana García");
+    const creado = avisos.at(-1) || "";
+    const codigo = creado.split("\n")[1] || "";
+    expect(codigo).toMatch(/^DRAKO-[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
+    const entidad = cuerpos.at(-1)?.entities as { type: string; offset: number; length: number }[];
+    expect(entidad).toEqual([{ type: "code", offset: creado.indexOf(codigo), length: codigo.length }]);
+    const yaNo = await env.DB.prepare("SELECT COUNT(*) AS n FROM bot_estado").first<{ n: number }>();
+    expect(Number(yaNo?.n)).toBe(0);
+
+    avisos = [];
+    await bot("esto no es un comando");
+    expect(avisos.at(-1)).toContain("No entiendo");
+    expect(avisos.at(-1)).not.toContain("/nuevo");
+    expect((avisos.at(-1) || "").match(/\/lista/g)).toBeNull();
+
+    avisos = [];
+    await bot("👥 Personas");
+    const inline = (cuerpos.at(-1)?.reply_markup as {
+      inline_keyboard: { text: string; callback_data: string }[][];
+    }).inline_keyboard;
+    expect(inline[0].map((boton) => boton.text)).toEqual(["Historial", "Revocar", "Borrar"]);
+    expect(avisos.at(-1)).toContain("Ana García");
+    expect(avisos.at(-1)).toContain(codigo);
+
+    await pulsar(inline[0][0].callback_data);
+    expect(avisos.some((texto) => texto.includes("Historial de Ana García"))).toBe(true);
+
+    await pulsar(inline[0][1].callback_data, "4242", 21);
+    expect(avisos.some((texto) => texto.includes("¿Revocar el acceso de Ana García"))).toBe(true);
+    const medio = await env.DB.prepare("SELECT revocado_en FROM personas WHERE codigo = ?")
+      .bind(codigo)
+      .first<{ revocado_en: number | null }>();
+    expect(medio?.revocado_en ?? null).toBeNull();
+
+    await pulsar("per:0", "4242", 21);
+    const sigue = await env.DB.prepare("SELECT revocado_en FROM personas WHERE codigo = ?")
+      .bind(codigo)
+      .first<{ revocado_en: number | null }>();
+    expect(sigue?.revocado_en ?? null).toBeNull();
+
+    await pulsar(`rvy:${codigo}`, "4242", 22);
+    const revocado = await env.DB.prepare("SELECT revocado_en FROM personas WHERE codigo = ?")
+      .bind(codigo)
+      .first<{ revocado_en: number | null }>();
+    expect(revocado?.revocado_en).toBeTruthy();
+
+    await pulsar(`bor:${codigo}`, "4242", 23);
+    expect(avisos.some((texto) => texto.includes("¿Borrar a Ana García"))).toBe(true);
+    await pulsar("per:0", "4242", 23);
+    const aun = await env.DB.prepare("SELECT COUNT(*) AS n FROM personas WHERE codigo = ?")
+      .bind(codigo)
+      .first<{ n: number }>();
+    expect(Number(aun?.n)).toBe(1);
+
+    await pulsar(`boy:${codigo}`, "4242", 24);
+    const fuera = await env.DB.prepare("SELECT COUNT(*) AS n FROM personas WHERE codigo = ?")
+      .bind(codigo)
+      .first<{ n: number }>();
+    expect(Number(fuera?.n)).toBe(0);
+
+    await bot("/nuevo Luis");
+    const codigoLuis = (avisos.at(-1) || "").split("\n")[1] || "";
+    avisos = [];
+    const ajeno = await pulsar(`rvy:${codigoLuis}`, "999", 30);
+    expect(ajeno.respuesta.status).toBe(200);
+    expect(avisos).toEqual([]);
+    const luis = await env.DB.prepare("SELECT revocado_en FROM personas WHERE codigo = ?")
+      .bind(codigoLuis)
+      .first<{ revocado_en: number | null }>();
+    expect(luis?.revocado_en ?? null).toBeNull();
+
+    await bot("➕ Nuevo acceso");
+    await env.DB.prepare("UPDATE bot_estado SET expira_en = 1").run();
+    avisos = [];
+    await bot("Persona Caducada");
+    expect(avisos.at(-1)).toContain("No entiendo");
+    const fantasma = await env.DB.prepare("SELECT COUNT(*) AS n FROM personas WHERE nombre = ?")
+      .bind("Persona Caducada")
+      .first<{ n: number }>();
+    expect(Number(fantasma?.n)).toBe(0);
+
+    for (const nombre of ["Bea", "Ciro", "Dina", "Eva"]) {
+      await bot(`/nuevo ${nombre}`);
+    }
+    avisos = [];
+    await bot("👥 Personas");
+    const pagina = cuerpos.at(-1)?.reply_markup as {
+      inline_keyboard: { text: string; callback_data: string }[][];
+    };
+    const siguiente = pagina.inline_keyboard.flat().find((boton) => boton.text === "Siguiente");
+    expect(siguiente?.callback_data).toBe("per:1");
+    avisos = [];
+    await pulsar(siguiente?.callback_data || "", "4242", 40);
+    expect(avisos.at(-1)).toContain("página 2");
+
+    const pedida = await llamar("/v1/solicitud", {
+      nombre: "Olga",
+      oficina: "Norte",
+      huella: "ee".repeat(32),
+      equipo: "PC-OLGA",
+    });
+    expect(pedida.datos.carga?.motivo).toBe("enviada");
+    avisos = [];
+    await bot("⏳ Pendientes");
+    const pendientes = cuerpos.at(-1)?.reply_markup as {
+      inline_keyboard: { text: string; callback_data: string }[][];
+    };
+    expect(pendientes.inline_keyboard[0].map((boton) => boton.text)).toEqual(["Aprobar", "Rechazar"]);
+    expect(avisos.at(-1)).toContain("Olga");
+
+    const ok = await llamar(
+      "/telegram/comandos",
+      {},
+      { "X-Telegram-Bot-Api-Secret-Token": "secreto-de-prueba-webhook" },
+    );
+    expect(ok.respuesta.status).toBe(200);
+    expect(ok.datos).toEqual({ ok: true });
+    const mal = await llamar(
+      "/telegram/comandos",
+      {},
+      { "X-Telegram-Bot-Api-Secret-Token": "otro" },
+    );
+    expect(mal.respuesta.status).toBe(401);
+    const metodo = await llamar("/telegram/comandos", null, {}, "GET");
+    expect(metodo.respuesta.status).toBe(405);
+
+    const vacio = await atenderComandos(
+      new Request("https://licencias.test/telegram/comandos", { method: "POST" }),
+      { ...env, TELEGRAM_WEBHOOK_SECRET: "" },
+    );
+    expect(vacio.status).toBe(503);
+  });
 });
+
+async function pulsar(data: string, chat = "4242", messageId = 11) {
+  return llamar(
+    "/telegram/webhook",
+    {
+      callback_query: {
+        id: `cb-${messageId}-${data.slice(0, 12)}`,
+        data,
+        from: { id: Number(chat) },
+        message: { message_id: messageId, chat: { id: Number(chat) } },
+      },
+    },
+    { "X-Telegram-Bot-Api-Secret-Token": "secreto-de-prueba-webhook" },
+  );
+}
