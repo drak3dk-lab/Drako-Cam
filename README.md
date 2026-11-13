@@ -15,13 +15,14 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Anota en local, cifrado (AES-GCM) y firmado (HMAC-SHA256), cada apertura, cierre, duración, intento fallido y cara usada. De la cara solo guarda el nombre del archivo y un hash, nunca la imagen ni el embedding.
 - Puede avisar a un bot de Telegram. Si no hay red, encola y reintenta. Si Telegram no está configurado, el programa funciona igual.
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
+- El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
 
 La interfaz heredada de VisoMaster (paneles, controles y manual) sigue en inglés. Los cuadros nuevos de Drako Cam están en español.
 
 ## Requisitos
 
 - Windows 10 u 11, 64 bits
-- GPU NVIDIA, 6 GB de VRAM como mínimo (8–12 GB más cómodos)
+- GPU NVIDIA. El uso previsto es una RTX 5060, 5070 o 5080 (8–16 GB). La RTX 4050 de 6 GB del portátil de desarrollo sigue teniendo un perfil propio.
 - Controlador NVIDIA reciente (en VisoMaster se recomienda `>= 576.57` para CUDA 12.9)
 - Red la primera vez (dependencias y modelos)
 - Unos 20–30 GB libres

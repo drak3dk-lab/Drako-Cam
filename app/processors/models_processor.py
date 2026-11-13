@@ -193,39 +193,22 @@ class ModelsProcessor(QtCore.QObject):
 
         self.cuda_graph_capture_lock = threading.Lock()
 
-        # --- TENSORRT WORKSPACE ---
-        MIN_WORKSPACE_SIZE = 1073741824  # 1 GB
-        FALLBACK_WORKSPACE_SIZE = 4294967296  # 4 GB
+        # Caché por GPU y versión de TensorRT, workspace acotado y FP16.
+        # Si TensorRT no puede construir para esta SM (p. ej. Blackwell
+        # sm_120 con un TRT viejo), el proveedor efectivo será CUDA.
+        from app.drako.rendimiento.tensorrt import opciones_cache
 
-        workspace_size = FALLBACK_WORKSPACE_SIZE
+        self._trt_info = opciones_cache(self.gpu_id)
+        self._trt_sirve = bool(self._trt_info.get("sirve"))
+        self._trt_motivo = str(self._trt_info.get("motivo") or "")
+        if self._trt_motivo and not self._trt_sirve:
+            print(f"[AVISO] {self._trt_motivo}")
 
-        # Prevent silent C++ driver crashes by ensuring CUDA is requested
-        # and physically available before querying device properties.
-        if self.device_type == "cuda" and torch.cuda.is_available():
-            try:
-                # Get total GPU memory in bytes
-                total_vram = torch.cuda.get_device_properties(self.gpu_id).total_memory
-                # Safely allocate 40% of total VRAM for TensorRT workspace
-                calculated_workspace = int(total_vram * 0.40)
-                # Enforce a minimum of 1 GB to avoid compilation failures on very low-end GPUs
-                workspace_size = max(calculated_workspace, MIN_WORKSPACE_SIZE)
-            except Exception as e:
-                print(f"[WARN] Failed to retrieve CUDA properties: {e}")
-                workspace_size = FALLBACK_WORKSPACE_SIZE
-
-        # Default TensorRT options
         self.trt_ep_options: Dict[str, Any] = {
             "device_id": self.gpu_id,
-            "trt_engine_cache_enable": True,
-            "trt_engine_cache_path": "tensorrt-engines",
-            "trt_timing_cache_enable": True,
-            "trt_timing_cache_path": "tensorrt-engines",
-            "trt_dump_ep_context_model": True,
-            "trt_ep_context_file_path": "tensorrt-engines",
             "trt_layer_norm_fp32_fallback": True,
-            "trt_max_workspace_size": workspace_size,
-            "trt_builder_optimization_level": 5,
         }
+        self.trt_ep_options.update(self._trt_info.get("opciones") or {})
 
         # Default CoreML options (macOS). MLProgram is the modern model format and
         # is required for fp16 compute; ALL lets CoreML place ops on the Neural
@@ -388,7 +371,9 @@ class ModelsProcessor(QtCore.QObject):
             None: if no valid cache is found.
         """
         try:
-            cache_dir = "tensorrt-engines"
+            cache_dir = self.trt_ep_options.get(
+                "trt_engine_cache_path", "tensorrt-engines"
+            )
             base_onnx_name = os.path.splitext(os.path.basename(onnx_path))[0]
 
             # Support both UI model names (explicit prefix) and base ONNX file names (legacy prefix)
@@ -587,12 +572,24 @@ class ModelsProcessor(QtCore.QObject):
                 # For EXPLICIT caches or brand new builds (None), strictly set custom prefix
                 model_trt_options["trt_engine_cache_prefix"] = model_name
 
-            # Check if the model is explicitly marked as safe for FP16 in models_data.py
-            if model_name in fp16_safe_models_list:
-                model_trt_options["trt_fp16_enable"] = True
-                print(f"[INFO] FP16 Acceleration ENABLED for {model_name}")
-            else:
-                model_trt_options["trt_fp16_enable"] = False
+            # FP16 en los modelos que lo aguantan. FP8/INT8 no se activan.
+            from app.drako.rendimiento.tensorrt import precision_fp16
+
+            pedida = "FP16"
+            try:
+                pedida = str(
+                    self.main_window.control.get("PrecisionTensorRTSelection", "FP16")
+                )
+            except Exception:
+                pedida = "FP16"
+            activar_fp16, aviso_precision = precision_fp16(
+                pedida, model_name in fp16_safe_models_list
+            )
+            model_trt_options["trt_fp16_enable"] = activar_fp16
+            if aviso_precision:
+                print(f"[AVISO] {aviso_precision}")
+            elif activar_fp16:
+                print(f"[INFO] FP16 activo para {model_name}")
 
             # Reconstruct the providers with model-specific options
             model_providers = []
@@ -626,12 +623,14 @@ class ModelsProcessor(QtCore.QObject):
 
                         try:
                             # We emit signals to ask the main GUI thread to show the dialog.
-                            dialog_title = "Building TensorRT Cache"
+                            dialog_title = "Compilando TensorRT"
                             dialog_text = (
-                                f"Building TensorRT engine cache for:\n"
+                                f"Preparando el motor TensorRT FP16 de:\n"
                                 f"{os.path.basename(onnx_path)}\n\n"
-                                f"This may take several minutes.\n"
-                                f"The application will continue once finished."
+                                "La primera vez puede tardar varios minutos. "
+                                "El motor se guarda en disco y no se vuelve a "
+                                "compilar en este equipo mientras no cambien "
+                                "la tarjeta ni la versión de TensorRT."
                             )
 
                             # The trt engine build worker process use this SessionOptions
@@ -730,15 +729,15 @@ class ModelsProcessor(QtCore.QObject):
                             if build_was_triggered:
                                 self.hide_build_dialog.emit()
 
-                            print(f"[ERROR] Isolated probe failed for {model_name}.")
                             print(
-                                "[ERROR] The model will not be loaded. This is likely a fatal TensorRT/CUDA error."
+                                f"[AVISO] TensorRT no pudo compilar {model_name}. "
+                                "Se carga con CUDA para no detener Drako Cam."
                             )
                             traceback.print_exc()
-                            self.models[model_name] = (
-                                None  # Ensure it's marked as not loaded
-                            )
-                            return None  # Abort the load
+                            from app.drako.rendimiento.tensorrt import quitar_tensorrt
+
+                            model_providers = quitar_tensorrt(model_providers)
+                            is_tensorrt_load = False
 
             # Now, proceed with the *actual* load in the main thread.
             try:
@@ -800,12 +799,34 @@ class ModelsProcessor(QtCore.QObject):
                 return model_instance
 
             except Exception:
-                # This catch is still valuable for non-fatal errors
-                print(f"[ERROR] Failed to load model {model_name} (even after probe).")
+                print(
+                    f"[AVISO] No se pudo cargar {model_name} con el proveedor actual."
+                )
                 traceback.print_exc()
                 if model_instance is not None:
                     del model_instance
                     gc.collect()
+                    model_instance = None
+                # Respaldo: CUDA (o CPU) si la lista todavía pedía TensorRT.
+                from app.drako.rendimiento.tensorrt import quitar_tensorrt
+
+                respaldo = quitar_tensorrt(model_providers)
+                if respaldo and respaldo != model_providers:
+                    try:
+                        print(f"[AVISO] Reintentando {model_name} sin TensorRT.")
+                        if session_options is None:
+                            session_options = onnxruntime.SessionOptions()
+                        session_options.log_severity_level = 3
+                        model_instance = onnxruntime.InferenceSession(
+                            onnx_path,
+                            sess_options=session_options,
+                            providers=respaldo,
+                        )
+                        self.models[model_name] = model_instance
+                        return model_instance
+                    except Exception:
+                        print(f"[ERROR] {model_name} tampoco cargó sin TensorRT.")
+                        traceback.print_exc()
                 self.models[model_name] = None
                 return None
 
@@ -869,7 +890,9 @@ class ModelsProcessor(QtCore.QObject):
                         safe_name = safe_name[:-4]
 
                     # 2. Use absolute paths for the dedicated cache directory to avoid OS pathing bugs
-                    cache_base = os.path.abspath("tensorrt-engines")
+                    cache_base = self.trt_ep_options.get(
+                        "trt_engine_cache_path", os.path.abspath("tensorrt-engines")
+                    )
                     dedicated_cache_dir = os.path.join(
                         cache_base, "dfm_caches", safe_name
                     )
@@ -1216,6 +1239,13 @@ class ModelsProcessor(QtCore.QObject):
         """ONNX Runtime provider list matching this machine's best provider."""
         match platform_support.default_execution_provider():
             case "TensorRT" | "TensorRT-Engine":
+                if not getattr(self, "_trt_sirve", False):
+                    if platform_support.has_cuda():
+                        return [
+                            ("CUDAExecutionProvider", {"device_id": self.gpu_id}),
+                            ("CPUExecutionProvider"),
+                        ]
+                    return ["CPUExecutionProvider"]
                 return [
                     ("TensorrtExecutionProvider", self.trt_ep_options),
                     ("CUDAExecutionProvider", {"device_id": self.gpu_id}),
@@ -1241,23 +1271,43 @@ class ModelsProcessor(QtCore.QObject):
         """
         match provider_name:
             case "TensorRT" | "TensorRT-Engine":
-                if not TENSORRT_AVAILABLE or trt is None:
-                    raise RuntimeError("TensorRT is not installed.")
-                providers = [
-                    ("TensorrtExecutionProvider", self.trt_ep_options),
-                    ("CUDAExecutionProvider", {"device_id": self.gpu_id}),
-                    ("CPUExecutionProvider"),
-                ]
-                self.device = f"cuda:{self.gpu_id}"
-                self.device_type = "cuda"
-                if (
-                    version.parse(trt.__version__) < version.parse("10.2.0")
-                    and provider_name == "TensorRT-Engine"
-                ):
-                    print(
-                        "[WARN] TensorRT-Engine provider cannot be used when TensorRT version is lower than 10.2.0."
-                    )
-                    provider_name = "TensorRT"
+                trt_util = TENSORRT_AVAILABLE and trt is not None and self._trt_sirve
+                if not trt_util:
+                    if self._trt_motivo:
+                        print(f"[AVISO] {self._trt_motivo}")
+                    else:
+                        print(
+                            "[AVISO] TensorRT no está disponible. Se usa CUDA si la tarjeta responde."
+                        )
+                    if platform_support.has_cuda():
+                        provider_name = "CUDA"
+                        providers = [
+                            ("CUDAExecutionProvider", {"device_id": self.gpu_id}),
+                            ("CPUExecutionProvider"),
+                        ]
+                        self.device = f"cuda:{self.gpu_id}"
+                        self.device_type = "cuda"
+                    else:
+                        provider_name = "CPU"
+                        providers = ["CPUExecutionProvider"]
+                        self.device = "cpu"
+                        self.device_type = "cpu"
+                else:
+                    providers = [
+                        ("TensorrtExecutionProvider", self.trt_ep_options),
+                        ("CUDAExecutionProvider", {"device_id": self.gpu_id}),
+                        ("CPUExecutionProvider"),
+                    ]
+                    self.device = f"cuda:{self.gpu_id}"
+                    self.device_type = "cuda"
+                    if (
+                        version.parse(trt.__version__) < version.parse("10.2.0")
+                        and provider_name == "TensorRT-Engine"
+                    ):
+                        print(
+                            "[AVISO] TensorRT-Engine pide TensorRT 10.2 o posterior. Se usa TensorRT."
+                        )
+                        provider_name = "TensorRT"
 
             case "CPU":
                 providers = ["CPUExecutionProvider"]

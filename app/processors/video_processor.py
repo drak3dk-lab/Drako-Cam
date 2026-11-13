@@ -502,15 +502,38 @@ class VideoProcessor(QObject):
 
             # Need to check again if virtcam was successfully enabled
             if self.virtcam:
-                height, width, _ = frame.shape
+                from app.drako.rendimiento.camara_virtual import PreparadorSalida
+
+                cfg = getattr(self, "_salida_virtual", None)
+                preparador = getattr(self, "_preparador_salida", None)
+                if preparador is None:
+                    preparador = PreparadorSalida()
+                    self._preparador_salida = preparador
+                bboxes = None
+                rastreador = getattr(self.media_pipeline, "_rastreador_rostros", None)
+                if rastreador is not None and getattr(rastreador, "pistas", None):
+                    try:
+                        import numpy as np
+
+                        bboxes = np.array(
+                            [p.bbox for p in rastreador.pistas], dtype=np.float32
+                        )
+                    except Exception:
+                        bboxes = None
+                if cfg is not None:
+                    frame = preparador.preparar(frame, cfg, bboxes)
+                if frame is None:
+                    return
+                height, width = frame.shape[0], frame.shape[1]
                 if self.virtcam.height != height or self.virtcam.width != width:
-                    # Resolution changed (e.g. source swap / restorer output differs).
-                    # Avoid hammering OBS with rapid close/reopen cycles
+                    # La salida va bloqueada al tamaño de los ajustes. Si la
+                    # cámara se abrió con otro, se reabre una sola vez.
                     print(
-                        f"[INFO] VirtCam resolution changed ({self.virtcam.width}x{self.virtcam.height} -> {width}x{height}). Restarting virtual camera."
+                        f"[INFO] Cámara virtual {self.virtcam.width}x{self.virtcam.height} "
+                        f"→ {width}x{height}. Se reabre."
                     )
                     self.enable_virtualcam()
-                    return  # Frame already consumed; next tick will send at the new size.
+                    return
 
                 if self.virtcam:
                     try:
@@ -2848,6 +2871,18 @@ class VideoProcessor(QObject):
                     else 30
                 )
 
+        from app.drako.rendimiento.camara_virtual import ConfiguracionSalida
+
+        self._salida_virtual = ConfiguracionSalida.desde_control(
+            self.main_window.control,
+            fps_respaldo=current_fps,
+            ancho_respaldo=frame_width,
+            alto_respaldo=frame_height,
+        )
+        frame_width = self._salida_virtual.ancho
+        frame_height = self._salida_virtual.alto
+        current_fps = self._salida_virtual.fps
+
         if frame_width <= 0 or frame_height <= 0:
             print(
                 f"[ERROR] Cannot enable virtual camera: Invalid dimensions ({frame_width}x{frame_height})."
@@ -2866,8 +2901,15 @@ class VideoProcessor(QObject):
         time.sleep(0.15)
 
         backend_to_use = backend or self.main_window.control["VirtCamBackendSelection"]
+        formato = self._salida_virtual.formato
+        fmt = (
+            pyvirtualcam.PixelFormat.RGBA
+            if formato == "rgba"
+            else pyvirtualcam.PixelFormat.BGR
+        )
         print(
-            f"[INFO] Enabling virtual camera: {frame_width}x{frame_height} @ {int(current_fps)}fps, Backend: {backend_to_use}, Format: BGR"
+            f"[INFO] Cámara virtual: {frame_width}x{frame_height} @ {int(current_fps)} fps, "
+            f"backend {backend_to_use}, formato {formato}"
         )
 
         for attempt in range(2):
@@ -2877,7 +2919,7 @@ class VideoProcessor(QObject):
                     height=frame_height,
                     fps=int(current_fps),
                     backend=backend_to_use,
-                    fmt=pyvirtualcam.PixelFormat.BGR,  # Processed frame is BGR
+                    fmt=fmt,
                 )
                 print(f"[INFO] Virtual camera '{self.virtcam.device}' started.")
                 break  # success — exit retry loop
@@ -3655,10 +3697,20 @@ class VideoProcessor(QObject):
             fps = 30
         self.fps = fps
 
+        try:
+            fps_pedido = int(self.main_window.control.get("WebCamMaxFPSSelection", 0) or 0)
+        except (TypeError, ValueError):
+            fps_pedido = 0
+        if fps_pedido > 0:
+            self.fps = fps_pedido
         print(f"[INFO] Webcam target FPS: {self.fps}")
 
         self.join_and_clear_threads()
-        self.worker_pool_manager.recreate_queue(self.max_display_buffer_size)
+        from app.drako.rendimiento.perfiles import preparar_directo
+
+        preparar_directo(self)
+        cola = getattr(self, "_cola_inferencia", None) or self.max_display_buffer_size
+        self.worker_pool_manager.recreate_queue(int(cola))
         self.worker_pool_manager.start_persistent_pool(self.num_threads)
 
         # Start the feeder thread via pipeline

@@ -229,6 +229,65 @@ def enable_virtualcam(main_window: "MainWindow", backend):
         main_window.video_processor.enable_virtualcam(backend=backend)
 
 
+def cambiar_perfil_vram(main_window: "MainWindow", valor: str = "Auto") -> None:
+    """Aplica el perfil elegido. Auto vuelve a mirar la GPU."""
+    from app.drako.rendimiento.perfiles import (
+        aplicar_al_arranque,
+        perfil_por_etiqueta,
+        escribir_perfil,
+    )
+
+    if getattr(main_window, "_aplicando_perfil", False):
+        return
+    main_window.control["PerfilVramSelection"] = valor
+    fijo = perfil_por_etiqueta(str(valor))
+    main_window._aplicando_perfil = True
+    try:
+        if fijo is None:
+            main_window.control["_PerfilAplicado"] = None
+            aplicar_al_arranque(main_window)
+            return
+        escribir_perfil(main_window, fijo, forzar=True)
+    finally:
+        main_window._aplicando_perfil = False
+
+
+def cambiar_modo_emision(main_window: "MainWindow", activo: bool = False) -> None:
+    from app.drako.rendimiento.emision import aplicar_modo
+
+    resultado = aplicar_modo(bool(activo))
+    print(
+        f"[INFO] Modo emisión: {'activado' if resultado['activo'] else 'desactivado'} "
+        f"(prioridad {resultado['prioridad']})."
+    )
+
+
+def medir_rendimiento(main_window: "MainWindow", activo: bool = False) -> None:
+    if not activo:
+        return
+    from PySide6 import QtWidgets
+
+    from app.drako.rendimiento.benchmark import medir_perfiles_de_hardware
+    from app.drako.rendimiento.perfiles import detectar_hardware, perfil_por_hardware
+
+    hw = detectar_hardware()
+    nombre, vram = hw if hw is not None else ("", 0)
+    perfil = perfil_por_hardware(nombre, vram)
+    _mediciones, texto = medir_perfiles_de_hardware(perfil.id)
+    cron = getattr(
+        getattr(main_window, "video_processor", None), "cronometro_en_vivo", None
+    )
+    if cron is not None:
+        real = cron.resumen(perfil.titulo)
+        if real is not None:
+            texto += (
+                f"\n\nDirecto reciente ({real.muestras} fotogramas): "
+                f"{real.fps:.1f} FPS, latencia {real.latencia_ms:.1f} ms "
+                f"(p95 {real.p95_ms:.1f} ms)."
+            )
+    QtWidgets.QMessageBox.information(main_window, "Drako Cam — rendimiento", texto)
+
+
 def handle_denoiser_state_change(
     main_window: "MainWindow",
     new_value_of_toggle_that_just_changed: bool,

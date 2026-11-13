@@ -10,6 +10,9 @@ Ese acceso directo no muestra una ventana de consola.
 Si aparece un aviso de que no hay tarjeta NVIDIA, el programa se ha
 instalado igual, pero el cambio de cara en directo no irá fluido.
 
+En un portátil con gráfica integrada y NVIDIA, el instalador marca
+python.exe como GPU de alto rendimiento para que use la dedicada.
+
 Si algo falla, la ventana se queda abierta con el motivo. El registro
 queda en la carpeta AppData\Local\DrakoCam\logs\instalacion.log
 (puedes pegar %LOCALAPPDATA%\DrakoCam\logs en el explorador de archivos).
