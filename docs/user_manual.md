@@ -41,9 +41,9 @@ The application supports multiple AI inference backends (CPU, CUDA, TensorRT, Te
 
 **Nvidia GPU Driver:** A recent driver supporting CUDA 12.9. If you see provider errors at launch, update your driver from the Nvidia website.
 
-**Internet connection:** Required on first run only to download tools, dependencies, and model files. After setup, the app runs fully offline.
+**Internet connection:** Required on first run to download tools, dependencies, and the live face-swap models (about 1.18 GB). Optional models download later, when you select them. After that, the app runs offline.
 
-**Disk space:** 20-30 GB free space. The dependency install (PyTorch, TensorRT, cuDNN, etc.) is several gigabytes, and AI model files add several more.
+**Disk space:** 20-30 GB free space. The dependency install (PyTorch, TensorRT, cuDNN, etc.) is several gigabytes. The live models add about 1.18 GB; the full optional library is about 17 GB if you download everything. See [modelos.md](modelos.md).
 
 ### 2.1 Installation (Portable)
 
@@ -51,7 +51,7 @@ Execute `Start_Portable.bat` to begin. On first run it automatically downloads a
 
 No existing software on your system is modified. Everything is installed inside the application folder and is self-contained. This means you can move the entire folder to another drive or run it from a USB drive without reinstalling anything.
 
-After the dependency install completes, the model downloader runs automatically to fetch the AI model files. On subsequent launches, `Start_Portable.bat` skips straight to the launcher.
+After the dependency install completes, the model downloader fetches the live face-swap models only. On subsequent launches, `Start_Portable.bat` skips straight to the launcher.
 
 ---
 
@@ -70,7 +70,7 @@ The **Update / Maintenance** menu contains the following actions:
 | **Update from Git** | Fetches and applies the latest commits from the remote repository. |
 | **Repair Installation** | Restores all tracked application files to the current HEAD, backing up any local modifications first. |
 | **Check / Update Dependencies** | Reinstalls Python dependencies via UV to match the current `requirements` file. |
-| **Check / Update Models** | Runs the model downloader to fetch any missing or updated model files. |
+| **Check / Update Models** | Downloads any missing live face-swap models and checks their hashes. Optional models download inside the app when selected. |
 | **Optimize Models (onnxsim)** | Runs ONNX simplification and symbolic shape inference on eligible model files for faster inference. Originals are backed up automatically. |
 | **Revert to Original Models** | Deletes any optimized model files and re-downloads the originals from source. |
 | **Update Launcher Script** | Applies any available update to the launcher batch script itself. |

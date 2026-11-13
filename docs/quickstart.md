@@ -13,7 +13,7 @@ You will need:
 - At least one clear source face image
 - A reasonably capable Nvidia GPU
 
-Most portable users should start VisoMaster Fusion with `Start_Portable.bat`. On first run, the launcher may download dependencies and model files before the main app opens.
+Most portable users should start VisoMaster Fusion with `Start_Portable.bat`. On first run, the launcher may download dependencies and the live face-swap models (about 1.18 GB). The rest download when you turn that feature on. See [modelos.md](modelos.md).
 
 For best results, use a clear source face with good lighting, a mostly visible face, and minimal heavy shadows or obstructions.
 

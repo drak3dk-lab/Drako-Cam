@@ -67,7 +67,11 @@ ACTIONS_MAINT = [
     ("Update from Git", "on_update_git", "Fetch and apply updates from origin"),
     ("Repair Installation", "on_repair_installation", "Restore tracked files to HEAD"),
     ("Check / Update Dependencies", "on_update_deps", "Reinstall requirements via UV"),
-    ("Check / Update Models", "on_update_models", "Run model downloader"),
+    (
+        "Check / Update Models",
+        "on_update_models",
+        "Download the live face-swap models. Other models download when selected.",
+    ),
     (
         "Optimize Models (onnxsim)",
         "on_optimize_models",
@@ -742,7 +746,7 @@ class LauncherWindow(QtWidgets.QWidget):
             print("[Launcher] Set USE_OPTIMIZED_MODELS=false in portable.cfg.")
 
             print("[Launcher] Re-downloading original models...")
-            run_python(PATHS["DOWNLOAD_PY"])
+            run_python(PATHS["DOWNLOAD_PY"], ["--todos"])
 
             try:
                 write_checksum_state(models_sha=compute_models_sha256(models_list))

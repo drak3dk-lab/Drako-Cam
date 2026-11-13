@@ -570,6 +570,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             data_type="control",
             section_namespace="settings",
         )
+        from app.ui.widgets.panel_modelos import instalar_panel_modelos
+
+        instalar_panel_modelos(self)
         layout_actions.add_widgets_to_tab_layout(
             self,
             LAYOUT_DATA=FACE_EDITOR_LAYOUT_DATA,

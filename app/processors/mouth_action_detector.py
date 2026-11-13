@@ -107,6 +107,12 @@ class MouthActionDetector:
                 f"Mouth action model not found at {_MODEL_PATH}. Detection disabled."
             )
             logger.warning(self._load_error)
+            try:
+                from app.drako.descarga_modelos import solicitar_si_falta
+
+                solicitar_si_falta("MouthActionDetector")
+            except Exception:  # noqa: BLE001
+                logger.debug("No se pudo pedir la descarga del detector de boca.")
             return
 
         try:

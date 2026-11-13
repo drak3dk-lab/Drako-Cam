@@ -562,6 +562,13 @@ class ModelsProcessor(QtCore.QObject):
                 )
                 return None
 
+            # No bloquear el fotograma: si el peso no está, se pide en segundo plano.
+            if not os.path.isfile(onnx_path):
+                from app.drako.descarga_modelos import solicitar_si_falta
+
+                solicitar_si_falta(model_name)
+                return None
+
             # Some models need a shape-inferred graph before the TensorRT EP can
             # build an engine. This transparently swaps in a cached sidecar; the
             # original path stays untouched for download/integrity checks.

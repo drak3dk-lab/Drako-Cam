@@ -42,6 +42,8 @@ MODULOS_DRAKO = (
     "app.drako.cuda_aviso",
     "app.drako.camara",
     "app.drako.arranque",
+    "app.drako.catalogo_modelos",
+    "app.drako.descarga_modelos",
 )
 
 
@@ -92,10 +94,11 @@ def comprobar_importaciones() -> int:
 
 
 def _avisar_modelos() -> bool:
+    print("[INFO] Comprobando los modelos del cambio de cara en vivo.")
     print(
-        "[INFO] Comprobando modelos. Si faltan, se descargan y se verifica el hash."
+        "[INFO] Solo se descargan esos. El resto se baja al activarlo. "
+        "Si ya están en disco, se reutilizan."
     )
-    print("[INFO] La primera vez puede tardar: hace falta red y varios gigabytes.")
     try:
         from download_models import descargar_modelos
 

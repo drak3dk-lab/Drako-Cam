@@ -98,7 +98,7 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 1. La primera vez el programa pide **crear** la contraseña de administrador (8 caracteres como mínimo) y repetirla. Esa contraseña es de este PC. No está escrita en el programa.
 2. Después, cada apertura pide esa contraseña.
 3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
-4. Comprueba los modelos. Los que falten se descargan y se verifica el hash. Puede tardar y ocupar varios gigabytes.
+4. Comprueba los modelos del cambio de cara en vivo (unos 1,18 GB) y verifica el hash. El resto —colorización, Ref-LDM, expresión, swappers alternativos— se descarga al activarlo. Si el archivo ya está, se reutiliza. El detalle está en [docs/modelos.md](docs/modelos.md).
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
 6. Elige webcam como medio de destino y activa la cámara virtual (`pyvirtualcam`) para Zoom, Discord u OBS.
 
