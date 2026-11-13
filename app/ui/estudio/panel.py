@@ -224,6 +224,9 @@ class Estudio(QtWidgets.QWidget):
     pedir_fotos = QtCore.Signal(list)
     pedir_original = QtCore.Signal(bool)
     pedir_virtual = QtCore.Signal(bool)
+    pedir_probar_salida = QtCore.Signal()
+    pedir_ventana_salida = QtCore.Signal()
+    pedir_asistente_obs = QtCore.Signal()
     pedir_calidad = QtCore.Signal(str)
     pedir_aspecto = QtCore.Signal(str)
     pedir_perfil = QtCore.Signal(str)
@@ -446,16 +449,34 @@ class Estudio(QtWidgets.QWidget):
         )
         fila.addWidget(self.pill_obs)
         caja.addLayout(fila)
-        titulo = QtWidgets.QLabel("Cámara virtual")
+        titulo = QtWidgets.QLabel("Sale sola al pulsar EN VIVO")
         titulo.setObjectName("tituloPanel")
         caja.addWidget(titulo)
-        pista = QtWidgets.QLabel("En OBS: Dispositivo de captura de vídeo → «Drako Cam»")
-        pista.setWordWrap(True)
-        pista.setObjectName("pista")
-        caja.addWidget(pista)
+        self.pista_obs = QtWidgets.QLabel(
+            "En OBS: Dispositivo de captura de vídeo, y elige la cámara que indica aquí."
+        )
+        self.pista_obs.setWordWrap(True)
+        self.pista_obs.setObjectName("pista")
+        caja.addWidget(self.pista_obs)
         self.virtual = QtWidgets.QCheckBox("Enviar a la cámara virtual")
-        self.virtual.toggled.connect(self.pedir_virtual.emit)
-        caja.addWidget(self.virtual)
+        self.virtual.hide()
+        self.detalle_obs = QtWidgets.QLabel("1280×720 · 30 FPS")
+        self.detalle_obs.setObjectName("pista")
+        caja.addWidget(self.detalle_obs)
+        fila_obs = QtWidgets.QHBoxLayout()
+        como = BotonPildora("Cómo añadirlo")
+        como.setMinimumHeight(44)
+        como.clicked.connect(self.pedir_asistente_obs.emit)
+        probar = BotonPildora("Probar salida")
+        probar.setMinimumHeight(44)
+        probar.clicked.connect(self.pedir_probar_salida.emit)
+        ventana = BotonPildora("Ventana")
+        ventana.setMinimumHeight(44)
+        ventana.clicked.connect(self.pedir_ventana_salida.emit)
+        fila_obs.addWidget(como)
+        fila_obs.addWidget(probar)
+        fila_obs.addWidget(ventana)
+        caja.addLayout(fila_obs)
         self.copiar = BotonPildora("Copiar ajustes para OBS")
         self.copiar.setObjectName("copiarObs")
         self.copiar.clicked.connect(self._copiar_obs)
@@ -788,6 +809,8 @@ class Estudio(QtWidgets.QWidget):
         mensaje: str,
         calidad_nota: str,
         virtual: bool,
+        salida_texto: str = "",
+        salida_detalle: str = "",
         resolucion: str,
         fps_salida: str,
         fondo: str,
@@ -812,7 +835,9 @@ class Estudio(QtWidgets.QWidget):
         self._poner_medida(self.txt_proveedor, "Proveedor", proveedor or None)
         self._poner_medida(self.txt_vigilante, "Vigilante", vigilante or None)
         self.nota_calidad.setText(calidad_nota)
-        self.pill_obs.setText("EMITIENDO" if virtual else "APAGADA")
+        self.pill_obs.setText(salida_texto or ("Salida activa" if virtual else "APAGADA"))
+        if salida_detalle:
+            self.detalle_obs.setText(salida_detalle)
         if virtual:
             self.pill_obs.setStyleSheet(
                 "background: rgba(92,225,240,0.12); color: #7FEAF5; border-radius: 11px; "

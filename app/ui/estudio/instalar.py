@@ -50,6 +50,8 @@ def instalar(ventana) -> bool:
         temporizador.timeout.connect(lambda: _refrescar(estudio, motor))
         temporizador.start()
         estudio._reloj_estado = temporizador
+        if not biblioteca.estado().get("obs_visto"):
+            QtCore.QTimer.singleShot(900, lambda: _mostrar_asistente(estudio, motor))
         return True
     except Exception as exc:
         print(f"[AVISO] La pantalla sencilla no se abrió. Sigue la ventana anterior. {exc}")
@@ -66,6 +68,9 @@ def _conectar(estudio: Estudio, motor: MotorEnVivo) -> None:
     estudio.pedir_en_vivo.connect(lambda activo: _hacer(estudio, motor, lambda: motor.poner_en_vivo(activo)))
     estudio.pedir_original.connect(lambda original: _hacer(estudio, motor, lambda: motor.ver_original(original) or ""))
     estudio.pedir_virtual.connect(lambda activa: _hacer(estudio, motor, lambda: motor.camara_virtual(activa) or ""))
+    estudio.pedir_probar_salida.connect(lambda: _hacer(estudio, motor, lambda: motor.probar_salida() or ""))
+    estudio.pedir_ventana_salida.connect(lambda: _hacer(estudio, motor, lambda: motor.abrir_ventana_salida() or ""))
+    estudio.pedir_asistente_obs.connect(lambda: _mostrar_asistente(estudio, motor))
     estudio.pedir_calidad.connect(lambda nombre: _hacer(estudio, motor, lambda: motor.poner_calidad(nombre) or ""))
     estudio.pedir_aspecto.connect(lambda ident: _hacer(estudio, motor, lambda: motor.poner_aspecto(ident) or ""))
     estudio.pedir_perfil.connect(lambda ident: _hacer(estudio, motor, lambda: motor.aplicar_perfil(ident) or ""))
@@ -125,12 +130,31 @@ def _refrescar(estudio: Estudio, motor: MotorEnVivo) -> None:
             mensaje=str(estado["mensaje"] or ""),
             calidad_nota=str(estado["calidad_nota"]),
             virtual=bool(estado["virtual"]),
+            salida_texto=str(estado.get("salida_texto") or ""),
+            salida_detalle=str(estado.get("salida_detalle") or ""),
             resolucion=str(estado["resolucion"]),
             fps_salida=str(estado["fps_salida"]),
             fondo=str(estado["fondo"]),
         )
     except Exception as exc:
         print(f"[AVISO] No se pudo refrescar la pantalla: {exc}")
+
+
+def _mostrar_asistente(estudio: Estudio, motor: MotorEnVivo) -> None:
+    from app.ui.estudio.asistente_obs import AsistenteObs
+
+    dialogo = AsistenteObs(motor._estado_obs(), estudio)
+    dialogo.probar.connect(lambda: _probar(dialogo, motor))
+    dialogo.pedir_ventana.connect(lambda: motor.abrir_ventana_salida())
+    dialogo.finished.connect(lambda _codigo: motor.biblioteca.recordar(obs_visto=True))
+    dialogo.exec()
+
+
+def _probar(dialogo, motor: MotorEnVivo) -> None:
+    try:
+        dialogo.marcar_prueba(motor.probar_salida())
+    except Exception as exc:
+        dialogo.marcar_prueba(f"No pude probar la salida. {exc}")
 
 
 def _ocultar_menus_heredados(ventana) -> None:
