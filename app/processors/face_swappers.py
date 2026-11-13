@@ -520,6 +520,11 @@ class FaceSwappers:
         """
         if self._alphaface_emap is None:
             emap_path = models_dir / "alphaface" / "emp.npy"
+            if not emap_path.is_file():
+                from app.drako.descarga_modelos import solicitar_si_falta
+
+                solicitar_si_falta("AlphaFaceIdentityProjection")
+                return None
             try:
                 emap = np.load(emap_path).astype(np.float32)
             except (OSError, ValueError) as exc:

@@ -16,8 +16,6 @@ if TYPE_CHECKING:
 
 from app.processors.utils import faceutil
 from app.processors.utils import platform_support
-from app.helpers.miscellaneous import is_file_exists
-from app.helpers.downloader import download_file
 from app.processors.utils.ref_ldm_kv_embedding import KVExtractor
 
 
@@ -266,8 +264,8 @@ class FaceDenoiser:
 
     def ensure_kv_extractor_loaded(self):
         """
-        Guarantees that the KVExtractor (Ref-LDM) model is loaded and ready.
-        Downloads the required config and checkpoint files on first use.
+        Carga el extractor Ref-LDM si los checkpoints ya están.
+        Si faltan, los pide en segundo plano y vuelve sin bloquear la cámara.
         """
         base_path = "model_assets/ref-ldm_embedding"
         configs_path = os.path.join(base_path, "configs")
@@ -275,21 +273,12 @@ class FaceDenoiser:
         os.makedirs(configs_path, exist_ok=True)
         os.makedirs(ckpts_path, exist_ok=True)
 
-        ref_ldm_files = {
-            "configs/ldm.yaml": "https://raw.githubusercontent.com/Glat0s/ref-ldm-onnx/slim-fast/configs/ldm.yaml",
-            "configs/refldm.yaml": "https://raw.githubusercontent.com/Glat0s/ref-ldm-onnx/slim-fast/configs/refldm.yaml",
-            "configs/vqgan.yaml": "https://raw.githubusercontent.com/Glat0s/ref-ldm-onnx/slim-fast/configs/vqgan.yaml",
-            "ckpts/refldm.ckpt": "https://github.com/ChiWeiHsiao/ref-ldm/releases/download/1.0.0/refldm.ckpt",
-            "ckpts/vqgan.ckpt": "https://github.com/ChiWeiHsiao/ref-ldm/releases/download/1.0.0/vqgan.ckpt",
-        }
+        from app.drako.descarga_modelos import solicitar_si_falta
 
-        for rel_path, url in ref_ldm_files.items():
-            full_path = os.path.join(base_path, rel_path)
-            if not is_file_exists(full_path):
-                print(
-                    f"[INFO] Downloading ReF-LDM file: {os.path.basename(full_path)}..."
-                )
-                download_file(os.path.basename(full_path), full_path, None, url)
+        # Los YAML de configuración ya van en el repositorio. Los checkpoints
+        # son grandes: se piden en segundo plano para no congelar la cámara.
+        for nombre in ("RefLdm", "VQGAN"):
+            solicitar_si_falta(nombre)
 
         config_path = os.path.join(configs_path, "refldm.yaml")
         model_path = os.path.join(ckpts_path, "refldm.ckpt")
@@ -297,7 +286,8 @@ class FaceDenoiser:
 
         if not all(os.path.exists(p) for p in [config_path, model_path, vae_path]):
             print(
-                "[ERROR] ReF-LDM model files not found even after download attempt. Cannot load KV Extractor."
+                "[INFO] Ref-LDM aún no está en disco. La salida en vivo sigue; "
+                "el denoiser se activa cuando termine la descarga."
             )
             return
 

@@ -45,6 +45,8 @@ MODULOS_DRAKO = (
     "app.drako.cuda_aviso",
     "app.drako.camara",
     "app.drako.arranque",
+    "app.drako.catalogo_modelos",
+    "app.drako.descarga_modelos",
     "app.drako.rendimiento",
     "app.drako.rendimiento.perfiles",
     "app.drako.rendimiento.tensorrt",
@@ -99,13 +101,13 @@ def comprobar_importaciones() -> int:
     return 0
 
 
-def _avisar_modelos() -> bool:
-    print("[INFO] Comprobando modelos. Si faltan, se descargan y se verifica el hash.")
-    print("[INFO] La primera vez puede tardar: hace falta red y varios gigabytes.")
+def _avisar_modelos(al_estado=None) -> bool:
+    print("[INFO] Comprobando los modelos del cambio de cara en vivo.")
+    print("[INFO] Si ya están y no han cambiado, el arranque sigue al momento.")
     try:
         from download_models import descargar_modelos
 
-        return descargar_modelos()
+        return descargar_modelos(al_estado=al_estado)
     except Exception as exc:
         print(f"[ERROR] No se pudieron comprobar los modelos: {exc}")
         return False
@@ -175,6 +177,11 @@ def _run_app(argv: list[str] | None = None) -> int:
     )
     aplicacion.setStyleSheet(estilo)
 
+    from app.ui.pantalla_carga import PantallaCarga
+
+    pantalla = PantallaCarga()
+    pantalla.poner("Abriendo Drako Cam…", 5)
+
     def mostrar_error(texto: str) -> None:
         QtWidgets.QMessageBox.critical(None, "Drako Cam — error inesperado", texto)
 
@@ -184,9 +191,11 @@ def _run_app(argv: list[str] | None = None) -> int:
         logger, mostrar=mostrar_error, ruta_log=ruta_log_actual(contexto.directorio)
     )
 
-    acceso = solicitar_acceso(contexto)
+    pantalla.poner("Hace falta la contraseña de administrador.", 8)
+    acceso = solicitar_acceso(contexto, pantalla)
     if acceso is None:
         logger.info("Arranque cancelado en la pantalla de acceso.")
+        pantalla.cerrar()
         return 0
     contrasena, pendientes = acceso
     try:
@@ -197,7 +206,8 @@ def _run_app(argv: list[str] | None = None) -> int:
 
     from app.drako.dialogo_licencia import solicitar_licencia
 
-    vigilante = solicitar_licencia(contexto, claves)
+    pantalla.poner("Comprobando el código de acceso…", 12)
+    vigilante = solicitar_licencia(contexto, claves, pantalla)
     if vigilante is None:
         logger.info("Arranque cancelado en el código de acceso.")
         try:
@@ -205,21 +215,30 @@ def _run_app(argv: list[str] | None = None) -> int:
         finally:
             fijar_sesion(None)
             contexto.telegram.detener_reintentos()
+        pantalla.cerrar()
         return 0
     sesion.abrir()
 
     omitir = args.omitir_modelos or os.environ.get("DRAKO_CAM_OMITIR_MODELOS") == "1"
-    if not omitir and not _avisar_modelos():
+
+    def _estado_modelos(texto: str, valor: int) -> None:
+        pantalla.poner(texto, valor)
+
+    if not omitir and not _avisar_modelos(_estado_modelos):
         QtWidgets.QMessageBox.warning(
-            None,
+            pantalla,
             "Drako Cam — modelos",
-            "Algunos modelos no se descargaron o no pasaron la verificación de hash. "
-            "Revisa la consola. Puedes volver a abrir el programa cuando haya red.",
+            "Algunos modelos del directo no se descargaron o no pasaron la verificación. "
+            "Puedes volver a abrir el programa cuando haya red.",
         )
 
+    pantalla.poner("Preparando la ventana y la cámara…", 70)
     ventana = main_ui.MainWindow(gpu_id=args.gpu_id)
     instalar_menu(ventana, contexto, claves, al_cambiar_codigo=vigilante.pedir_cambio)
     ventana.show()
+    ventana.raise_()
+    ventana.activateWindow()
+    pantalla.cerrar()
 
     texto_cuda = mensaje_sin_cuda(bool(torch.cuda.is_available()))
     if texto_cuda:

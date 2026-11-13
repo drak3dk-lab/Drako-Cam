@@ -320,6 +320,51 @@ def test_copia_de_estado_no_llega_al_array():
     assert copia["cara"]["embed"] is arr
 
 
+def test_one_euro_tiembla_menos_que_la_deteccion_y_que_la_media():
+    from app.drako.rendimiento.calidad import medir_temblor
+
+    medida = medir_temblor()
+    quieto = medida["quieto"]
+    mueve = medida["mueve"]
+    assert quieto["euro"] < quieto["bruto"] * 0.6
+    assert quieto["euro"] <= quieto["ema"]
+    assert mueve["euro"] < mueve["ema"]
+    assert mueve["retraso_euro"] <= mueve["retraso_ema"] + 1
+
+
+def test_el_fundido_no_corta_la_cara_en_un_fotograma():
+    from app.drako.rendimiento.calidad import FundidoCara
+
+    fundido = FundidoCara(8)
+    assert fundido.paso(True) == 1.0
+    primero = fundido.paso(False)
+    assert 0.8 < primero < 1.0
+    for _ in range(7):
+        fundido.paso(False)
+    assert fundido.alfa == 0.0
+
+
+def test_el_preset_de_6_gb_no_pide_512_y_el_alto_si():
+    from app.drako.rendimiento.calidad import (
+        PRESET_MAXIMA,
+        limitar_a_la_gpu,
+        preset_automatico,
+        preset_elegido,
+    )
+
+    assert preset_automatico("portatil_6gb").swap_res == "128"
+    assert preset_automatico("alto_12gb").swap_res == "512"
+    assert preset_automatico("equilibrado_8gb").swap_res == "256"
+    assert limitar_a_la_gpu(PRESET_MAXIMA, "portatil_6gb").swap_res == "256"
+    assert (
+        preset_elegido({"PresetCalidadSelection": "Máximo FPS"}, "alto_12gb").swap_res
+        == "128"
+    )
+    assert not preset_elegido(
+        {"PresetCalidadSelection": "Máximo FPS"}, "alto_12gb"
+    ).restaurador
+
+
 def test_el_arranque_conserva_acceso_y_licencia():
     texto = Path(entrada.__file__).read_text(encoding="utf-8")
     assert texto.index("solicitar_acceso") < texto.index("solicitar_licencia")

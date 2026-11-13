@@ -435,28 +435,16 @@ SETTINGS_LAYOUT_DATA: Any = {
         "RecognitionModelSelection": {
             "level": 1,
             "label": "Recognition Model",
-            "options": [
-                "Inswapper128ArcFace",
-                "SimSwapArcFace",
-                "GhostArcFace",
-                "CSCSArcFace",
-            ],
+            "options": ["Inswapper128ArcFace"],
             "default": "Inswapper128ArcFace",
             "help": "Choose the ArcFace model to be used for comparing the similarity of faces.",
         },
         "DetectorModelSelection": {
             "level": 1,
             "label": "Face Detect Model",
-            "options": [
-                "RetinaFace",
-                "Yolov8",
-                "SCRFD",
-                "Yunet",
-                "Yolov11 VR180",
-                "Yolov12 VR180",
-            ],
-            "default": "RetinaFace",
-            "help": "Select the face detection model to use for detecting faces in the input image or video. 'Yolov11 VR180' and 'Yolov12 VR180' is trained for VR180 content.",
+            "options": ["SCRFD"],
+            "default": "SCRFD",
+            "help": "Detector rápido del directo. El seguimiento ByteTrack va con él.",
         },
         "DetectorScoreSlider": {
             "level": 1,
@@ -510,18 +498,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         "LandmarkDetectModelSelection": {
             "level": 2,
             "label": "Landmark Detect Model",
-            "options": [
-                "5",
-                "68",
-                "3d68",
-                "98",
-                "106",
-                "203",
-                "478",
-                "tufa98",
-                "tufa314",
-                "orformer98",
-            ],
+            "options": ["203"],
             "default": "203",
             "parentToggle": "LandmarkDetectToggle",
             "requiredToggleValue": True,
@@ -759,6 +736,15 @@ SETTINGS_LAYOUT_DATA: Any = {
         },
     },
     "Rendimiento en vivo": {
+        "PresetCalidadSelection": {
+            "level": 1,
+            "label": "Calidad del directo",
+            "options": ["Auto", "Máxima calidad", "Equilibrado", "Máximo FPS"],
+            "default": "Auto",
+            "help": "Auto elige según la GPU: 128 px y GFPGAN suave en 6 GB, 256 px en 8 GB y 512 px en 12 GB o más. Máximo FPS deja el swap en 128 y apaga el restaurador.",
+            "exec_function": control_actions.cambiar_perfil_vram,
+            "exec_function_args": [],
+        },
         "PerfilVramSelection": {
             "level": 1,
             "label": "Perfil de VRAM",
@@ -952,6 +938,8 @@ SETTINGS_LAYOUT_DATA: Any = {
         },
     },
 }
+
+SETTINGS_LAYOUT_DATA.pop("Frame Enhancer", None)
 
 CAMERA_BACKENDS = {
     "Default": cv2.CAP_ANY,

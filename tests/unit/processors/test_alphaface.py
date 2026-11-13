@@ -22,15 +22,9 @@ from app.processors.workers.frame_worker import FrameWorker
 from app.processors.workers.frame_worker_pipeline import PipelineProcessor
 
 
-def test_alphaface_ships_one_model_and_reuses_the_shared_arcface() -> None:
-    entries = [item for item in models_list if item["model_name"] == "AlphaFace"]
-
-    assert len(entries) == 1
-    assert entries[0]["local_path"].endswith("alphaface_swapper_fused_norm.onnx")
-    assert entries[0]["url"].endswith("/alphaface_swapper_fused_norm.onnx")
-    # No separate recognition model: AlphaFace re-projects the W600K embedding.
+def test_alphaface_no_forma_parte_del_directo() -> None:
+    assert not any(item["model_name"] == "AlphaFace" for item in models_list)
     assert arcface_mapping_model_dict["AlphaFace"] == "Inswapper128ArcFace"
-    assert "AlphaFace" in fp16_safe_models_list
 
 
 def test_alphaface_is_shape_inferred_before_the_tensorrt_build() -> None:

@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Dict
+import os
 
 import torch
 import threading
@@ -1585,6 +1586,12 @@ class FaceMasks:
         # Ensures the model is only loaded ONCE in VRAM, preventing Memory Leaks.
         # The first 'if' avoids lock overhead for 99% of frames.
         if not self.models_processor.clip_session:
+            peso_clip = f"{models_dir}/rd64-uni-refined.pth"
+            if not os.path.isfile(peso_clip):
+                from app.drako.descarga_modelos import solicitar_si_falta
+
+                solicitar_si_falta("RD64ClipText")
+                return torch.ones((1, 352, 352), device=device)
             with self._clip_load_lock:
                 # Check again inside the lock in case another thread already loaded it
                 if not self.models_processor.clip_session:

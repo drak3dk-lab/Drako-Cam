@@ -207,9 +207,10 @@ if exist "%CONFIG_FILE%" (
 if /I "!NEEDS_INSTALL!"=="true" set "DOWNLOAD_RUN=false"
 if /I "!DOWNLOAD_RUN!"=="false" (
 
-    echo Running model downloader next. If you already downloaded the models, copy them now to the VisoMaster-Fusion\model_assets directory and then press enter to avoid re-download.
+    echo Se descargan solo los modelos del cambio de cara en vivo, con reanudacion y comprobacion.
+    echo Si ya los tienes, copialos a VisoMaster-Fusion\model_assets y pulsa Enter para reutilizarlos.
     pause
-    echo Running model downloader...
+    echo Descargando modelos esenciales...
     pushd "%APP_DIR%"
     ::set "PYTHONPATH=%APP_DIR%"
     "%APP_PYTHON%" "download_models.py"

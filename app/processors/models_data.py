@@ -857,3 +857,20 @@ models_list = [
         "url": "https://raw.githubusercontent.com/VisoMasterFusion/VisoMaster-Fusion/f2d6f5ebe190b631ee5c8972332083cf7f8a3e72/model_assets/mouth_action_detector/model.pb",
     },
 ]
+
+# Drako Cam es solo el cambio de cara en directo. El registro que ve el
+# programa, el descargador y el procesador es esta lista. El resto de
+# entradas de arriba no se descarga ni se ofrece.
+MODELOS_DEL_DIRECTO = frozenset(
+    {
+        "Inswapper128",
+        "Inswapper128ArcFace",
+        "SCRFD2.5g",
+        "FaceLandmark203",
+        "Occluder",
+        "FaceParser",
+        "GFPGANv1.4",
+        "GPENBFR256",
+    }
+)
+models_list = [item for item in models_list if item["model_name"] in MODELOS_DEL_DIRECTO]

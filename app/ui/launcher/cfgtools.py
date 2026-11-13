@@ -20,7 +20,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from .core import PATHS
-from app.processors.models_data import models_list
 from collections.abc import Sequence
 from typing import Dict, Any
 
@@ -202,16 +201,15 @@ def compute_models_sha256(models_list: Sequence[dict[str, Any] | str]) -> str | 
 
 
 def check_models_presence() -> tuple[bool, list[str]]:
-    """Quickly check if any expected model files are missing (no hash check)."""
+    """Avisa si falta un modelo del directo. El resto del catálogo heredado no se descarga."""
+    from app.drako.catalogo_modelos import esenciales
+
     missing: list[str] = []
-    for model in models_list:
-        local_path = model.get("local_path")
-        if not local_path:
-            continue
-        model_path = Path(local_path)
+    for model in esenciales():
+        model_path = Path(model.local_path)
         if not model_path.exists():
             missing.append(str(model_path))
-            print(f"[Launcher] Warning: Missing model file → {model_path}")
+            print(f"[Launcher] Warning: Missing essential model → {model_path}")
     return bool(missing), missing
 
 

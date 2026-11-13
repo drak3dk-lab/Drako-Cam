@@ -10,19 +10,7 @@ SWAPPER_LAYOUT_DATA: Any = {  # noqa: F811
         "SwapModelSelection": {
             "level": 1,
             "label": "Swapper Model",
-            "options": [
-                "Inswapper128",
-                "AlphaFace",
-                "InStyleSwapper256 Version A",
-                "InStyleSwapper256 Version B",
-                "InStyleSwapper256 Version C",
-                "DeepFaceLive (DFM)",
-                "SimSwap512",
-                "GhostFace-v1",
-                "GhostFace-v2",
-                "GhostFace-v3",
-                "CSCS",
-            ],
+            "options": ["Inswapper128"],
             "default": "Inswapper128",
             "help": "Choose which swapper model to use for face swapping.",
         },
@@ -1914,3 +1902,33 @@ SWAPPER_LAYOUT_DATA: Any = {  # noqa: F811
         },
     },
 }
+
+# Fuera del directo: XSeg/DFL, CLIP, swappers alternativos, reaging y texturas con VGG.
+for _categoria in ("Face Re-Aging", "Textures and colors"):
+    SWAPPER_LAYOUT_DATA.pop(_categoria, None)
+_prefijos_fuera = (
+    "DFLXSeg",
+    "XSeg",
+    "Xseg",
+    "Clip",
+    "AlphaFace",
+    "InStyle",
+    "DFM",
+    "SecondarySwap",
+)
+for _widgets in SWAPPER_LAYOUT_DATA.values():
+    for _nombre in list(_widgets):
+        if _nombre.startswith(_prefijos_fuera):
+            del _widgets[_nombre]
+    _claves = set(_widgets)
+    for _datos in _widgets.values():
+        padre = _datos.get("parentToggle")
+        if not isinstance(padre, str):
+            continue
+        partes = [parte.strip() for parte in padre.replace("|", "&").split("&")]
+        vivos = [parte for parte in partes if parte in _claves]
+        if vivos:
+            _datos["parentToggle"] = " & ".join(vivos)
+        else:
+            _datos.pop("parentToggle", None)
+            _datos.pop("requiredToggleValue", None)
