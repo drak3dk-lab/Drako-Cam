@@ -56,7 +56,7 @@ PERFIL_6GB = Perfil(
     resolucion="1280x720",
     fps=30,
     permite_60=False,
-    deteccion_cada=4,
+    deteccion_cada=2,
     hilos=1,
     tope_gb=4.5,
     mejoradores_pesados=False,
@@ -65,7 +65,7 @@ PERFIL_6GB = Perfil(
 PERFIL_8GB = Perfil(
     id=ID_8GB,
     titulo="Equilibrado 8 GB",
-    resolucion="1920x1080",
+    resolucion="1280x720",
     fps=30,
     permite_60=False,
     deteccion_cada=2,
@@ -155,10 +155,26 @@ def hilos_webcam(control: dict, perfil: Perfil) -> int:
 
 
 def tamano_cola_inferencia(control: dict) -> int | None:
-    """2 si el canal en hilos está activo. None conserva la cola del vídeo."""
+    """1 en directo: se procesa el fotograma nuevo y se tira el viejo."""
     if control.get("PipelineHilosEnableToggle", True):
-        return 2
+        return 1
     return None
+
+
+def es_rtx_50(nombre: str) -> bool:
+    texto = (nombre or "").lower()
+    return any(modelo in texto for modelo in ("5060", "5070", "5080", "5090"))
+
+
+def con_captura(perfil: Perfil, nombre: str, vram_bytes: int = 0) -> Perfil:
+    """720p en 6 y 8 GB. 1080p solo en una RTX 50."""
+    from dataclasses import replace
+
+    if es_rtx_50(nombre):
+        return replace(perfil, resolucion="1920x1080")
+    if perfil.id == ID_ALTO:
+        return perfil
+    return replace(perfil, resolucion="1280x720")
 
 
 def _poner(ventana: object, clave: str, valor: object) -> None:
@@ -232,7 +248,7 @@ def aplicar_al_arranque(
         hw = detectar_hardware()
         if hw is not None:
             nombre, vram_bytes = hw
-    perfil = resolver_perfil(control, nombre, vram_bytes)
+    perfil = con_captura(resolver_perfil(control, nombre, vram_bytes), nombre, vram_bytes)
     forzar = control.get("_PerfilAplicado") != perfil.id
     escribir_perfil(ventana, perfil, forzar=forzar)
     return perfil

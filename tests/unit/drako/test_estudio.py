@@ -119,7 +119,10 @@ def test_los_ajustes_que_drako_usa_siguen_en_el_panel():
     fluido = valores_de_calidad("Máximo FPS")
     assert maxima["FaceRestorerEnableToggle"] is True
     assert maxima["SwapperResSelection"] == "512"
-    assert maxima["RestoreMouthEnableToggle"] is False
+    assert maxima["RestoreMouthEnableToggle"] is True
+    assert maxima["MouthParserStretchToggle"] is True
+    assert maxima["HairParserSlider"] == 12
+    assert maxima["KPSEmaAlphaSlider"] == 25
     assert maxima["AutoMouthExpressionEnableToggle"] is True
     assert maxima["AutoMouthRestoreModeSelection"] == "Face Parser Only"
     assert fluido["FaceRestorerEnableToggle"] is False
@@ -130,7 +133,7 @@ def test_los_ajustes_que_drako_usa_siguen_en_el_panel():
     assert valores_de_calidad("Auto")["FaceTrackingEnableToggle"] is True
     assert valores_de_calidad("Auto")["SuavizadoMascaraEnableToggle"] is True
     assert valores_de_calidad("Máxima calidad")["DFLXSegEnableToggle"] is True
-    assert valores_de_calidad("Máxima calidad")["LandmarkDetectToggle"] is True
+    assert valores_de_calidad("Máxima calidad")["LandmarkDetectToggle"] is False
     assert valores_de_calidad("Máximo FPS")["DFLXSegEnableToggle"] is False
 
 

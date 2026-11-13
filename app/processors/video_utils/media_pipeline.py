@@ -945,7 +945,7 @@ class MediaPipeline(QObject):
 
         anillo = getattr(self, "_anillo_captura", None)
         if anillo is None:
-            anillo = AnilloAnfitrion(3)
+            anillo = AnilloAnfitrion(2)
             self._anillo_captura = anillo
         return anillo.copiar(frame_bgr)
 
