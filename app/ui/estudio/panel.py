@@ -472,12 +472,13 @@ class Estudio(QtWidgets.QWidget):
         probar = BotonPildora("Probar salida")
         probar.setMinimumHeight(44)
         probar.clicked.connect(self.pedir_probar_salida.emit)
-        ventana = BotonPildora("Ventana")
-        ventana.setMinimumHeight(44)
-        ventana.clicked.connect(self.pedir_ventana_salida.emit)
+        self.boton_ventana = BotonPildora("Ventana OBS")
+        self.boton_ventana.setMinimumHeight(44)
+        self.boton_ventana.setToolTip("Abre o cierra la ventana para OBS. También Ctrl+O.")
+        self.boton_ventana.clicked.connect(self.pedir_ventana_salida.emit)
         fila_obs.addWidget(como)
         fila_obs.addWidget(probar)
-        fila_obs.addWidget(ventana)
+        fila_obs.addWidget(self.boton_ventana)
         caja.addLayout(fila_obs)
         self.copiar = BotonPildora("Copiar ajustes para OBS")
         self.copiar.setObjectName("copiarObs")
@@ -727,6 +728,8 @@ class Estudio(QtWidgets.QWidget):
             atajo.activated.connect(lambda i=indice: self._favorito_por_tecla(i))
         espacio = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Space"), self)
         espacio.activated.connect(self._invertir_original)
+        salida = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+O"), self)
+        salida.activated.connect(self.pedir_ventana_salida.emit)
 
     def mostrar_caras(self, caras: list[CaraVista], seleccion: str) -> None:
         firma = tuple((cara.id, cara.favorita, cara.atajo, cara.id == seleccion) for cara in caras)
@@ -806,6 +809,7 @@ class Estudio(QtWidgets.QWidget):
         virtual: bool,
         salida_texto: str = "",
         salida_detalle: str = "",
+        ventana_abierta: bool = False,
         resolucion: str,
         fps_salida: str,
         fondo: str,
@@ -832,6 +836,7 @@ class Estudio(QtWidgets.QWidget):
         self._poner_medida(self.txt_vigilante, "Vigilante", vigilante or None)
         self.nota_calidad.setText(calidad_nota)
         self.pill_obs.setText(salida_texto or ("Salida activa" if virtual else "APAGADA"))
+        self.boton_ventana.setText("Cerrar ventana" if ventana_abierta else "Ventana OBS")
         if salida_detalle:
             self.detalle_obs.setText(salida_detalle)
         if virtual:

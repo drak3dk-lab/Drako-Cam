@@ -5,11 +5,14 @@ import numpy as np
 from app.drako.rendimiento.camara_virtual import encajar
 from app.drako.rendimiento.obs_salida import (
     NOMBRE_UNITY,
+    TITULO_VENTANA,
+    PasoFotograma,
     debe_cortar_salida,
     detectar,
     elegir,
     fotograma_prueba,
     pasos_para_obs,
+    rect_con_relacion,
     texto_indicador,
 )
 
@@ -63,6 +66,34 @@ def test_los_pasos_nombran_la_camara():
     assert "Fuentes" in uno
     assert "Dispositivo de captura de vídeo" in dos
     assert "Unity Video Capture" in tres
+
+
+def test_la_ventana_no_estira_el_video():
+    # 16:9 dentro de un cuadrado: bandas arriba y abajo, el ancho manda.
+    x, y, ancho, alto = rect_con_relacion(1000, 1000, 1920, 1080)
+    assert ancho == 1000
+    assert alto == 562
+    assert x == 0
+    assert y > 0
+
+
+def test_el_fotograma_de_la_ventana_es_el_de_salida_y_no_se_pisa_al_pintar():
+    paso = PasoFotograma()
+    paso.activa = True
+    primero = np.zeros((4, 6, 3), dtype=np.uint8)
+    primero[:] = 3
+    paso.publicar(primero)
+    pintando = paso.tomar()
+    assert pintando is not None
+    assert int(pintando[0, 0, 0]) == 3
+    siguiente = np.zeros_like(primero)
+    siguiente[:] = 9
+    paso.publicar(siguiente)
+    assert int(pintando[0, 0, 0]) == 3
+    paso.soltar()
+    ultimo = paso.tomar()
+    assert int(ultimo[0, 0, 0]) == 9
+    assert TITULO_VENTANA == "Drako Cam - Salida OBS"
 
 
 def test_el_asistente_cabe_en_una_pantalla():

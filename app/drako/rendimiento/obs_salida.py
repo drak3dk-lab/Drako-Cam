@@ -14,6 +14,7 @@ from pathlib import Path
 
 NOMBRE_UNITY = "Unity Video Capture"
 NOMBRE_OBS = "OBS Virtual Camera"
+TITULO_VENTANA = "Drako Cam - Salida OBS"
 
 _RUTAS_OBS = (
     r"C:\Program Files\obs-studio\bin\64bit\obs64.exe",
@@ -126,12 +127,87 @@ def debe_cortar_salida(*, cara_perdida: bool, parar: bool, panel_cerrado: bool) 
 
 
 def pasos_para_obs(nombre_camara: str) -> tuple[str, str, str]:
-    destino = nombre_camara or "la ventana «Drako Cam — salida»"
+    destino = nombre_camara or TITULO_VENTANA
     return (
         "En OBS, en Fuentes, pulsa +.",
         "Elige «Dispositivo de captura de vídeo». Si usas la ventana, elige «Captura de ventana».",
         f"En Dispositivo, elige «{destino}» y pulsa Aceptar.",
     )
+
+
+def rect_con_relacion(
+    ancho_ventana: int, alto_ventana: int, ancho_frame: int, alto_frame: int
+) -> tuple[int, int, int, int]:
+    """El vídeo entra entero. Lo que sobra queda en negro, sin estirar."""
+    if ancho_ventana <= 0 or alto_ventana <= 0 or ancho_frame <= 0 or alto_frame <= 0:
+        return 0, 0, max(0, ancho_ventana), max(0, alto_ventana)
+    escala = min(ancho_ventana / ancho_frame, alto_ventana / alto_frame)
+    ancho = max(1, int(round(ancho_frame * escala)))
+    alto = max(1, int(round(alto_frame * escala)))
+    return (ancho_ventana - ancho) // 2, (alto_ventana - alto) // 2, ancho, alto
+
+
+class PasoFotograma:
+    """Una sola copia del fotograma que ya va a la cámara virtual.
+
+    El hilo de salida no espera a que la ventana pinte, y no reutiliza
+    el buffer que se está pintando.
+    """
+
+    def __init__(self) -> None:
+        import threading
+
+        self._lock = threading.Lock()
+        self.activa = False
+        self._listo = None
+        self._libre: list = []
+        self._pintando = None
+        self._nuevo = False
+
+    def publicar(self, frame) -> None:
+        if not self.activa or frame is None:
+            return
+        import numpy as np
+
+        src = np.asarray(frame)
+        if src.ndim != 3 or src.shape[2] < 3:
+            return
+        if src.shape[2] > 3:
+            src = np.ascontiguousarray(src[:, :, :3])
+        elif not src.flags.c_contiguous:
+            src = np.ascontiguousarray(src)
+        with self._lock:
+            destino = None
+            for indice, buf in enumerate(self._libre):
+                if buf.shape == src.shape and buf is not self._pintando:
+                    destino = buf
+                    del self._libre[indice]
+                    break
+            if destino is None:
+                destino = np.empty(src.shape, dtype=np.uint8)
+            np.copyto(destino, src)
+            if (
+                self._listo is not None
+                and self._listo is not self._pintando
+                and self._listo is not destino
+            ):
+                self._libre.append(self._listo)
+            if len(self._libre) > 2:
+                self._libre = self._libre[-2:]
+            self._listo = destino
+            self._nuevo = True
+
+    def tomar(self):
+        with self._lock:
+            if not self._nuevo or self._listo is None or self._pintando is not None:
+                return None
+            self._pintando = self._listo
+            self._nuevo = False
+            return self._listo
+
+    def soltar(self) -> None:
+        with self._lock:
+            self._pintando = None
 
 
 def fotograma_prueba(ancho: int, alto: int):

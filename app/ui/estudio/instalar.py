@@ -74,7 +74,9 @@ def _conectar(estudio: Estudio, motor: MotorEnVivo) -> None:
     estudio.pedir_original.connect(lambda original: _hacer(estudio, motor, lambda: motor.ver_original(original) or ""))
     estudio.pedir_virtual.connect(lambda activa: _hacer(estudio, motor, lambda: motor.camara_virtual(activa) or ""))
     estudio.pedir_probar_salida.connect(lambda: _hacer(estudio, motor, lambda: motor.probar_salida() or ""))
-    estudio.pedir_ventana_salida.connect(lambda: _hacer(estudio, motor, lambda: motor.abrir_ventana_salida() or ""))
+    estudio.pedir_ventana_salida.connect(
+        lambda: _hacer(estudio, motor, lambda: motor.alternar_ventana_salida() or "")
+    )
     estudio.pedir_asistente_obs.connect(lambda: _mostrar_asistente(estudio, motor))
     estudio.pedir_calidad.connect(lambda nombre: _hacer(estudio, motor, lambda: motor.poner_calidad(nombre) or ""))
     estudio.pedir_aspecto.connect(lambda ident: _hacer(estudio, motor, lambda: motor.poner_aspecto(ident) or ""))
@@ -136,6 +138,7 @@ def _refrescar(estudio: Estudio, motor: MotorEnVivo) -> None:
             virtual=bool(estado["virtual"]),
             salida_texto=str(estado.get("salida_texto") or ""),
             salida_detalle=str(estado.get("salida_detalle") or ""),
+            ventana_abierta=bool(estado.get("ventana_abierta")),
             resolucion=str(estado["resolucion"]),
             fps_salida=str(estado["fps_salida"]),
             fondo=str(estado["fondo"]),

@@ -57,9 +57,6 @@ class MotorEnVivo:
         self._virtual = bool(self.biblioteca.estado().get("camara_virtual") or False)
         self._salida_activa = False
         self._ventana_salida = None
-        self._reloj_salida = QtCore.QTimer()
-        self._reloj_salida.setInterval(33)
-        self._reloj_salida.timeout.connect(self._empujar_ventana)
         self._obs_cache: tuple[float, object] | None = None
         self._ajustes: dict[str, object] = {}
         self.al_cargar = None
@@ -218,7 +215,9 @@ class MotorEnVivo:
                 procesador.disable_virtualcam()
             except Exception:
                 pass
-        self._salida_activa = self._ventana_salida is not None and self._ventana_salida.isVisible()
+        self._salida_activa = (
+            self._ventana_salida is not None and self._ventana_salida.esta_abierta()
+        )
 
     def _estado_obs(self):
         from app.drako.rendimiento.obs_salida import detectar, procesos_windows
@@ -260,24 +259,27 @@ class MotorEnVivo:
         if self._ventana_salida is None:
             self._ventana_salida = VentanaSalida(cfg.ancho, cfg.alto)
             self._ventana_salida.aviso.connect(self._aviso_ventana)
-        else:
-            self._ventana_salida.fijar_tamano(cfg.ancho, cfg.alto)
-        self._ventana_salida.show()
-        self._ventana_salida.raise_()
-        self._reloj_salida.start()
+            self._ventana_salida.geometria.connect(self._guardar_ventana)
+            guardada = self.biblioteca.estado().get("ventana_obs")
+            self._ventana_salida.aplicar_geometria(guardada if isinstance(guardada, dict) else None)
+        procesador = getattr(self.ventana, "video_processor", None)
+        if procesador is not None:
+            procesador.entrega_ventana = self._ventana_salida.entrega
+        self._ventana_salida.abrir()
         self._salida_activa = True
+
+    def alternar_ventana_salida(self) -> None:
+        if self._ventana_salida is not None and self._ventana_salida.esta_abierta():
+            self._ventana_salida.cerrar()
+            self._salida_activa = bool(self._virtual)
+            return
+        self.abrir_ventana_salida()
+
+    def _guardar_ventana(self, x: int, y: int, ancho: int, alto: int) -> None:
+        self.biblioteca.recordar(ventana_obs={"x": x, "y": y, "w": ancho, "h": alto})
 
     def _aviso_ventana(self, texto: str) -> None:
         self.mensaje = texto
-
-    def _empujar_ventana(self) -> None:
-        if self._ventana_salida is None or not self._ventana_salida.isVisible():
-            return
-        procesador = getattr(self.ventana, "video_processor", None)
-        frame = getattr(procesador, "current_frame", None) if procesador else None
-        if frame is None:
-            return
-        self._ventana_salida.mostrar_frame(frame)
 
     def probar_salida(self) -> str:
         texto = self._encender_salida()
@@ -307,7 +309,7 @@ class MotorEnVivo:
         estado = self._estado_obs()
         procesador = getattr(self.ventana, "video_processor", None)
         abierto = bool(getattr(procesador, "virtcam", None))
-        ventana = self._ventana_salida is not None and self._ventana_salida.isVisible()
+        ventana = self._ventana_salida is not None and self._ventana_salida.esta_abierta()
         return texto_indicador(
             dispositivo_abierto=abierto or self._virtual,
             obs_en_marcha=estado.obs_en_marcha,
@@ -536,6 +538,7 @@ class MotorEnVivo:
             "fps_salida": fps_salida,
             "fondo": fondo_visible,
             "original": self.original,
+            "ventana_abierta": self._ventana_salida is not None and self._ventana_salida.esta_abierta(),
         }
 
     def _activar(self) -> str:
