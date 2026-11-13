@@ -289,7 +289,7 @@ class Estudio(QtWidgets.QWidget):
         fila.addWidget(marca)
         fila.addWidget(sub)
         fila.addSpacing(18)
-        self.paso = QtWidgets.QLabel("1  Elige una foto")
+        self.paso = QtWidgets.QLabel("Elige una foto o un perfil")
         self.paso.setObjectName("secundario")
         fila.addWidget(self.paso)
         fila.addStretch(1)
@@ -555,7 +555,6 @@ class Estudio(QtWidgets.QWidget):
         self.toggles: dict[str, QtWidgets.QCheckBox] = {}
         for clave, texto in (
             ("fps", "Mostrar FPS"),
-            ("varias", "Varias caras"),
         ):
             caja_toggle = QtWidgets.QCheckBox(texto)
             caja_toggle.toggled.connect(lambda activo, nombre=clave: self.pedir_toggle.emit(nombre, activo))
@@ -578,8 +577,8 @@ class Estudio(QtWidgets.QWidget):
         avanzado.setContentsMargins(0, 0, 0, 0)
         avanzado.setSpacing(8)
         nota = QtWidgets.QLabel(
-            "Resolución de la webcam, proveedor y un vídeo de prueba si no hay cámara. "
-            "El ajuste de la cara está arriba."
+            "Por defecto solo cambia la persona de enfrente, la más grande y centrada. "
+            "Lo de aquí no hace falta tocarlo."
         )
         nota.setWordWrap(True)
         nota.setObjectName("pista")
@@ -597,6 +596,16 @@ class Estudio(QtWidgets.QWidget):
         )
         for combo in (self.resolucion, self.proveedor, self.detector):
             avanzado.addWidget(combo)
+        self.persona = self._combo(
+            "A quién",
+            ["La principal", "La de la izquierda", "La de la derecha"],
+            "persona",
+        )
+        avanzado.addWidget(self.persona)
+        varias = QtWidgets.QCheckBox("Cambiar todas las caras")
+        varias.toggled.connect(lambda activo: self.pedir_toggle.emit("varias", activo))
+        self.toggles["varias"] = varias
+        avanzado.addWidget(varias)
         self.boton_video = BotonPildora("Probar con un vídeo")
         self.boton_video.clicked.connect(self.pedir_video.emit)
         avanzado.addWidget(self.boton_video)
@@ -832,11 +841,9 @@ class Estudio(QtWidgets.QWidget):
         if sesion:
             self.paso.setText("En directo" if en_vivo else "Viendo el original")
         elif not tiene_foto:
-            self.paso.setText("1  Elige una foto")
-        elif not tiene_camara:
-            self.paso.setText("2  Elige la cámara")
+            self.paso.setText("Elige una foto o un perfil")
         else:
-            self.paso.setText("3  Pulsa EN VIVO")
+            self.paso.setText("Pulsa EN VIVO")
         self._colocar_capas()
 
     def adoptar_vista(self, vista: QtWidgets.QWidget) -> None:

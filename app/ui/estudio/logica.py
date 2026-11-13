@@ -1,7 +1,7 @@
 """Reglas de la pantalla sencilla, sin Qt ni modelos.
 
-El directo pide tres cosas: una foto, una cámara y EN VIVO.
-Todo lo demás es un ajuste, no un paso.
+El directo pide una foto o un perfil, y EN VIVO.
+La cámara ya está. Todo lo demás es un ajuste, no un paso.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ CALIDADES = ("Auto", "Máxima calidad", "Equilibrado", "Máximo FPS")
 FONDOS = ("Normal", "Verde", "Transparente")
 EXTENSIONES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp"})
 
-MENSAJE_FOTO = "Elige una foto de la cara."
-MENSAJE_CAMARA = "Elige una cámara."
+MENSAJE_FOTO = "Elige una foto o un perfil. Sin eso, EN VIVO no puede cambiar la cara."
+MENSAJE_CAMARA = "No encuentro la cámara. Conéctala y pulsa EN VIVO otra vez."
 MENSAJE_CARA_PERDIDA = "No te veo bien. Acércate un poco y mira a la cámara."
 MENSAJE_CARGANDO = "Preparando la foto. Un momento."
 
@@ -62,6 +62,46 @@ def nombre_seguro(original: str) -> str:
             limpio.append("_")
     texto = "".join(limpio).strip(" .")
     return texto or "cara"
+
+
+def indice_principal(
+    cajas: list[tuple[float, float, float, float]], ancho: float, alto: float
+) -> int:
+    """La cara de enfrente: grande y cerca del centro. 0 si no hay cajas."""
+    if not cajas:
+        return 0
+    centro_x = ancho / 2.0
+    centro_y = alto / 2.0
+    alcance = max((ancho * ancho + alto * alto) ** 0.5 / 2.0, 1.0)
+    mejor = 0
+    mejor_nota = -1.0
+    for indice, (x1, y1, x2, y2) in enumerate(cajas):
+        area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        medio_x = (x1 + x2) / 2.0
+        medio_y = (y1 + y2) / 2.0
+        distancia = ((medio_x - centro_x) ** 2 + (medio_y - centro_y) ** 2) ** 0.5
+        cercania = 1.0 - min(distancia / alcance, 1.0)
+        nota = area * (0.45 + 0.55 * cercania)
+        if nota > mejor_nota:
+            mejor = indice
+            mejor_nota = nota
+    return mejor
+
+
+def indice_persona(
+    cajas: list[tuple[float, float, float, float]],
+    ancho: float,
+    alto: float,
+    cual: str,
+) -> int:
+    """Principal, la de la izquierda o la de la derecha. Nunca pide una selección."""
+    if not cajas:
+        return 0
+    if cual == "izquierda":
+        return min(range(len(cajas)), key=lambda i: (cajas[i][0] + cajas[i][2]) / 2.0)
+    if cual == "derecha":
+        return max(range(len(cajas)), key=lambda i: (cajas[i][0] + cajas[i][2]) / 2.0)
+    return indice_principal(cajas, ancho, alto)
 
 
 def puede_entrar_en_vivo(tiene_foto: bool, tiene_camara: bool) -> str | None:

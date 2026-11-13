@@ -17,7 +17,7 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
 - El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
 
-La pantalla principal está en español. Al abrir se ve la cámara. El uso es el de siempre, en tres pasos: elegir una foto, elegir la cámara y pulsar **EN VIVO**. Máscaras, restaurador, resolución, proveedor y la prueba con un vídeo están en **Avanzado**, cerrado.
+La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara se aplica sola a la persona de enfrente, la más grande y centrada, y la sigue si se mueve o se tapa un momento. No hay que buscar caras ni elegir un destino. Si falta la foto, EN VIVO lo dice. Cambiar todas las caras, o elegir la de la izquierda o la derecha, está en **Avanzado**.
 
 ## Requisitos
 
@@ -101,7 +101,7 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
 4. Comprueba los modelos del directo (1,14 GB) y, si no han cambiado, no vuelve a verificar el hash. Drako Cam solo cambia caras de la cámara hacia OBS. El detalle está en [docs/modelos.md](docs/modelos.md).
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
-6. En la pantalla: elige una foto (o arrástrala), confirma la cámara y pulsa **EN VIVO**. Para OBS, enciende la cámara virtual y, en OBS, añade un dispositivo de captura de vídeo llamado **Drako Cam**.
+6. En la pantalla: elige una foto (o arrástrala) o un perfil y pulsa **EN VIVO**. Para OBS, enciende la cámara virtual y, en OBS, añade un dispositivo de captura de vídeo llamado **Drako Cam**.
 
 El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra.
 
@@ -161,9 +161,9 @@ npm test
 
 ## Pantalla principal
 
-1. Elige una foto en la galería, o pulsa **Añadir foto**. También vale soltar un JPG, PNG, WEBP o BMP.
+1. Elige una foto en la galería, o pulsa **Añadir foto**. También vale un perfil guardado, o soltar un JPG, PNG, WEBP o BMP.
 2. La cámara ya está elegida (la última, o la primera). Si hay varias, el selector está junto a **EN VIVO**.
-3. Pulsa **EN VIVO**. La cara principal se detecta y se cambia sola. **PARAR** lo apaga. **Original / Cambiada** compara sin cerrar la cámara.
+3. Pulsa **EN VIVO**. La persona de enfrente, la más grande y centrada, se cambia sola y se sigue aunque se mueva o se tape un momento. No hay que buscar caras ni elegir un destino. Si faltaba la foto, lo dice y no se queda en silencio. Con varias personas solo cambia esa. **PARAR** lo apaga. **Original / Cambiada** compara sin cerrar la cámara.
 
 Favoritos con estrella, y F1–F8 para saltar entre ellos. **Modo compacto** deja la ventana pequeña al lado de OBS. Si la cara se pierde, el programa lo dice y la transición suave sigue siendo la del motor.
 

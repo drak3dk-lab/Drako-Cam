@@ -18,6 +18,8 @@ from app.ui.estudio.logica import (
     aviso_cara_perdida,
     extension_admitida,
     frente_a_motor,
+    indice_persona,
+    indice_principal,
     fuerza_a_motor,
     nitidez_a_motor,
     nombre_seguro,
@@ -28,8 +30,20 @@ from app.ui.estudio.logica import (
 
 def test_solo_foto_camara_y_en_vivo():
     assert puede_entrar_en_vivo(False, True) == MENSAJE_FOTO
+    assert "foto" in MENSAJE_FOTO and "perfil" in MENSAJE_FOTO
     assert puede_entrar_en_vivo(True, False) == MENSAJE_CAMARA
     assert puede_entrar_en_vivo(True, True) is None
+
+
+def test_la_cara_principal_es_la_grande_y_centrada():
+    # Mismo tamaño: gana la del centro, no la de la esquina.
+    cajas = [(0, 0, 200, 200), (400, 400, 600, 600)]
+    assert indice_principal(cajas, 1000, 1000) == 1
+    # Mismo sitio: gana la más grande.
+    cajas = [(400, 400, 500, 500), (380, 380, 620, 620)]
+    assert indice_principal(cajas, 1000, 1000) == 1
+    assert indice_persona(cajas, 1000, 1000, "izquierda") == 0
+    assert indice_persona([(100, 0, 200, 100), (700, 0, 900, 100)], 1000, 720, "derecha") == 1
 
 
 def test_el_aviso_de_cara_perdida_espera_a_que_pase_un_rato():
