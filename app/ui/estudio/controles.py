@@ -184,7 +184,7 @@ GRUPOS: tuple[Grupo, ...] = (
         "La resolución y el parecido son ligeros. Mejorar la cara cuesta FPS.",
         _RESTAURAR,
         (
-            _eleccion("SwapperResSelection", "Resolución del cambio", "128 va fluido. 256 se ve mejor. 512 es para una tarjeta holgada.", ("128", "256", "384", "512"), "128"),
+            _eleccion("SwapperResSelection", "Resolución del cambio", "256 es el mínimo que se ve bien. 512 pide una tarjeta holgada. 128 solo está en Máximo FPS.", ("128", "256", "384", "512"), "256"),
             _slider("SimilarityThresholdSlider", "Parecido mínimo", "Si la cara parpadea o se suelta, bájalo. Si cambia a otra persona, súbelo.", 1, 100, 60),
             _slider("PreSwapSharpnessDecimalSlider", "Nitidez antes de cambiar", "1 es neutro. Por encima marca más la cara de origen. Puede pelearse con el restaurador.", 0, 2, 1, paso=0.1, decimales=1),
             _eleccion("FaceRestorerTypeSelection", "Modelo", "GFPGAN es el habitual. GPEN da otra textura de piel. Prueba y quédate con el que no enplastique.", ("GFPGAN-v1.4", "GFPGAN-1024", "GPEN-256", "GPEN-512", "GPEN-1024", "CodeFormer"), "GFPGAN-v1.4", muestra_si=_RESTAURAR),
@@ -335,22 +335,26 @@ _ESTABLE = {
     "AutoMouthLowerLipParserSlider": 10,
 }
 
+# El arranque usa esto. Máximo FPS es el único que lo baja.
+_VISIBLE = {
+    "SwapperResSelection": "256",
+    "FaceRestorerEnableToggle": True,
+    "FaceRestorerTypeSelection": "GFPGAN-v1.4",
+    "FaceRestorerDetTypeSelection": "Blend",
+    "FaceRestorerBlendSlider": 55,
+}
+
 
 def valores_de_seis_gb() -> dict[str, object]:
-    """Cara nítida en 6 GB sin el restaurador a tope, que la deja de plástico."""
-    return {
-        "SwapperResSelection": "256",
-        "FaceRestorerEnableToggle": True,
-        "FaceRestorerTypeSelection": "GFPGAN-v1.4",
-        "FaceRestorerDetTypeSelection": "Blend",
-        "FaceRestorerBlendSlider": 55,
-    }
+    """La misma calidad visible. En 6 GB no se baja el cambio ni el restaurador."""
+    return dict(_VISIBLE)
 
 
 def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, object]:
     """Un preset deja cada control en un valor concreto, no solo tres."""
     valores = valores_iniciales()
     valores.update(_ESTABLE)
+    valores.update(_VISIBLE)
     if nombre == "Máxima calidad":
         valores.update(
             {
@@ -387,11 +391,9 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
     elif nombre == "Equilibrado":
         valores.update(
             {
-                "SwapperResSelection": "128",
-                "FaceRestorerEnableToggle": False,
                 "BordermaskEnableToggle": True,
                 "FinalBorderBlendEnableToggle": True,
-                "FinalBorderBlendAmountSlider": 5,
+                "FinalBorderBlendAmountSlider": 8,
                 "SimilarityThresholdSlider": 60,
                 "PreSwapSharpnessDecimalSlider": 1.0,
             }

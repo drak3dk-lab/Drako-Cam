@@ -128,6 +128,12 @@ def test_los_ajustes_que_drako_usa_siguen_en_el_panel():
     assert fluido["FaceRestorerEnableToggle"] is False
     assert fluido["OccluderEnableToggle"] is False
     assert fluido["BordermaskEnableToggle"] is True
+    assert valores_de_calidad("Auto")["SwapperResSelection"] == "256"
+    assert valores_de_calidad("Auto")["FaceRestorerEnableToggle"] is True
+    assert valores_de_calidad("Auto")["FaceRestorerBlendSlider"] == 55
+    assert valores_de_calidad("Equilibrado")["SwapperResSelection"] == "256"
+    assert valores_de_calidad("Equilibrado")["FaceRestorerEnableToggle"] is True
+    assert valores_de_calidad("Máximo FPS")["SwapperResSelection"] == "128"
     assert valores_de_calidad("Auto")["SimilarityThresholdSlider"] == 60
     assert valores_de_calidad("Auto")["OccluderEnableToggle"] is True
     assert valores_de_calidad("Auto")["FaceTrackingEnableToggle"] is True

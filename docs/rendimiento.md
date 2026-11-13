@@ -2,12 +2,17 @@
 
 ## Directo en 6 GB
 
-En una RTX 4050 de 6 GB la captura queda en 1280×720, la cola de
-inferencia en 1 fotograma y la detección corre cada 2 fotogramas, con
-el seguimiento entre medias. One Euro usa el ajuste 25: en reposo
-suaviza, y si la cabeza se mueve el punto sigue el fotograma. ORFormer
-solo entra si la máscara se cae (oclusión). La boca de la cámara se
-restaura (Restore Mouth y Mouth Fit & Align). El restaurador va al 55 %.
+La fluidez no baja la calidad de la cara. Lo que se quita es trabajo
+desperdiciado: colas, copias, detección repetida y ORFormer cuando no
+hay oclusión. El preset de arranque mantiene el cambio a 256, el
+restaurador al 55 % (para no dejar la piel de plástico), los bordes,
+el color del cuello y la boca de la cámara. Máximo FPS es opcional y
+es el único que baja eso.
+
+En una RTX 4050 de 6 GB la webcam queda en 1280×720. Meet envía a 720p,
+así que capturar más no se ve en la llamada. La cola de inferencia cabe
+1 fotograma y la detección corre cada 2, con el seguimiento entre medias.
+One Euro usa el ajuste 25. ORFormer solo entra si la máscara se cae.
 
 El registro `diagnostico.log`, en la carpeta de datos, anota FPS y
 latencia del directo cada dos segundos. Esta máquina no tiene la GPU

@@ -165,7 +165,7 @@ npm test
 
 1. Elige una foto en la galería, o pulsa **Añadir foto**. También vale un perfil guardado, o soltar un JPG, PNG, WEBP o BMP.
 2. La cámara ya está elegida (la última, o la primera). Si hay varias, el selector está junto a **EN VIVO**.
-3. Pulsa **EN VIVO**. La persona de enfrente se cambia sola y la imagen sale a la cámara virtual, sin otro botón. En una GPU de 6 GB la captura es 1280×720, la boca de la cámara se restaura y el restaurador queda al 55 %. **PARAR** quita el cambio de cara; la salida hacia OBS sigue, al mismo tamaño. **Original / Cambiada** compara sin cerrar la cámara.
+3. Pulsa **EN VIVO**. La persona de enfrente se cambia sola y la imagen sale a la cámara virtual, sin otro botón. El preset de arranque mantiene la calidad visible: cambio a 256, restaurador, bordes, color y boca. **Máximo FPS** es opcional y es el único que baja ese detalle. En 6 GB la webcam va a 1280×720, que es lo que Meet envía. **PARAR** quita el cambio de cara; la salida hacia OBS sigue, al mismo tamaño. **Original / Cambiada** compara sin cerrar la cámara.
 
 ## OBS
 

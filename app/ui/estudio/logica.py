@@ -134,21 +134,27 @@ def ajuste_calidad(nombre: str, permite_60: bool) -> AjusteCalidad:
         )
     if nombre == "Equilibrado":
         return AjusteCalidad(
-            "1920x1080",
+            None,
             "30",
             2,
-            False,
-            "1080p a 30. Es el punto estable.",
+            True,
+            "Misma calidad de cara. La webcam se queda en 720p, que es lo que Meet envía.",
         )
     if nombre == "Máximo FPS":
         fps = "60" if permite_60 else "30"
         nota = (
-            "Prioriza los fotogramas."
+            "Opcional. Baja el detalle de la cara para ir más suelto."
             if permite_60
-            else "Esta tarjeta se queda en 30 FPS para no ir a tirones."
+            else "Opcional. Baja el detalle de la cara. Esta tarjeta se queda en 30 FPS."
         )
         return AjusteCalidad("1280x720", fps, 4, False, nota)
-    return AjusteCalidad(None, None, None, None, "Según la tarjeta que haya en el equipo.")
+    return AjusteCalidad(
+        None,
+        None,
+        None,
+        True,
+        "Calidad visible: cambio a 256, restaurador, bordes, color y boca.",
+    )
 
 
 def fuerza_a_motor(valor: int) -> int:
