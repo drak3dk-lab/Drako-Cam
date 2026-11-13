@@ -1,0 +1,146 @@
+name: Instalador de Windows
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "Instalar.bat"
+      - "Desinstalar.bat"
+      - "Start.bat"
+      - "scripts/**"
+      - "installer/**"
+      - "requirements_cu13.txt"
+      - "pyproject.toml"
+      - "version.json"
+      - "tests/unit/test_instalador.py"
+      - ".github/workflows/instalador-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instalador-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  instalador:
+    name: Compilar el instalador
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v5
+
+      - name: Comprobar la sintaxis con Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archivos = @("scripts\instalar.ps1", "scripts\desinstalar.ps1")
+          foreach ($rel in $archivos) {
+            $ruta = Join-Path (Get-Location) $rel
+            $tokens = $null
+            $errores = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($ruta, [ref]$tokens, [ref]$errores)
+            if ($errores -and $errores.Count -gt 0) {
+              $errores | ForEach-Object { Write-Host $_.ToString() }
+              throw "Sintaxis inválida en $rel"
+            }
+            Write-Host "Sintaxis correcta: $rel"
+          }
+          cscript //nologo "scripts\Arrancar.vbs" --comprobar
+          if ($LASTEXITCODE -ne 0) { throw "Arrancar.vbs no supera la comprobación" }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File ".\scripts\instalar.ps1" -SoloComprobar
+          if ($LASTEXITCODE -ne 0) { throw "instalar.ps1 -SoloComprobar falló con $LASTEXITCODE" }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File ".\scripts\desinstalar.ps1" -Silencioso
+          if ($LASTEXITCODE -ne 0) { throw "desinstalar.ps1 -Silencioso falló con $LASTEXITCODE" }
+
+      - name: Preparar Python y probar los archivos
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Probar la estructura del instalador
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest tests/unit/test_instalador.py -q
+          python -m py_compile scripts/comprobar_cuda.py
+
+      - name: Instalar Inno Setup 6.7.4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe"
+          $dest = Join-Path $env:TEMP "innosetup-6.7.4.exe"
+          Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+          $proc = Start-Process -FilePath $dest -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES","/SP-","/ALLUSERS" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Inno Setup terminó con el código $($proc.ExitCode)" }
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "No se encuentra ISCC.exe en $iscc" }
+          Add-Content -Path $env:GITHUB_ENV -Value "ISCC=$iscc"
+
+      - name: Compilar DrakoCam-Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          $version = (Get-Content -Raw -Path version.json | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "version.json debe ser X.Y.Z y es '$version'" }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & "$env:ISCC" "/DAppVersion=$version" "installer\DrakoCam.iss" *> dist\iscc.log
+          $code = $LASTEXITCODE
+          Get-Content dist\iscc.log
+          if ($code -ne 0) { throw "ISCC falló con el código $code" }
+          $log = Get-Content -Raw -Path dist\iscc.log
+          foreach ($malo in @('.git\', '.github\', '.onnx', '.pth', '.safetensors', '.env')) {
+            if ($log.Contains($malo)) { throw "El instalador incluye un archivo no permitido ($malo). Revisa dist\iscc.log" }
+          }
+          $exe = Get-ChildItem dist\DrakoCam-Setup-*.exe | Select-Object -First 1
+          if (-not $exe) { throw "No se generó el .exe" }
+          if ($exe.Length -lt 1MB) { throw "El instalador ha salido vacío." }
+          if ($exe.Length -gt 80MB) { throw "El instalador pesa demasiado ($($exe.Length) bytes). Revisa que no incluya modelos ni .git." }
+          Write-Host ("Instalador: {0} ({1} MB)" -f $exe.Name, [math]::Round($exe.Length / 1MB, 1))
+
+      - name: Guardar el instalador como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrakoCam-Setup
+          path: dist/DrakoCam-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Adjuntar el instalador a la release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v') { throw "La etiqueta no empieza por v." }
+          $exe = Get-ChildItem dist\DrakoCam-Setup-*.exe | Select-Object -First 1
+          $notas = @(
+            "Instalador de Drako Cam $tag.",
+            "",
+            "Doble clic en $($exe.Name). Copia el programa y, al terminar, prepara Python, FFmpeg y los componentes. Hace falta Windows 10 u 11 con internet.",
+            "",
+            "Cuando acabe, abre «Drako Cam» desde el escritorio. No se abre una ventana de consola.",
+            "",
+            "Los pesos de los modelos no van dentro del instalador: el programa los descarga la primera vez que se abre."
+          ) -join "`n"
+          $notasPath = Join-Path (Get-Location) "dist\notas-release.txt"
+          [System.IO.File]::WriteAllText($notasPath, $notas)
+          gh release view $tag
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $exe.FullName --clobber
+          } else {
+            gh release create $tag $exe.FullName --title "Drako Cam $tag" --notes-file $notasPath
+          }
