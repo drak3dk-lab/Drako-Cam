@@ -157,6 +157,24 @@ de red cada fotograma, por eso el panel los marca como pesados y
 Máximo FPS los deja apagados. ORFormer, si se enciende, suma esos
 ~6 ms de la 4090; no los sumo al 0,25 ms.
 
+### Hablar
+
+El directo usa el auto-mouth en modo **Face Parser Only**. Al abrir la
+boca, y solo entonces, dilata el interior y los labios (dientes y
+lengua) con una entrada proporcional al promedio temporal que ya
+tenía el estado. Con la boca cerrada esas dilataciones valen 0: se
+queda la forma de los labios de la cara nueva, no una boca pegada.
+
+El otro modo, Expression Restorer, mueve los labios con LivePortrait
+en cada fotograma. El propio ajuste lo describe como más lento. No
+entra en el presupuesto de 30 FPS junto al cambio, así que el preset
+no lo enciende. Está en el grupo Boca por si la tarjeta sobra.
+
+El estado de apertura (EMA, histéresis y la dilatación) no llega a
+0,05 ms por fotograma en esta CPU. La máscara de la boca, cuando se
+abre, sí es una pasada del parser de cara: pesa, y solo corre mientras
+se habla.
+
 ### GPU dedicada en un portátil híbrido
 
 `python.exe` no puede exportar `NvOptimusEnablement`: ese símbolo tiene

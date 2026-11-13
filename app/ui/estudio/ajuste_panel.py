@@ -198,7 +198,7 @@ class PanelAjustes(QtWidgets.QWidget):
             cuerpo = self._cuerpos[grupo.ident]
             cuerpo.setVisible(
                 self._maestros[grupo.maestro].isChecked()
-                or grupo.ident in ("nitidez", "estabilidad")
+                or grupo.ident in ("nitidez", "estabilidad", "boca")
             )
         for clave, fila in self._filas.items():
             depende = fila.control.muestra_si

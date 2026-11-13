@@ -119,6 +119,13 @@ GRUPOS: tuple[Grupo, ...] = (
             _slider("MouthParserStretchSharpenDecimalSlider", "Nitidez de dientes y labios", "Marca el borde de los dientes sin granear la piel. 0 lo deja neutro.", 0, 5, 0, paso=0.1, decimales=2, muestra_si=_ENCAJE),
             _slider("MouthOriginalCavityBlurSlider", "Desenfoque del interior", "Si usas tu boca, difumina el fondo de la cavidad. Más alto quita dientes falsos.", 0, 50, 15, muestra_si=_BOCA_ORIGINAL),
             _slider("MouthOriginalCavityBlendingDecimalSlider", "Textura original del interior", "0 es sombra artificial. 1 devuelve los dientes y la textura reales.", 0, 1, 0, paso=0.05, decimales=2, muestra_si=_BOCA_ORIGINAL),
+            _toggle("AutoMouthExpressionEnableToggle", "Hablar", "Al abrir la boca se ven dientes y lengua, y los labios de la cara nueva siguen ahí cuando la cierras. Entra suave, sin parpadeo."),
+            _eleccion("AutoMouthRestoreModeSelection", "Al hablar", "Solo la boca cabe en el directo. Mover los labios pasa por LivePortrait en cada fotograma y no entra en 30 FPS junto al cambio.", ("Face Parser Only", "Expression Restorer"), "Face Parser Only", muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthOpenThresholdDecimalSlider", "A partir de qué apertura", "0,22 coge una conversación. Por encima de 0,60 solo una boca muy abierta.", 0.01, 0.99, 0.22, paso=0.01, decimales=2, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthEMAAlphaDecimalSlider", "Suavizado al hablar", "Bajo: entra y sale despacio, sin parpadeo. 1 sigue el fotograma al instante.", 0.05, 1.0, 0.35, paso=0.01, decimales=2, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthMouthParserSlider", "Interior de la boca", "Cuánto se abre el hueco de dientes y lengua. 0 lo deja cerrado.", 0, 30, 8, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthUpperLipParserSlider", "Labio de arriba", "Poco: se ve el habla sin cambiar la forma del labio nuevo.", 0, 30, 2, muestra_si="AutoMouthExpressionEnableToggle"),
+            _slider("AutoMouthLowerLipParserSlider", "Labio de abajo", "Acompaña la mandíbula al hablar. Más alto abre más.", 0, 30, 10, muestra_si="AutoMouthExpressionEnableToggle"),
         ),
     ),
     Grupo(
@@ -301,6 +308,14 @@ _ESTABLE = {
     "XSegExcludeInnerMouthToggle": True,
     "XSegExcludeInnerObstaclesToggle": False,
     "LandmarkDetectToggle": False,
+    "AutoMouthExpressionEnableToggle": True,
+    "AutoMouthRestoreModeSelection": "Face Parser Only",
+    "AutoMouthOpenThresholdDecimalSlider": 0.22,
+    "AutoMouthEMAAlphaDecimalSlider": 0.35,
+    "AutoMouthMouthParserSlider": 8,
+    "AutoMouthUpperLipParserSlider": 2,
+    "AutoMouthLowerLipParserSlider": 10,
+    "RestoreMouthEnableToggle": False,
 }
 
 
@@ -316,8 +331,7 @@ def valores_de_calidad(nombre: str, permite_alto: bool = False) -> dict[str, obj
                 "FaceRestorerTypeSelection": "GFPGAN-v1.4",
                 "FaceRestorerDetTypeSelection": "Blend",
                 "FaceRestorerBlendSlider": 80,
-                "RestoreMouthEnableToggle": True,
-                "RestoreMouthBlendAmountSlider": 55,
+                "RestoreMouthEnableToggle": False,
                 "BordermaskEnableToggle": True,
                 "FinalBorderBlendEnableToggle": True,
                 "FinalBorderBlendAmountSlider": 8,

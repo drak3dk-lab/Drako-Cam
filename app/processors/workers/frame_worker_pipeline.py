@@ -1600,12 +1600,12 @@ class PipelineProcessor:
         _base_strength = params.get("AutoMouthExpressionStrengthDecimalSlider", 1.00)
         _normalize = params.get("AutoMouthNormalizeLipsToggle", True)
         _restore_mode = params.get(
-            "AutoMouthRestoreModeSelection", "Expression Restorer"
+            "AutoMouthRestoreModeSelection", "Face Parser Only"
         )
-        # Proportional strength ramp: smooth fade-in from threshold to threshold+ramp.
-        _ramp_range = max(_threshold * 0.5, 0.04)
-        _proportion = min(1.0, max(0.0, (_ema_value - _threshold) / _ramp_range))
-        _strength = _base_strength * _proportion
+        from app.processors.mouth_openness import fuerza_al_hablar
+
+        _strength = fuerza_al_hablar(_ema_value, _threshold, _base_strength)
+        _proportion = 0.0 if _base_strength <= 0 else _strength / float(_base_strength)
 
         # Skip entirely when strength is negligible — avoids a full warp-decode cycle.
         # Still apply FaceParser overrides (teeth exclusion) even at low strength.
@@ -1620,15 +1620,31 @@ class PipelineProcessor:
         _p = dict(params)
 
         # --- Face-parser mouth override (applied in both modes) ---
-        _mouth_val = int(params.get("AutoMouthMouthParserSlider", 1))
-        _upper_val = int(params.get("AutoMouthUpperLipParserSlider", 3))
-        _lower_val = int(params.get("AutoMouthLowerLipParserSlider", 17))
+        from app.processors.mouth_openness import dilatacion_al_hablar
+
+        _mouth_val = dilatacion_al_hablar(
+            int(params.get("AutoMouthMouthParserSlider", 8)), _proportion
+        )
+        _upper_val = dilatacion_al_hablar(
+            int(params.get("AutoMouthUpperLipParserSlider", 2)), _proportion
+        )
+        _lower_val = dilatacion_al_hablar(
+            int(params.get("AutoMouthLowerLipParserSlider", 10)), _proportion
+        )
         if _mouth_val > 0 or _upper_val > 0 or _lower_val > 0 or _exclude_upper_teeth:
             _p["FaceParserEnableToggle"] = True
         _p["MouthParserSlider"] = _mouth_val
         _p["UpperLipParserSlider"] = _upper_val
         _p["LowerLipParserSlider"] = _lower_val
         _p["AutoMouthUpperTeethExcludeActive"] = _exclude_upper_teeth
+        # La lengua no debe desaparecer mientras se habla. Al cerrar, estos
+        # parámetros no se tocan: vuelven los de la cara en reposo.
+        if _proportion >= 0.2:
+            _p["OccluderTonguePriorityToggle"] = True
+        if _proportion >= 0.35:
+            _p["MouthParserStretchToggle"] = True
+            _p["MouthParserStretchOriginalToggle"] = False
+            _p["MouthParserStretchDecimalSlider"] = 1.02
 
         if _restore_mode == "Face Parser Only":
             # Mask-only mode: do not touch the expression restorer.

@@ -105,7 +105,9 @@ def test_los_ajustes_que_drako_usa_siguen_en_el_panel():
     fluido = valores_de_calidad("Máximo FPS")
     assert maxima["FaceRestorerEnableToggle"] is True
     assert maxima["SwapperResSelection"] == "512"
-    assert maxima["RestoreMouthEnableToggle"] is True
+    assert maxima["RestoreMouthEnableToggle"] is False
+    assert maxima["AutoMouthExpressionEnableToggle"] is True
+    assert maxima["AutoMouthRestoreModeSelection"] == "Face Parser Only"
     assert fluido["FaceRestorerEnableToggle"] is False
     assert fluido["OccluderEnableToggle"] is False
     assert fluido["BordermaskEnableToggle"] is True
