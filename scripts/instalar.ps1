@@ -541,6 +541,47 @@ function Python-DelVenv {
     return (Join-Path (Join-Path $script:Venv "Scripts") "python.exe")
 }
 
+function Pedir-Acceso {
+    try {
+        $python = Python-DelVenv
+        if (-not (Test-Path -LiteralPath $python)) {
+            Write-Host "No pude pedir el código de acceso porque falta Python. Podrás hacerlo al abrir Drako Cam."
+            return
+        }
+        & $python -m app.drako.solicitud_instalador --contacto
+        & $python -m app.drako.solicitud_instalador --estado
+        if ($LASTEXITCODE -eq 10) {
+            Write-Host ""
+            Write-Host "Falta la configuración del servidor de acceso."
+            Write-Host "La instalación ha terminado igual. Cuando esté configurado, pide el código al abrir Drako Cam."
+            return
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "No pude comprobar el servidor de acceso. Podrás pedir el código al abrir Drako Cam."
+            return
+        }
+        Write-Host ""
+        Write-Host "Puedes pedir el código de acceso. Drako lo recibirá y, si lo aprueba, te lo pasará."
+        $nombre = Read-Host "Nombre de la persona (vacío para hacerlo luego)"
+        if (-not $nombre -or -not $nombre.Trim()) {
+            Write-Host "De acuerdo. Podrás pedirlo al abrir Drako Cam."
+            return
+        }
+        $oficina = Read-Host "Nombre de la oficina donde se instala"
+        if (-not $oficina -or -not $oficina.Trim()) {
+            Write-Host "Sin la oficina no envío la solicitud. Podrás hacerlo al abrir Drako Cam."
+            return
+        }
+        & $python -m app.drako.solicitud_instalador --nombre $nombre --oficina $oficina
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "No se pudo enviar la solicitud. La instalación está lista. Podrás pedirla al abrir el programa."
+        }
+    } catch {
+        Write-Host "No se pudo pedir el código de acceso. La instalación está lista."
+        try { Write-Log ("Aviso de acceso: " + $_.Exception.Message) } catch { }
+    }
+}
+
 function Pythonw-DelVenv {
     return (Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe")
 }
@@ -1033,6 +1074,7 @@ try {
     foreach ($rutaLog in $script:RutasLog) {
         Write-Host ("  " + $rutaLog)
     }
+    Pedir-Acceso
     if ($DesdeInstalador) {
         Write-Host ""
         Write-Host "Cuando pulses una tecla se cerrará esta ventana y el instalador terminará."

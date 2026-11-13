@@ -32,6 +32,11 @@ MODULOS_DRAKO = (
     "app.drako.clave",
     "app.drako.auditoria",
     "app.drako.telegram_cliente",
+    "app.drako.huella",
+    "app.drako.licencia_config",
+    "app.drako.textos_licencia",
+    "app.drako.licencia",
+    "app.drako.solicitud_instalador",
     "app.drako.sesion",
     "app.drako.registro",
     "app.drako.cuda_aviso",
@@ -157,10 +162,23 @@ def _run_app(argv: list[str] | None = None) -> int:
         return 0
     contrasena, pendientes = acceso
     try:
-        sesion, claves = activar_sesion(contexto, contrasena, pendientes)
+        sesion, claves = activar_sesion(contexto, contrasena, pendientes, abrir=False)
     finally:
         del contrasena
         del acceso
+
+    from app.drako.dialogo_licencia import solicitar_licencia
+
+    vigilante = solicitar_licencia(contexto, claves)
+    if vigilante is None:
+        logger.info("Arranque cancelado en el código de acceso.")
+        try:
+            sesion.anotar("licencia_denegada", detalle="acceso no concedido")
+        finally:
+            fijar_sesion(None)
+            contexto.telegram.detener_reintentos()
+        return 0
+    sesion.abrir()
 
     omitir = args.omitir_modelos or os.environ.get("DRAKO_CAM_OMITIR_MODELOS") == "1"
     if not omitir and not _avisar_modelos():
@@ -172,7 +190,7 @@ def _run_app(argv: list[str] | None = None) -> int:
         )
 
     ventana = main_ui.MainWindow(gpu_id=args.gpu_id)
-    instalar_menu(ventana, contexto, claves)
+    instalar_menu(ventana, contexto, claves, al_cambiar_codigo=vigilante.pedir_cambio)
     ventana.show()
 
     texto_cuda = mensaje_sin_cuda(bool(torch.cuda.is_available()))
@@ -182,6 +200,7 @@ def _run_app(argv: list[str] | None = None) -> int:
 
     def al_salir() -> None:
         try:
+            vigilante.detener()
             sesion.cerrar()
         finally:
             fijar_sesion(None)

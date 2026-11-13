@@ -8,8 +8,9 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 
 ## Qué hace esta versión
 
-- Pide una contraseña de administrador al abrir. En el primer arranque hay un asistente para fijarla. Se guarda solo el hash Argon2id, en la configuración local.
-- Se puede cambiar desde el menú **Drako → Cambiar contraseña…**, indicando la actual.
+- Pide una contraseña de administrador al abrir. En el primer arranque hay un asistente para fijarla. Se guarda solo el hash Argon2id, en la configuración local. Esa contraseña no está en el código.
+- Después pide un código de acceso personal, la primera vez, y lo guarda cifrado. Si aún no lo tiene, puede pedir acceso con su nombre y el de la oficina. Drako lo aprueba o lo rechaza en Telegram y, si lo aprueba, recibe el código para pasárselo. Si lo revoca, el programa se cierra. Sin red hay una gracia (por defecto 24 horas desde la última comprobación correcta) y luego se bloquea. El aviso de privacidad es obligatorio la primera vez.
+- Se puede cambiar la contraseña desde el menú **Drako → Cambiar contraseña…**, y el código desde **Drako → Cambiar código de acceso…**.
 - Tras 5 intentos fallidos el acceso se bloquea 60 segundos (el bloqueo se alarga si se repite, hasta 15 minutos).
 - Anota en local, cifrado (AES-GCM) y firmado (HMAC-SHA256), cada apertura, cierre, duración, intento fallido y cara usada. De la cara solo guarda el nombre del archivo y un hash, nunca la imagen ni el embedding.
 - Puede avisar a un bot de Telegram. Si no hay red, encola y reintenta. Si Telegram no está configurado, el programa funciona igual.
@@ -94,11 +95,14 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 & ".\.venv\Scripts\python.exe" ".\main.py"
 ```
 
-1. La primera vez el programa pide **crear** la contraseña de administrador (8 caracteres como mínimo) y repetirla.
+1. La primera vez el programa pide **crear** la contraseña de administrador (8 caracteres como mínimo) y repetirla. Esa contraseña es de este PC. No está escrita en el programa.
 2. Después, cada apertura pide esa contraseña.
-3. Comprueba los modelos. Los que falten se descargan y se verifica el hash. Puede tardar y ocupar varios gigabytes.
-4. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
-5. Elige webcam como medio de destino y activa la cámara virtual (`pyvirtualcam`) para Zoom, Discord u OBS.
+3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
+4. Comprueba los modelos. Los que falten se descargan y se verifica el hash. Puede tardar y ocupar varios gigabytes.
+5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
+6. Elige webcam como medio de destino y activa la cámara virtual (`pyvirtualcam`) para Zoom, Discord u OBS.
+
+El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra.
 
 Para saltarte la descarga en una prueba de importación:
 
@@ -116,7 +120,7 @@ La configuración **no va en el código** ni en git. En Windows está en:
 
 | Archivo | Contenido |
 | --- | --- |
-| `config.json` | Hash Argon2id, bloqueo, claves del registro envueltas y, si quieres, token de Telegram |
+| `config.json` | Hash Argon2id, bloqueo, claves del registro envueltas, el código de acceso cifrado y, si quieres, token de Telegram |
 | `auditoria.log` | Eventos cifrados y firmados |
 | `cola_telegram.json` | Avisos pendientes de enviar |
 | `logs\drako-cam.log` | Log rotativo de la aplicación |
@@ -144,7 +148,15 @@ python -m pytest tests/unit/drako -q
 python main.py --comprobar-importaciones
 ```
 
-Cubren la contraseña, el cifrado y la firma del registro, la cola de Telegram sin red y el cliente simulado.
+Cubren la contraseña, el cifrado y la firma del registro, la cola de Telegram sin red, el cliente de licencias (servidor simulado, gracia sin red y revocación) y el aviso de privacidad.
+
+El servidor de acceso se prueba aparte, sin desplegarlo:
+
+```powershell
+cd server
+npm install
+npm test
+```
 
 ## Qué queda para la siguiente fase
 

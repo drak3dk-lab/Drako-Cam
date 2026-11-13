@@ -55,6 +55,7 @@ def activar_sesion(
     contexto: ContextoArranque,
     contrasena: str,
     pendientes: list | None = None,
+    abrir: bool = True,
 ) -> tuple[SesionUso, ClavesAuditoria]:
     claves = obtener_claves(contexto.config, contrasena)
     registro = RegistroAuditoria(contexto.directorio / "auditoria.log", claves)
@@ -62,7 +63,8 @@ def activar_sesion(
     fijar_sesion(sesion)
     if pendientes:
         sesion.volcar_pendientes(pendientes)
-    sesion.abrir()
+    if abrir:
+        sesion.abrir()
     contexto.telegram.iniciar_reintentos()
     return sesion, claves
 

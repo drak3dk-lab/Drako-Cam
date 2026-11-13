@@ -69,3 +69,12 @@ auditoria.log
 # Instalador de un clic: FFmpeg descargado y el .exe compilado.
 dist/
 dependencies/ffmpeg/
+
+# Servidor de licencias. El código sí se versiona; los secretos y node_modules, no.
+server/node_modules/
+server/.wrangler/
+server/.dev.vars
+!server/package.json
+!server/package-lock.json
+!server/tsconfig.json
+!server/test/tsconfig.json

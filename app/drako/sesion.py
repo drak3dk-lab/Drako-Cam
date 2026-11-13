@@ -112,6 +112,9 @@ class SesionUso:
             detalle="cara seleccionada",
         )
 
+    def anotar(self, tipo: str, detalle: str = "") -> None:
+        self._emitir(tipo, detalle=detalle)
+
     def volcar_pendientes(self, pendientes: list) -> None:
         for item in pendientes:
             if not isinstance(item, dict):

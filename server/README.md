@@ -1,0 +1,328 @@
+# Servidor de acceso de Drako Cam
+
+Drako Cam es gratis, pero no entra cualquiera. Tú creas un código para cada persona. El programa lo comprueba en este servidor. Tú ves quién lo abre, en qué PC, desde qué IP, la ciudad y el país aproximados, a qué hora entra y cuánto tiempo lo usa.
+
+Las horas de los avisos están en **Europe/Bucharest** (hora de Bucarest).
+
+Hay dos cosas distintas:
+
+- **Contraseña de administrador.** La elige cada persona la primera vez que abre el programa en su PC. No está en este repositorio y no debes escribirla aquí.
+- **Código de acceso.** Lo creas tú con el bot de Telegram, con el botón **Nuevo acceso** o con `/nuevo Ana`. Ese código es el permiso.
+
+Nada de esto se despliega solo. Los pasos de abajo los haces tú, una vez, en una cuenta gratuita de Cloudflare.
+
+## Qué vas a necesitar
+
+- Un móvil o el programa Telegram.
+- Una cuenta de correo para Cloudflare.
+- Node.js, la versión LTS, desde [https://nodejs.org](https://nodejs.org). Al terminar la instalación, cierra PowerShell y ábrelo otra vez.
+- La carpeta `server` de este proyecto.
+
+Comprueba Node abriendo PowerShell y escribiendo:
+
+```powershell
+node -v
+```
+
+Tiene que salir un número, por ejemplo `v22.14.0`. Si dice que no reconoce `node`, cierra PowerShell, ábrelo de nuevo y, si sigue igual, reinstala Node.js.
+
+## 1. Crear el bot con BotFather
+
+1. Abre Telegram.
+2. Busca `@BotFather` (el nombre lleva una marca azul).
+3. Pulsa **Iniciar**.
+4. Escribe `/newbot` y envíalo.
+5. Te pide un nombre visible. Escribe, por ejemplo: `Drako Cam acceso`.
+6. Te pide un usuario. Tiene que terminar en `bot` y no estar cogido. Prueba algo como `DrakoCamAccesoBot`.
+7. BotFather te contesta con un **token**. Es una línea larga, con números, dos puntos y letras. Ese es el secreto `TELEGRAM_BOT_TOKEN`.
+8. Cópialo a un bloc de notas en tu PC. No lo mandes por chat, no lo subas a GitHub y no lo pegues en el código.
+
+## 2. Saber tu chat id
+
+1. En Telegram, busca `@userinfobot`.
+2. Pulsa **Iniciar**.
+3. Te contesta con tu **Id**. Es un número. Ese número es el secreto `TELEGRAM_ADMIN_CHAT_ID`.
+4. Ábrelo en el bloc de notas, junto al token.
+5. Abre **tu** bot (el que acabas de crear) y pulsa **Iniciar**. Si no lo haces, el bot no puede escribirte.
+
+El bot solo obedece a ese chat id. Si otra persona le escribe, no contesta.
+
+## 3. Cuenta gratuita de Cloudflare
+
+1. Entra en [https://dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up).
+2. Crea la cuenta con el plan **Free** (gratuito). No hace falta tarjeta para este servidor.
+3. Confirma el correo si te lo pide.
+
+## 4. Entrar desde el proyecto
+
+Abre PowerShell en la carpeta del proyecto y entra en `server`:
+
+```powershell
+cd server
+npm install
+npx wrangler login
+```
+
+`npm install` baja las herramientas a esta carpeta. Tarda un poco la primera vez.
+
+`npx wrangler login` abre el navegador. Entra en la cuenta de Cloudflare que acabas de crear y acepta. Cuando diga que ya estás dentro, vuelve a PowerShell.
+
+## 5. Crear la base de datos
+
+```powershell
+npx wrangler d1 create drako-cam-licencias
+```
+
+En este repositorio la base `drako-cam-licencias` ya está apuntada en `server/wrangler.toml`:
+
+```toml
+database_id = "c827480d-03fe-4e51-9d2a-d4544d3774a1"
+```
+
+Ese identificador no es una contraseña: puede estar en el archivo. Si creas otra base, sustituye esa línea por el `database_id` que imprima el comando. No hace falta tocar el nombre del Worker ni los nombres de los secretos.
+
+Crea las tablas:
+
+```powershell
+npx wrangler d1 migrations apply drako-cam-licencias --remote
+```
+
+Si pregunta si quieres continuar, escribe `yes` y pulsa Enter.
+
+Si la base ya existía, ejecuta el mismo comando otra vez. La migración nueva es `migrations/0003_bot_estado.sql`. Crea la tabla donde el bot recuerda, durante 10 minutos, que estás escribiendo el nombre de una persona. Sin esa tabla, el botón **Nuevo acceso** no puede preguntarte el nombre.
+
+## 6. Generar las claves de firma
+
+El servidor firma cada respuesta. La app solo cree una respuesta si la firma coincide con la clave pública. La clave privada no sale del servidor.
+
+En la misma carpeta `server`:
+
+```powershell
+node generar-claves.mjs
+```
+
+Salen tres valores. Cópialos al bloc de notas. No los subas a GitHub.
+
+1. `SIGNING_SEED`: la clave privada. Solo va al secreto del Worker.
+2. `CLAVE_PUBLICA_HEX`: 64 letras y números. Va en la app. No es secreta.
+3. `TELEGRAM_WEBHOOK_SECRET`: una clave para que solo Telegram hable con el bot. Va al secreto del Worker.
+
+Cierra la ventana cuando los hayas copiado. El comando no guarda esos valores en el disco.
+
+## 7. Guardar los secretos
+
+Cada comando pide el valor. Pégalo y pulsa Enter. No se escribe en el proyecto.
+
+```powershell
+npx wrangler secret put SIGNING_SEED
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_ADMIN_CHAT_ID
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+```
+
+| Comando | Qué pegas |
+| --- | --- |
+| `SIGNING_SEED` | El primer valor de `generar-claves.mjs` |
+| `TELEGRAM_BOT_TOKEN` | El token que te dio BotFather |
+| `TELEGRAM_ADMIN_CHAT_ID` | El número de `@userinfobot` |
+| `TELEGRAM_WEBHOOK_SECRET` | El tercer valor de `generar-claves.mjs` |
+
+Si te equivocas, vuelve a lanzar el mismo `npx wrangler secret put ...` y pega el valor bueno. El nuevo sustituye al anterior.
+
+## 8. Publicar el servidor
+
+```powershell
+npx wrangler deploy
+```
+
+Al final aparece una dirección como esta:
+
+```text
+https://drako-cam-licencias.tu-cuenta.workers.dev
+```
+
+Cópiala. Es pública. Puede quedar en la configuración de la app.
+
+## 9. Decirle a Telegram dónde está el bot
+
+Sigue en PowerShell, en la carpeta `server`. Cambia la idea, no pegues el token dentro de un archivo:
+
+```powershell
+$token = Read-Host "Pega el token del bot"
+$secreto = Read-Host "Pega TELEGRAM_WEBHOOK_SECRET"
+$direccion = Read-Host "Pega la URL del Worker, sin barra al final"
+$cuerpo = @{
+  url = "$direccion/telegram/webhook"
+  secret_token = $secreto
+  allowed_updates = @("message", "callback_query")
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$token/setWebhook" -ContentType "application/json; charset=utf-8" -Body $cuerpo
+```
+
+Tiene que contestar algo como `ok : True`.
+
+Cierra esa ventana de PowerShell cuando termines: el token ha quedado en la memoria de esa sesión, no en un archivo.
+
+Al pulsar `/start` o `/ayuda`, el bot registra los comandos en el menú de Telegram (el botón junto al campo de texto). Si quieres hacerlo una sola vez, sin abrir el chat, y con el mismo secreto del webhook:
+
+```powershell
+$secreto = Read-Host "Pega TELEGRAM_WEBHOOK_SECRET"
+$direccion = Read-Host "Pega la URL del Worker, sin barra al final"
+Invoke-RestMethod -Method Post -Uri "$direccion/telegram/comandos" -Headers @{ "X-Telegram-Bot-Api-Secret-Token" = $secreto }
+```
+
+Tiene que contestar `ok : True`. Ese secreto no se escribe en ningún archivo.
+
+Si más adelante quieres comprobarlo:
+
+```powershell
+$token = Read-Host "Pega el token del bot"
+Invoke-RestMethod "https://api.telegram.org/bot$token/getWebhookInfo"
+```
+
+La URL tiene que ser la de tu Worker, terminada en `/telegram/webhook`.
+
+## 10. Poner la URL y la clave pública en la app
+
+En `app/drako/licencia_config.py` ya están la dirección, la clave pública y el contacto de Telegram. No son secretos:
+
+```python
+URL_SERVIDOR = "https://drako-cam-licencias.drakocam.workers.dev"
+CLAVE_PUBLICA_HEX = "151b6d87e1d578df4584774b7d13eb02ea47665aad01cff8cbd30c83d2d97155"
+CONTACTO_TELEGRAM = "Drako_XX"
+```
+
+La clave pública solo sirve para comprobar firmas; con ella no se puede firmar. `CONTACTO_TELEGRAM` es el usuario que ven el instalador y la app, con un botón que abre `https://t.me/Drako_XX`. Si cambia el usuario, se cambia solo esa línea.
+
+La clave privada (`SIGNING_SEED`), el token del bot, tu chat id y el secreto del webhook **no** se escriben en ese archivo ni en ningún otro del proyecto.
+
+También puedes pasar la URL sin tocar el archivo, en PowerShell, antes de abrir el programa:
+
+```powershell
+$env:DRAKO_CAM_LICENCIA_URL = "https://drako-cam-licencias.drakocam.workers.dev"
+```
+
+Si `CLAVE_PUBLICA_HEX` en el archivo está vacío, la clave pública puede ir en:
+
+```powershell
+$env:DRAKO_CAM_LICENCIA_CLAVE_PUBLICA = "los-64-caracteres"
+```
+
+Cuando el archivo ya tiene la clave, el programa usa esa y no la de la variable. Así, quien reciba la copia no cambia la clave con una variable.
+
+Para acortar las horas sin conexión en un PC concreto (no puede alargarlas por encima de lo que firme el servidor):
+
+```powershell
+$env:DRAKO_CAM_LICENCIA_GRACIA_HORAS = "6"
+```
+
+## 11. Probar el bot
+
+1. Abre tu bot en Telegram.
+2. Escribe `/start` o pulsa **Iniciar**.
+3. Tiene que salir un mensaje corto y estos botones: **➕ Nuevo acceso**, **👥 Personas**, **🟢 Conectados ahora**, **⏳ Pendientes** y **❓ Ayuda**. El menú de comandos, junto al campo de texto, enseña los mismos comandos. Si no contesta, mira la sección «Si algo falla».
+
+Botones:
+
+| Botón | Qué hace |
+| --- | --- |
+| ➕ Nuevo acceso | Pide el nombre y contesta con el código en un texto que se puede copiar. |
+| 👥 Personas | Lista paginada. Cada persona tiene Historial, Revocar y Borrar. Revocar y Borrar piden confirmación. |
+| 🟢 Conectados ahora | Quién lo está usando ahora. |
+| ⏳ Pendientes | Solicitudes sin decidir, con Aprobar y Rechazar. |
+| ❓ Ayuda | Vuelve a enseñar el menú corto. |
+
+Los comandos escritos siguen funcionando. Un mensaje que el bot no entiende vuelve a enseñar ese menú corto, no la lista larga de comandos.
+
+Comandos:
+
+| Comando | Qué hace |
+| --- | --- |
+| `/nuevo Ana García` | Crea un código único para Ana. Se lo das a esa persona. |
+| `/lista` | Muestra los códigos, el nombre y si ya tienen equipo. |
+| `/revocar DRAKO-....` | Ese código deja de valer. Si el programa está abierto, se cierra en el siguiente latido (como mucho un minuto). |
+| `/activos` | Quién lo está usando ahora: persona, PC, ciudad, país y desde cuándo. |
+| `/historial DRAKO-....` | Últimas sesiones: inicio, duración, PC, oficina, ciudad, país e IP. |
+| `/pendientes` | Solicitudes que aún no has aprobado ni rechazado. |
+| `/borrar DRAKO-....` | Borra a esa persona y su historial. El código deja de existir. |
+| `/ayuda` | Vuelve a mostrar el menú corto y registra los comandos. |
+
+Al final de `Instalar.bat` se pregunta el nombre de la persona y el de la oficina, y se envía una solicitud. Si la URL o la clave pública aún no están en `app/drako/licencia_config.py`, la instalación termina igual y lo explica. La misma pregunta aparece al abrir Drako Cam si todavía no hay código.
+
+Te llega un mensaje con dos botones: **Aprobar** y **Rechazar**. Muestran la persona, la oficina, el PC, la ciudad y el país, y la hora de Bucarest. Si apruebas, el bot crea el código ya ligado a ese PC y te lo manda solo a ti, en otro mensaje, para que se lo pases. Esa persona lo escribe en el programa. Si rechazas, la solicitud queda cerrada y no hay código.
+
+La oficina se guarda con el código. Sale en los avisos de entrada y de salida, y también en `/lista`, `/activos` e `/historial`.
+
+El código tiene esta forma: `DRAKO-XXXX-XXXX-XXXX-XXXX`. Se puede escribir con o sin guiones.
+
+El primer PC que lo active se queda ligado a ese código. Otro PC con el mismo código no entra. Si Ana cambia de ordenador, revoca el código y crea otro con `/nuevo`.
+
+## 12. Qué ve la otra persona
+
+1. La primera vez, el programa pide **crear** la contraseña de administrador de ese PC. La elige ella. Tú no la ves y no va en el código.
+2. Después sale el **aviso de privacidad**. Explica que se registran el uso, la IP y la ubicación aproximada (país y ciudad). Tiene que marcar la casilla y aceptar. Si sale, el programa no se abre.
+3. Luego pide el **código** que tú le diste. En esa pantalla, y también mientras espera la aprobación, ve el mensaje para contactarte por Telegram y un botón que abre el chat. Solo la primera vez se guarda el código, cifrado, en su PC.
+4. A partir de ahí el programa abre con la contraseña de siempre y, en silencio, comprueba el código al arrancar y más o menos cada minuto.
+5. Si revocas el código y hay internet, ve un mensaje claro y el programa se cierra.
+6. Si no hay internet, puede seguir usándolo durante las horas de gracia desde la última comprobación buena. Por defecto son **24 horas**. Pasadas esas horas, si sigue sin red, no entra.
+
+La gracia es a propósito: un corte de internet no les echa al momento. También quiere decir que, si alguien desconecta el cable después de que revoques su código, puede seguir hasta que se acabe ese plazo. En cuanto el programa vuelve a hablar con el servidor, el código revocado no entra.
+
+## 13. Cambiar las 24 horas
+
+Abre `server/wrangler.toml`. La línea es:
+
+```toml
+GRACIA_HORAS = "24"
+```
+
+Pon las horas que quieras, entre 0 y 168, guarda y publica otra vez:
+
+```powershell
+npx wrangler deploy
+```
+
+El valor nuevo entra en la siguiente comprobación correcta. No hace falta volver a poner los secretos.
+
+`LATIDO_SEGUNDOS` es cada cuántos segundos el programa avisa de que sigue abierto. El valor de fábrica es 60. `SESION_ACTIVA_SECS` es cuánto puede pasar sin un latido antes de dar la sesión por terminada. El valor de fábrica es 180. Si el programa se cierra de golpe y no avisa, desaparece de `/activos` a los tres minutos y el historial muestra la duración hasta el último latido.
+
+## 14. Qué no se sube a GitHub
+
+Este repositorio es público. No subas:
+
+- el token del bot
+- tu chat id
+- `SIGNING_SEED`
+- `TELEGRAM_WEBHOOK_SECRET`
+- una exportación de la base de datos (ahí están los códigos y las IP)
+
+Sí pueden estar en el código la URL `workers.dev` y `CLAVE_PUBLICA_HEX`.
+
+La contraseña de administrador de la app tampoco se escribe en ningún archivo. El asistente del primer arranque la pide y solo guarda su huella.
+
+## Si algo falla
+
+**El bot no contesta.** Abre el bot y pulsa Iniciar. Vuelve a hacer el paso 9. En `getWebhookInfo`, `last_error_message` dice el motivo si Telegram no pudo entregar el mensaje.
+
+**`wrangler` no entra.** Repite `npx wrangler login` y acepta en el navegador. El comando hay que lanzarlo desde la carpeta `server`.
+
+**El deploy se queja de la base de datos.** El `database_id` de `wrangler.toml` no es el de la base que estás usando. Para la base ya creada es `c827480d-03fe-4e51-9d2a-d4544d3774a1`.
+
+**Nuevo acceso dice que no puede guardar el nombre.** Falta aplicar `migrations/0003_bot_estado.sql`. En la carpeta `server`: `npx wrangler d1 migrations apply drako-cam-licencias --remote`.
+
+**La app dice que el servidor no está configurado.** `URL_SERVIDOR` o `CLAVE_PUBLICA_HEX` están vacíos en `app/drako/licencia_config.py`, y tampoco están las variables de entorno.
+
+**La app dice que la respuesta no es auténtica.** La clave pública del archivo no es la pareja de `SIGNING_SEED`. Vuelve a ejecutar `node generar-claves.mjs`, guarda la semilla otra vez con `npx wrangler secret put SIGNING_SEED`, publica con `npx wrangler deploy` y pega la clave pública nueva en la app.
+
+**Quieres borrar los datos de una persona.** En el bot: `/borrar` y el código. Eso elimina el código y el historial. `/revocar` solo impide entrar; el historial se queda.
+
+## Comprobar el servidor sin publicarlo
+
+No hace falta para usarlo. Si cambias el código del Worker:
+
+```powershell
+cd server
+npm test
+```
+
+Eso usa Vitest y Miniflare, en local, sin cuenta y sin red de Telegram.
