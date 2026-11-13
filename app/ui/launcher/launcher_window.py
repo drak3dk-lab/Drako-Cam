@@ -125,7 +125,7 @@ class LauncherWindow(QtWidgets.QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VisoMaster Fusion Launcher")
+        self.setWindowTitle("Drako Cam")
         if PATHS["SMALL_ICON"].exists():
             self.setWindowIcon(QtGui.QIcon(str(PATHS["SMALL_ICON"])))
 

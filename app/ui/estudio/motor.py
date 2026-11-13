@@ -49,8 +49,6 @@ class MotorEnVivo:
         self._aspecto = str(self.biblioteca.estado().get("aspecto") or "auto")
         self._perfil_id = ""
         self._ruta_perfil: Path | None = None
-        self._todas = False
-        self._persona = "principal"
         self.ventana._estudio_activo = True
         self._sin_cara: float | None = None
         self._loader = None
@@ -488,11 +486,6 @@ class MotorEnVivo:
             return
         if nombre == "mejorar":
             self._poner_toggle("FaceRestorerEnableToggle", activo)
-        elif nombre == "varias":
-            self._todas = bool(activo)
-            self._poner_valor("MaxFacesToDetectSlider", 5 if activo else 1)
-            if self.en_vivo:
-                self._aplicar_cara(redetectar=True)
         elif nombre == "boca":
             self._poner_toggle("RestoreMouthEnableToggle", activo)
 
@@ -510,33 +503,6 @@ class MotorEnVivo:
             self._poner_valor("PrecisionTensorRTSelection", str(valor))
         elif clave == "detector":
             self._poner_valor("DetectorModelSelection", str(valor))
-        elif clave == "persona":
-            texto = str(valor)
-            if "izquierda" in texto:
-                self._persona = "izquierda"
-            elif "derecha" in texto:
-                self._persona = "derecha"
-            else:
-                self._persona = "principal"
-            if self.en_vivo:
-                self._aplicar_cara(redetectar=True)
-        elif clave == "volver_camara":
-            self._preparar_camaras()
-            posicion = self.indice_camara()
-            if posicion >= 0:
-                self.elegir_camara(posicion)
-
-    def probar_video(self) -> None:
-        from app.ui.widgets.actions import list_view_actions
-
-        antes = getattr(self.ventana, "video_loader_worker", None)
-        list_view_actions.select_target_medias(self.ventana, "files")
-        despues = getattr(self.ventana, "video_loader_worker", None)
-        if despues is not None and despues is not antes:
-            try:
-                despues.finished.connect(self._usar_video)
-            except Exception:
-                pass
 
     def estado(self) -> dict:
         fps, latencia = self._medicion()
@@ -622,8 +588,7 @@ class MotorEnVivo:
                 self._reintentar_si_sigue()
                 return
             finally:
-                if not self._todas:
-                    self._poner_valor("MaxFacesToDetectSlider", 1)
+                self._poner_valor("MaxFacesToDetectSlider", 1)
         caras = list(getattr(self.ventana, "target_faces", {}).values())
         if not caras:
             self.mensaje = "No te veo. Ponte frente a la cámara."
@@ -644,11 +609,29 @@ class MotorEnVivo:
         self.ventana.cur_selected_target_face_button = principal
         self.mensaje = ""
 
-    def _elegir_destinos(self, caras: list):
-        from app.ui.estudio.logica import indice_persona
+    def caja_halo(self) -> tuple[float, float, float, float] | None:
+        caja = self._caja_principal()
+        marco = getattr(self.ventana, "_marco_destino", None)
+        if caja is None or not marco:
+            return None
+        ancho, alto = float(marco[0]), float(marco[1])
+        if ancho <= 0 or alto <= 0:
+            return None
+        x1, y1, x2, y2 = caja
+        return (x1 / ancho, y1 / alto, (x2 - x1) / ancho, (y2 - y1) / alto)
 
-        if self._todas:
-            return caras
+    def _caja_principal(self):
+        from app.ui.estudio.logica import indice_principal
+
+        cajas = list((getattr(self.ventana, "_cajas_destino", {}) or {}).values())
+        marco = getattr(self.ventana, "_marco_destino", None)
+        if not cajas or not marco:
+            return None
+        return cajas[indice_principal(cajas, float(marco[0]), float(marco[1]))]
+
+    def _elegir_destinos(self, caras: list):
+        from app.ui.estudio.logica import indice_principal
+
         cajas_guardadas = getattr(self.ventana, "_cajas_destino", {}) or {}
         marco = getattr(self.ventana, "_marco_destino", (1280, 720)) or (1280, 720)
         con_caja = [
@@ -658,11 +641,10 @@ class MotorEnVivo:
         ]
         if not con_caja:
             return [caras[0]]
-        indice = indice_persona(
+        indice = indice_principal(
             [caja for _, caja in con_caja],
             float(marco[0]),
             float(marco[1]),
-            self._persona,
         )
         return [con_caja[indice][0]]
 
@@ -673,20 +655,6 @@ class MotorEnVivo:
     def _reintentar_deteccion(self) -> None:
         if self.en_vivo and self._foto_seleccionada() is not None:
             self._aplicar_cara(redetectar=True)
-
-    def _usar_video(self) -> None:
-        for boton in getattr(self.ventana, "target_videos", {}).values():
-            if getattr(boton, "file_type", "") in {"video", "image"}:
-                try:
-                    boton.load_media()
-                    boton.setChecked(True)
-                except Exception as exc:
-                    self.mensaje = f"No pude abrir el vídeo. {exc}"
-                    return
-                self.mensaje = "Vídeo de prueba. Para volver a la cámara, usa Avanzado."
-                if self.en_vivo:
-                    self._aplicar_cara(redetectar=True)
-                return
 
     def _preparar_camaras(self) -> None:
         from app.ui.widgets.actions import list_view_actions
