@@ -50,13 +50,24 @@ def test_instalar_cubre_lo_que_drako_necesita():
         "requirements_cu13.txt",
         "Drako Cam.lnk",
         "pythonw.exe",
-        "Arrancar.vbs",
+        "main.py",
         "comprobar_cuda.py",
         "No se pudo terminar la instalación",
         "winget no está",
+        "https://astral.sh/uv/install.ps1",
+        "irm https://astral.sh/uv/install.ps1 | iex",
+        "-ExecutionPolicy",
+        "Bypass",
+        ".local",
+        "tensorrt-cu13",
+        "Microsoft Store",
+        "Lo reutilizo",
     ):
         assert fragmento in texto
     assert 'Join-Path $env:APPDATA "DrakoCam"' not in texto
+    assert "Scripts\\activate" not in texto
+    assert "Activate.ps1" not in texto
+    assert "Set-ExecutionPolicy" not in texto
 
 
 def test_desinstalar_no_borra_appdata_sin_confirmacion():
@@ -144,10 +155,13 @@ def test_comprobar_cuda_tiene_sintaxis_valida_y_codigos_claros():
     assert "return 0" in fuente
 
 
-def test_start_bat_antepone_ffmpeg_local():
+def test_start_bat_usa_el_python_del_entorno():
     texto = _texto("Start.bat")
     assert "ffmpeg-7.1.1-essentials_build\\bin" in texto
     assert 'set "PATH=' in texto
+    assert '"%~dp0.venv\\Scripts\\python.exe"' in texto
+    assert '"%~dp0main.py"' in texto
+    assert "activate" not in texto.lower()
 
 
 def _llaves_equilibradas(texto: str, nombre: str) -> None:

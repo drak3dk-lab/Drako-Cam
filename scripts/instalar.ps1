@@ -25,7 +25,11 @@ $script:UvExe = ""
 
 $baseLocal = $env:LOCALAPPDATA
 if (-not $baseLocal) { $baseLocal = $env:TEMP }
-$script:UvDir = Join-Path (Join-Path $baseLocal "DrakoCam") "uv"
+if ($env:USERPROFILE) {
+    $script:UvDir = Join-Path (Join-Path $env:USERPROFILE ".local") "bin"
+} else {
+    $script:UvDir = Join-Path (Join-Path $baseLocal "DrakoCam") "uv"
+}
 $script:RutasLog = @(
     (Join-Path (Join-Path $baseLocal "DrakoCam\logs") "instalacion.log"),
     (Join-Path (Join-Path $script:Raiz "logs") "instalacion.log")
@@ -345,6 +349,56 @@ function Actualizar-Path {
     $env:Path = "$maquina;$usuario"
 }
 
+function Add-PathDeSesion([string]$Directorio) {
+    if (-not $Directorio) { return }
+    $limpio = $Directorio.TrimEnd('\')
+    $resto = @()
+    foreach ($parte in ($env:Path -split ';')) {
+        if (-not $parte) { continue }
+        if ($parte.TrimEnd('\').Equals($limpio, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $resto += $parte
+    }
+    $env:Path = $limpio + ';' + ($resto -join ';')
+}
+
+function Notificar-CambioDeEntorno {
+    try {
+        if (-not ("DrakoCam.Entorno" -as [type])) {
+            Add-Type -Namespace DrakoCam -Name Entorno -MemberDefinition '[DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
+        }
+        $resultado = [UIntPtr]::Zero
+        [void][DrakoCam.Entorno]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, "Environment", 2, 5000, [ref]$resultado)
+    } catch {
+        Write-Log "No pude avisar a Windows del PATH nuevo. Esta instalación ya lo usa, sin reiniciar."
+    }
+}
+
+function Add-PathDeUsuario([string]$Directorio) {
+    if (-not $Directorio) { return }
+    if (-not (Test-Path -LiteralPath $Directorio)) { return }
+    $limpio = $Directorio.TrimEnd('\')
+    $usuario = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not $usuario) { $usuario = "" }
+    $ya = $false
+    foreach ($parte in ($usuario -split ';')) {
+        if (-not $parte) { continue }
+        if ($parte.TrimEnd('\').Equals($limpio, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $ya = $true
+            break
+        }
+    }
+    if (-not $ya) {
+        if ($usuario) {
+            $nuevo = $limpio + ';' + $usuario
+        } else {
+            $nuevo = $limpio
+        }
+        [Environment]::SetEnvironmentVariable("Path", $nuevo, "User")
+        Notificar-CambioDeEntorno
+    }
+    Add-PathDeSesion $limpio
+}
+
 function Buscar-FfmpegEnPath {
     $cmd = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
@@ -408,9 +462,13 @@ function Instalar-UvDescarga {
 }
 
 function Asegurar-Uv {
-    $gestionado = Join-Path $script:UvDir "uv.exe"
-    if (Test-UvExe $gestionado) {
-        $script:UvExe = $gestionado
+    $uv = Join-Path $script:UvDir "uv.exe"
+    $cargo = Join-Path (Join-Path $env:USERPROFILE ".cargo") "bin\uv.exe"
+    Add-PathDeSesion $script:UvDir
+    if (Test-UvExe $uv) {
+        $script:UvExe = $uv
+        Add-PathDeUsuario $script:UvDir
+        Write-Log ("uv está en el PATH de esta sesión: {0}" -f $script:UvDir)
         if ($script:HayRed) {
             Write-Log "Busco si hay una versión más nueva de uv..."
             $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos @("self", "update") -TiempoSegundos 120
@@ -418,38 +476,78 @@ function Asegurar-Uv {
                 Write-Log "No se actualizó uv. Sigo con la copia que ya funciona."
             }
             if (-not (Test-UvExe $script:UvExe)) {
-                Write-Log "uv dejó de responder. Lo descargo otra vez."
-                Instalar-UvDescarga
-                if (-not (Test-UvExe $script:UvExe)) {
-                    throw "uv se descargó pero no arranca."
-                }
+                Write-Log "uv dejó de responder. Lo vuelvo a instalar."
+                Instalar-UvOficial
             }
         }
         return
     }
     if (-not $script:HayRed) {
+        if (Test-UvExe $cargo) {
+            $script:UvExe = $cargo
+            Add-PathDeSesion (Split-Path -Parent $cargo)
+            Write-Log "Sin internet. Uso el uv que ya está en la carpeta del usuario."
+            return
+        }
         $delPath = Get-Command uv.exe -ErrorAction SilentlyContinue
         if ($delPath -and (Test-UvExe $delPath.Source)) {
             $script:UvExe = $delPath.Source
+            Add-PathDeSesion (Split-Path -Parent $delPath.Source)
             Write-Log "Sin internet. Uso el uv que ya está en el PATH."
             return
         }
         throw "Falta uv y no hay internet. Conéctate y vuelve a ejecutar Instalar.bat."
     }
-    Write-Log "Descargo uv..."
+    Instalar-UvOficial
+}
+
+function Instalar-UvOficial {
+    Write-Log "Instalo uv con el instalador oficial. No hace falta reiniciar."
+    $orden = "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm https://astral.sh/uv/install.ps1 | iex"
+    $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $null = Invocar-Proceso -Archivo $powershell -Argumentos @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-Command", $orden
+    ) -TiempoSegundos 180
+    Add-PathDeSesion $script:UvDir
+    $uv = Join-Path $script:UvDir "uv.exe"
+    if (Test-UvExe $uv) {
+        $script:UvExe = $uv
+        Add-PathDeUsuario $script:UvDir
+        Write-Log ("uv quedó disponible sin reiniciar: {0}" -f $uv)
+        return
+    }
+    $cargoDir = Join-Path (Join-Path $env:USERPROFILE ".cargo") "bin"
+    $cargo = Join-Path $cargoDir "uv.exe"
+    Add-PathDeSesion $cargoDir
+    if (Test-UvExe $cargo) {
+        $script:UvExe = $cargo
+        Add-PathDeUsuario $cargoDir
+        Write-Log ("uv quedó disponible sin reiniciar: {0}" -f $cargo)
+        return
+    }
+    Write-Log "El instalador oficial no dejó uv en el PATH. Lo descargo en la carpeta del usuario."
     Instalar-UvDescarga
+    Add-PathDeSesion $script:UvDir
+    Add-PathDeUsuario $script:UvDir
     $script:UvExe = Join-Path $script:UvDir "uv.exe"
     if (-not (Test-UvExe $script:UvExe)) {
-        throw "uv se descargó pero no arranca."
+        throw "uv se instaló pero no arranca. Vuelve a ejecutar Instalar.bat."
     }
 }
 
-function Test-VenvSano {
-    $py = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
-    $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
-    if (-not (Test-Path -LiteralPath $py)) { return $false }
-    if (-not (Test-Path -LiteralPath $pyw)) { return $false }
-    $codigo = Invocar-Proceso -Archivo $py -Argumentos @(
+function Python-DelVenv {
+    return (Join-Path (Join-Path $script:Venv "Scripts") "python.exe")
+}
+
+function Pythonw-DelVenv {
+    return (Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe")
+}
+
+function Test-Python312([string]$Exe) {
+    if (-not (Test-Path -LiteralPath $Exe)) { return $false }
+    $codigo = Invocar-Proceso -Archivo $Exe -Argumentos @(
         "-c",
         "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)"
     ) -TiempoSegundos 60
@@ -457,29 +555,55 @@ function Test-VenvSano {
 }
 
 function Asegurar-Python {
+    Write-Log "No uso el Python de Windows ni el alias de la Microsoft Store. Instalo Python 3.12 con uv, sin activar el entorno."
     if ($script:HayRed) {
         $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos @("python", "install", "3.12") -TiempoSegundos 600
         if ($codigo -ne 0) {
             throw "No se pudo instalar Python 3.12 (código $codigo)."
         }
+        $hallado = Invocar-Captura -Archivo $script:UvExe -Argumentos @("python", "find", "3.12") -TiempoSegundos 60
+        $rutaPy = Primera-Linea $hallado.Texto
+        if ($rutaPy) { Write-Log ("Python de uv: {0}" -f $rutaPy) }
     }
-    if (Test-VenvSano) {
-        Write-Log "El entorno .venv ya está en Python 3.12."
+    $py = Python-DelVenv
+    $pyw = Pythonw-DelVenv
+    if (Test-Python312 $py) {
+        Write-Log "Ya hay un .venv con Python 3.12. Lo reutilizo. Si faltan componentes, los completo."
+        if (-not (Test-Path -LiteralPath $pyw)) {
+            Write-Log "Falta pythonw.exe. Reparo el entorno sin borrar lo que ya se hubiera instalado."
+            $null = Invocar-Proceso -Archivo $script:UvExe -Argumentos @("venv", "--python", "3.12", "--allow-existing", $script:Venv) -TiempoSegundos 180
+            if (-not (Test-Path -LiteralPath $pyw)) {
+                Write-Log "No pude recuperar pythonw.exe. Recreo el entorno y vuelvo a instalar los componentes."
+                $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos @("venv", "--python", "3.12", "--clear", $script:Venv) -TiempoSegundos 180
+                if ($codigo -ne 0) {
+                    throw "No se pudo reparar el entorno .venv (código $codigo)."
+                }
+            }
+        }
+        if (-not (Test-Python312 (Python-DelVenv))) {
+            throw "El entorno .venv no responde con Python 3.12."
+        }
         return
     }
     if (-not $script:HayRed) {
         throw "Falta el entorno de Python 3.12 y no hay internet."
     }
     if (Test-Path -LiteralPath $script:Venv) {
-        Write-Log "El entorno .venv no vale. Lo creo de nuevo."
-        Remove-Arbol $script:Venv
+        Write-Log "Hay un entorno .venv a medias. Lo reparo con Python 3.12."
+        $argumentos = @("venv", "--python", "3.12", "--clear", $script:Venv)
+    } else {
+        Write-Log "Creo el entorno .venv con Python 3.12."
+        $argumentos = @("venv", "--python", "3.12", $script:Venv)
     }
-    $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos @("venv", "--python", "3.12", $script:Venv) -TiempoSegundos 180
+    $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos $argumentos -TiempoSegundos 180
     if ($codigo -ne 0) {
         throw "No se pudo crear el entorno .venv (código $codigo)."
     }
-    if (-not (Test-VenvSano)) {
+    if (-not (Test-Python312 (Python-DelVenv))) {
         throw "El entorno .venv no responde con Python 3.12."
+    }
+    if (-not (Test-Path -LiteralPath (Pythonw-DelVenv))) {
+        throw "No aparece pythonw.exe. Sin él, el acceso directo no puede abrir Drako Cam."
     }
 }
 
@@ -505,6 +629,7 @@ function Intentar-WingetFfmpeg {
     $ver = Version-De-Ffmpeg $enPath
     if (Es-Ffmpeg711 $ver) {
         Write-Log ("FFmpeg {0} quedó disponible con winget." -f $ver)
+        Notificar-CambioDeEntorno
         return $true
     }
     Write-Log ("winget dejó FFmpeg {0}, que no es la 7.1.1. Descargo esa versión." -f $ver)
@@ -571,12 +696,20 @@ function Instalar-FfmpegDescarga {
     Write-Log ("FFmpeg local listo: {0}" -f $ver)
 }
 
+function Publicar-FfmpegEnPath {
+    if (-not (Test-Path -LiteralPath $script:FfmpegLocal)) { return }
+    $bin = Split-Path -Parent $script:FfmpegLocal
+    Add-PathDeUsuario $bin
+    Write-Log ("FFmpeg 7.1.1 está en el PATH de esta sesión: {0}" -f $bin)
+}
+
 function Asegurar-Ffmpeg {
     if (Test-Path -LiteralPath $script:FfmpegLocal) {
         $ver = Version-De-Ffmpeg $script:FfmpegLocal
         if (Es-Ffmpeg711 $ver) {
             Write-Log ("FFmpeg local ya está: {0}" -f $ver)
             Desbloquear $script:FfmpegLocal
+            Publicar-FfmpegEnPath
             return
         }
         Write-Log ("El FFmpeg de la carpeta es '{0}' y no es el 7.1.1. Lo reemplazo." -f $ver)
@@ -587,6 +720,7 @@ function Asegurar-Ffmpeg {
         $verPath = Version-De-Ffmpeg $enPath
         if (Es-Ffmpeg711 $verPath) {
             Write-Log ("FFmpeg {0} ya está en el PATH." -f $verPath)
+            Notificar-CambioDeEntorno
             return
         }
         if ($verPath) {
@@ -599,6 +733,7 @@ function Asegurar-Ffmpeg {
     if (Intentar-WingetFfmpeg) { return }
     Write-Log "Descargo FFmpeg 7.1.1 (el paquete essentials, unos 90 MB)."
     Instalar-FfmpegDescarga
+    Publicar-FfmpegEnPath
 }
 
 function Leer-ConfigUv {
@@ -639,13 +774,30 @@ function Instalar-Componentes {
     if (-not (Test-Path -LiteralPath $req)) {
         throw "Falta requirements_cu13.txt."
     }
-    $pythonExe = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
+    $pythonExe = Python-DelVenv
+    if (-not (Test-Path -LiteralPath $pythonExe)) {
+        throw "No encuentro el Python del entorno. Vuelve a ejecutar Instalar.bat."
+    }
     if (-not $script:HayRed) {
         if (Test-PaquetesMinimos) {
             Write-Log "Sin internet. No actualizo los componentes: los que hay sirven para abrir el programa."
             return
         }
         throw "Faltan componentes y no hay internet."
+    }
+    $libre = Espacio-LibreGB $script:Raiz
+    $minimo = 25
+    if (Test-PaquetesMinimos) { $minimo = 10 }
+    Write-Host ""
+    Write-Host "Ahora se descargan los componentes grandes: PyTorch (torch) y TensorRT (tensorrt-cu13)." -ForegroundColor Cyan
+    Write-Host "Son varios gigabytes. Según la red, puede tardar bastante: a veces más de media hora." -ForegroundColor Cyan
+    if ($libre -ge 0) {
+        Write-Host ("Espacio libre ahora: {0} GB. Hacen falta unos {1} GB." -f $libre, $minimo) -ForegroundColor Cyan
+    }
+    Write-Host "Si el entorno estaba a medias, esto completa lo que falte. No cierres la ventana." -ForegroundColor Cyan
+    Write-Host ""
+    if ($libre -ge 0 -and $libre -lt $minimo) {
+        throw ("No hay espacio suficiente para torch y tensorrt-cu13. Hacen falta unos {0} GB libres y hay {1} GB. Libera espacio y vuelve a ejecutar Instalar.bat." -f $minimo, $libre)
     }
     $cfg = Leer-ConfigUv
     $argumentos = @(
@@ -658,9 +810,6 @@ function Instalar-Componentes {
     foreach ($url in @($cfg.Urls)) {
         $argumentos += @("--extra-index-url", [string]$url)
     }
-    Write-Host ""
-    Write-Host "Esto descarga varios gigabytes. Puede tardar bastante. No cierres la ventana." -ForegroundColor Cyan
-    Write-Host ""
     $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos $argumentos -EntornoExtra @{
         UV_LINK_MODE = "copy"
         UV_NO_CONFIG = "1"
@@ -710,21 +859,24 @@ function Probar-Cuda {
 }
 
 function Nuevo-Acceso([string]$RutaLnk) {
+    $pyw = Pythonw-DelVenv
+    $main = Join-Path $script:Raiz "main.py"
+    if (-not (Test-Path -LiteralPath $pyw)) {
+        throw "No encuentro pythonw.exe. Sin él, el acceso directo no puede abrir Drako Cam."
+    }
     $dir = Split-Path -Parent $RutaLnk
     Asegurar-Directorio $dir
     $wsh = New-Object -ComObject WScript.Shell
     $lnk = $wsh.CreateShortcut($RutaLnk)
-    $lnk.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $lnk.Arguments = '//nologo "' + $script:Vbs + '"'
+    $lnk.TargetPath = $pyw
+    $lnk.Arguments = '"' + $main + '"'
     $lnk.WorkingDirectory = $script:Raiz
     $lnk.WindowStyle = 1
     $lnk.Description = "Abrir Drako Cam"
-    $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
-    if (Test-Path -LiteralPath $pyw) {
-        $lnk.IconLocation = "$pyw,0"
-    }
+    $lnk.IconLocation = "$pyw,0"
     $lnk.Save()
     Write-Log ("Acceso directo: {0}" -f $RutaLnk)
+    Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
 }
 
 function Crear-Accesos {
@@ -798,9 +950,6 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $script:Raiz "main.py"))) {
         throw "No encuentro main.py. Ejecuta Instalar.bat dentro de la carpeta completa de Drako Cam."
     }
-    if (-not (Test-Path -LiteralPath $script:Vbs)) {
-        throw "No encuentro scripts\Arrancar.vbs. La carpeta del programa está incompleta."
-    }
 
     if ($SoloComprobar) {
         Write-Log "Comprobación de arranque: Windows vale y el script ha llegado hasta aquí."
@@ -821,13 +970,13 @@ try {
     $yaHayTorch = Test-PaquetesMinimos
     if ($libre -ge 0) {
         Write-Log ("Espacio libre en el disco: {0} GB" -f $libre)
-        $minimo = 20
-        if ($yaHayTorch) { $minimo = 3 }
+        $minimo = 25
+        if ($yaHayTorch) { $minimo = 10 }
         if ($libre -lt $minimo) {
-            throw ("Hacen falta unos {0} GB libres y solo hay {1} GB. Libera espacio y vuelve a ejecutar Instalar.bat." -f $minimo, $libre)
+            throw ("No hay espacio para torch y tensorrt-cu13. Hacen falta unos {0} GB libres y solo hay {1} GB. Libera espacio y vuelve a ejecutar Instalar.bat." -f $minimo, $libre)
         }
         if (-not $yaHayTorch -and $libre -lt 30) {
-            Write-Log "Aviso: se recomiendan unos 30 GB libres. Hay sitio para intentarlo. Si falla por espacio, libera más y vuelve a ejecutar Instalar.bat."
+            Write-Log "Aviso: torch y tensorrt-cu13 ocupan varios gigabytes. Es más cómodo tener 30 GB libres. Hay sitio para intentarlo."
         }
     }
     Write-Log "Comprobando la conexión..."
