@@ -17,7 +17,7 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
 - El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
 
-La interfaz heredada de VisoMaster (paneles, controles y manual) sigue en inglés. Los cuadros nuevos de Drako Cam están en español.
+La pantalla principal está en español. Al abrir se ve la cámara. El uso es el de siempre, en tres pasos: elegir una foto, elegir la cámara y pulsar **EN VIVO**. Máscaras, restaurador, resolución, proveedor y la prueba con un vídeo están en **Avanzado**, cerrado.
 
 ## Requisitos
 
@@ -101,7 +101,7 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
 4. Comprueba los modelos. Los que falten se descargan y se verifica el hash. Puede tardar y ocupar varios gigabytes.
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
-6. Elige webcam como medio de destino y activa la cámara virtual (`pyvirtualcam`) para Zoom, Discord u OBS.
+6. En la pantalla: elige una foto (o arrástrala), confirma la cámara y pulsa **EN VIVO**. Para OBS, enciende la cámara virtual y, en OBS, añade un dispositivo de captura de vídeo llamado **Drako Cam**.
 
 El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra.
 
@@ -159,13 +159,20 @@ npm install
 npm test
 ```
 
+## Pantalla principal
+
+1. Elige una foto en la galería, o pulsa **Añadir foto**. También vale soltar un JPG, PNG, WEBP o BMP.
+2. La cámara ya está elegida (la última, o la primera). Si hay varias, el selector está junto a **EN VIVO**.
+3. Pulsa **EN VIVO**. La cara principal se detecta y se cambia sola. **PARAR** lo apaga. **Original / Cambiada** compara sin cerrar la cámara.
+
+Favoritos con estrella, y F1–F8 para saltar entre ellos. **Modo compacto** deja la ventana pequeña al lado de OBS. Si la cara se pierde, el programa lo dice y la transición suave sigue siendo la del motor.
+
+A la derecha, **Ajustar cara** tiene la boca, los ojos, los bordes, la nitidez, el color y los objetos que tapan la cara. Cada grupo se enciende con un interruptor. **Ver antes** (mantener pulsado) enseña la cara sin cambio. Esos ajustes se guardan con la foto. Auto, Máxima calidad, Equilibrado y Máximo FPS los dejan en valores concretos.
+
 ## Qué queda para la siguiente fase
 
-- Face Fader
-- Favoritos
-- Biblioteca
-- Face Picker
-- Traducción al español del resto de paneles heredados de VisoMaster
+- Medir FPS de inferencia en una RTX 50 real
+- Afinar el parecido con más de una foto de la misma persona a la vez
 
 ## Aviso de uso
 
