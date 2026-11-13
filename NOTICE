@@ -1,0 +1,26 @@
+Drako Cam
+Copyright (C) 2026 Drako
+
+Este programa es software libre: puedes redistribuirlo y/o modificarlo
+bajo los términos de la Licencia Pública General de GNU, versión 3
+(GNU GPL-3.0), publicada por la Free Software Foundation.
+El texto completo está en el archivo LICENSE.
+
+Drako Cam es un trabajo derivado de VisoMaster Fusion:
+https://github.com/VisoMasterFusion/VisoMaster-Fusion
+commit f2d6f5ebe190b631ee5c8972332083cf7f8a3e72 (2026-10-04)
+
+VisoMaster Fusion a su vez continúa el trabajo de VisoMaster, de
+@argenspin y @Alucard24, con aportaciones de la comunidad (Job Manager,
+mod experimental, VR180/Ref-LDM, optimizaciones y lanzador).
+
+Cambios de este derivado respecto a ese commit:
+- El producto pasa a llamarse Drako Cam.
+- Acceso con contraseña de administrador (Argon2id), asistente de
+  primer arranque, cambio de contraseña y bloqueo temporal.
+- Registro de uso local, cifrado y firmado.
+- Avisos a un bot de Telegram, con cola si no hay red.
+- Logs rotativos, captura de excepciones, reconexión de la webcam
+  y aviso visible si no hay CUDA.
+- Los pesos de los modelos no se versionan: se descargan en el primer
+  arranque y se comprueba su SHA-256.
