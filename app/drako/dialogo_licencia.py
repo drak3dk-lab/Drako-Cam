@@ -157,6 +157,9 @@ def _ejecutar(funcion, padre=None, texto: str | None = None):
             return
         dialogo = _dialogo("Drako Cam", padre)
         dialogo.setMinimumWidth(420)
+        from app.ui.estudio.ojo import MarcaOjo
+
+        dialogo.layout().addWidget(MarcaOjo(48, parpadea=True), alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         dialogo.layout().addWidget(_etiqueta(texto or "Comprobando el acceso…", "cuerpo", dialogo))
         barra = QtWidgets.QProgressBar(dialogo)
         barra.setRange(0, 0)

@@ -17,7 +17,9 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
 - El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
 
-La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara se aplica sola a la persona de enfrente y la imagen sale a OBS. Si falta la foto, EN VIVO lo dice. Cambiar todas las caras, o elegir la de la izquierda o la derecha, está en **Avanzado**. Cómo añadir la fuente está en [OBS](#obs).
+La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara de enfrente se cambia sola y la imagen sale a OBS. No se abre un vídeo, no hay prueba sin cámara y no se elige otra persona. Si falta la foto, EN VIVO lo dice. Cómo añadir la fuente está en [OBS](#obs).
+
+El logo provisional es un ojo, en un solo archivo: `app/ui/core/media/logo.svg`. El logo final se pone ahí, con los grupos `abierto` y `cerrado`. Después, `python scripts/generar_icono.py` escribe `installer/logo.ico`, que usan el instalador y los accesos directos.
 
 ## Requisitos
 

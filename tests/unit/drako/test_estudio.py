@@ -175,6 +175,9 @@ def test_el_panel_se_construye_sin_el_motor():
         fondo="Normal",
     )
     assert estudio.boton_vivo.text() == "PARAR"
+    assert estudio.ajustes.isHidden()
+    assert not hasattr(estudio, "boton_video")
+    assert "varias" not in estudio.toggles
     assert estudio.pill_obs.text() == "Salida activa"
     estudio.pedir_en_vivo.emit(False)
     estudio.close()

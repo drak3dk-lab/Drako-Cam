@@ -37,6 +37,11 @@ def instalar(ventana) -> bool:
             if muelle is not None:
                 muelle.hide()
         _ocultar_menus_heredados(ventana)
+        _quitar_lo_que_no_es_la_camara(ventana)
+        from app.ui.estudio.ojo import icono
+
+        ventana.setWindowIcon(icono())
+        ventana.setWindowTitle("Drako Cam")
         ventana.setCentralWidget(estudio)
         ventana.setMinimumSize(1100, 720)
         if ventana.width() < 1280 or ventana.height() < 800:
@@ -97,7 +102,6 @@ def _conectar(estudio: Estudio, motor: MotorEnVivo) -> None:
         lambda clave, valor: _hacer(estudio, motor, lambda: motor.poner_control(clave, valor) or "")
     )
     motor.al_cargar = estudio.ajustes.fijar
-    estudio.pedir_video.connect(lambda: _hacer(estudio, motor, lambda: motor.probar_video() or ""))
 
 
 def _hacer(estudio: Estudio, motor: MotorEnVivo, accion) -> None:
@@ -115,6 +119,7 @@ def _refrescar(estudio: Estudio, motor: MotorEnVivo) -> None:
         estudio.mostrar_caras(caras, seleccion)
         estudio.mostrar_camaras(motor.camaras(), motor.indice_camara())
         estudio.mostrar_perfiles(motor.perfiles())
+        estudio.poner_halo(motor.caja_halo())
         estado = motor.estado()
         estudio.mostrar_estado(
             sesion=bool(estado["cambio_activo"]),
@@ -138,6 +143,28 @@ def _refrescar(estudio: Estudio, motor: MotorEnVivo) -> None:
         )
     except Exception as exc:
         print(f"[AVISO] No se pudo refrescar la pantalla: {exc}")
+
+
+def _quitar_lo_que_no_es_la_camara(ventana) -> None:
+    """Find Faces y abrir un vídeo o una imagen como objetivo no forman parte del producto."""
+    boton = getattr(ventana, "findTargetFacesButton", None)
+    if boton is not None:
+        try:
+            boton.clicked.disconnect()
+        except Exception:
+            pass
+        boton.setEnabled(False)
+        boton.hide()
+        boton.setParent(None)
+    for nombre in ("buttonTargetVideosPath", "buttonInputFacesPath"):
+        otro = getattr(ventana, nombre, None)
+        if otro is None:
+            continue
+        try:
+            otro.clicked.disconnect()
+        except Exception:
+            pass
+        otro.setEnabled(False)
 
 
 def _mostrar_asistente(estudio: Estudio, motor: MotorEnVivo) -> None:

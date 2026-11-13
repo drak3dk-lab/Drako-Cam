@@ -9,6 +9,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.estudio.ajuste_panel import PanelAjustes
+from app.ui.estudio.ojo import BotonIris, HaloCara, MarcaOjo
 from app.ui.estudio.estilo import ESTILO
 from app.ui.estudio.logica import (
     CALIDADES,
@@ -240,7 +241,6 @@ class Estudio(QtWidgets.QWidget):
     pedir_toggle = QtCore.Signal(str, bool)
     pedir_ajuste = QtCore.Signal(str, object)
     pedir_control = QtCore.Signal(str, object)
-    pedir_video = QtCore.Signal()
     pedir_compacto = QtCore.Signal(bool)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None):
@@ -285,6 +285,8 @@ class Estudio(QtWidgets.QWidget):
         barra.setFixedHeight(52)
         fila = QtWidgets.QHBoxLayout(barra)
         fila.setContentsMargins(16, 0, 16, 0)
+        fila.addWidget(MarcaOjo(28))
+        fila.addSpacing(8)
         marca = QtWidgets.QLabel("DRAKO")
         marca.setObjectName("marca")
         sub = QtWidgets.QLabel("CAM")
@@ -339,10 +341,16 @@ class Estudio(QtWidgets.QWidget):
         self.hueco_vista = QtWidgets.QWidget()
         self.vista_caja = QtWidgets.QVBoxLayout(self.hueco_vista)
         self.vista_caja.setContentsMargins(0, 0, 0, 0)
-        self.aviso_vacio = QtWidgets.QLabel("La cámara se verá aquí")
-        self.aviso_vacio.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.aviso_vacio.setObjectName("secundario")
+        self.aviso_vacio = QtWidgets.QWidget()
+        vacio_caja = QtWidgets.QVBoxLayout(self.aviso_vacio)
+        vacio_caja.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        vacio_caja.addWidget(MarcaOjo(72), alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        vacio_texto = QtWidgets.QLabel("La cámara se verá aquí")
+        vacio_texto.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        vacio_texto.setObjectName("secundario")
+        vacio_caja.addWidget(vacio_texto)
         self.vista_caja.addWidget(self.aviso_vacio)
+        self.halo = HaloCara(self.marco)
         marco_caja.addWidget(self.hueco_vista, 1)
         self.banner = QtWidgets.QLabel(self.marco)
         self.banner.setWordWrap(True)
@@ -368,7 +376,7 @@ class Estudio(QtWidgets.QWidget):
         self.galeria = self._galeria()
         caja.addWidget(self.galeria)
         vivos = QtWidgets.QHBoxLayout()
-        self.boton_vivo = BotonPildora("EN VIVO")
+        self.boton_vivo = BotonIris("EN VIVO")
         self.boton_vivo.setObjectName("enVivo")
         self.boton_vivo.setMinimumWidth(168)
         self.boton_vivo.clicked.connect(self._pulsar_en_vivo)
@@ -419,8 +427,10 @@ class Estudio(QtWidgets.QWidget):
         self.boton_anadir.setFixedSize(120, 128)
         self.boton_anadir.clicked.connect(self._pedir_archivos)
         self.tira_caja.addWidget(self.boton_anadir)
-        self.vacio = QtWidgets.QLabel("O suelta aquí una foto JPG, PNG, WEBP o BMP")
+        self.vacio = QtWidgets.QLabel("O suelta aquí una foto")
+        self.ojo_vacio = MarcaOjo(28)
         self.vacio.setObjectName("pista")
+        self.tira_caja.addWidget(self.ojo_vacio)
         self.tira_caja.addWidget(self.vacio)
         self.tira_caja.addStretch(1)
         self.scroll.setWidget(self.tira)
@@ -439,6 +449,7 @@ class Estudio(QtWidgets.QWidget):
         caja.setContentsMargins(18, 18, 18, 18)
         caja.setSpacing(14)
         fila = QtWidgets.QHBoxLayout()
+        fila.addWidget(MarcaOjo(18))
         etiqueta = QtWidgets.QLabel("Salida a OBS")
         etiqueta.setObjectName("pista")
         fila.addWidget(etiqueta)
@@ -541,7 +552,17 @@ class Estudio(QtWidgets.QWidget):
         self.nota_calidad.setObjectName("pista")
         caja.addWidget(self.nota_calidad)
         caja.addWidget(self._linea())
+        self.plegar_ajustes = QtWidgets.QToolButton()
+        self.plegar_ajustes.setText("Ajustar cara")
+        self.plegar_ajustes.setCheckable(True)
+        self.plegar_ajustes.setChecked(False)
+        self.plegar_ajustes.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.plegar_ajustes.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+        self.plegar_ajustes.setMinimumHeight(44)
+        self.plegar_ajustes.toggled.connect(self._abrir_ajustes)
+        caja.addWidget(self.plegar_ajustes)
         self.ajustes = PanelAjustes()
+        self.ajustes.hide()
         self.ajustes.cambiado.connect(self.pedir_control.emit)
         caja.addWidget(self.ajustes)
         caja.addWidget(self._linea())
@@ -598,8 +619,7 @@ class Estudio(QtWidgets.QWidget):
         avanzado.setContentsMargins(0, 0, 0, 0)
         avanzado.setSpacing(8)
         nota = QtWidgets.QLabel(
-            "Por defecto solo cambia la persona de enfrente, la más grande y centrada. "
-            "Lo de aquí no hace falta tocarlo."
+            "Resolución, proveedor y detector. La cara de enfrente se elige sola."
         )
         nota.setWordWrap(True)
         nota.setObjectName("pista")
@@ -617,22 +637,6 @@ class Estudio(QtWidgets.QWidget):
         )
         for combo in (self.resolucion, self.proveedor, self.detector):
             avanzado.addWidget(combo)
-        self.persona = self._combo(
-            "A quién",
-            ["La principal", "La de la izquierda", "La de la derecha"],
-            "persona",
-        )
-        avanzado.addWidget(self.persona)
-        varias = QtWidgets.QCheckBox("Cambiar todas las caras")
-        varias.toggled.connect(lambda activo: self.pedir_toggle.emit("varias", activo))
-        self.toggles["varias"] = varias
-        avanzado.addWidget(varias)
-        self.boton_video = BotonPildora("Probar con un vídeo")
-        self.boton_video.clicked.connect(self.pedir_video.emit)
-        avanzado.addWidget(self.boton_video)
-        self.boton_volver = BotonPildora("Volver a la cámara")
-        self.boton_volver.clicked.connect(lambda: self.pedir_ajuste.emit("volver_camara", True))
-        avanzado.addWidget(self.boton_volver)
         caja.addWidget(self.panel_avanzado)
         caja.addStretch(1)
         scroll.setWidget(interior)
@@ -748,6 +752,7 @@ class Estudio(QtWidgets.QWidget):
         self._caras.clear()
         self._vaciar(self.favoritos)
         self.vacio.setVisible(not caras)
+        self.ojo_vacio.setVisible(not caras)
         favoritas = 0
         for cara in caras:
             ficha = FichaCara(cara)
@@ -818,6 +823,7 @@ class Estudio(QtWidgets.QWidget):
         self.marco.encender(sesion)
         _propiedad(self.boton_vivo, "vivo", en_vivo)
         self.boton_vivo.setText("PARAR" if sesion else "EN VIVO")
+        self.boton_vivo.respirar(en_vivo)
         self._marcar_original(original)
         self.chip_vivo.setVisible(en_vivo)
         if self.toggles["fps"].isChecked() and fps is not None and en_vivo:
@@ -920,6 +926,7 @@ class Estudio(QtWidgets.QWidget):
         self.chip_fps.move(self.marco.width() - self.chip_fps.sizeHint().width() - 28, self.marco.height() - 48)
         self.chip_vivo.raise_()
         self.chip_fps.raise_()
+        self.halo.colocar(self.halo._caja)
 
     def _marcar_original(self, original: bool) -> None:
         boton = self.segmento_vista.button(0 if original else 1)
@@ -1057,6 +1064,15 @@ class Estudio(QtWidgets.QWidget):
         from app.ui.estudio.logica import texto_para_obs
 
         return texto_para_obs(resolucion, fps, fondo)
+
+    def poner_halo(self, caja: tuple[float, float, float, float] | None) -> None:
+        self.halo.colocar(caja)
+
+    def _abrir_ajustes(self, abierto: bool) -> None:
+        self.ajustes.setVisible(abierto)
+        self.plegar_ajustes.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if abierto else QtCore.Qt.ArrowType.RightArrow
+        )
 
     def _abrir_avanzado(self, abierto: bool) -> None:
         self.panel_avanzado.setVisible(abierto)

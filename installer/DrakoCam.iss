@@ -27,6 +27,8 @@ OutputBaseFilename=DrakoCam-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=logo.ico
+UninstallDisplayIcon={app}\installer\logo.ico
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -68,8 +70,8 @@ Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Step by step guide to install Conda and Visomaster for RTX 50xx series.pdf"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autodesktop}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; Comment: "Abrir Drako Cam"
-Name: "{autoprograms}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; Comment: "Abrir Drako Cam"
+Name: "{autodesktop}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\logo.ico"; Comment: "Abrir Drako Cam"
+Name: "{autoprograms}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\logo.ico"; Comment: "Abrir Drako Cam"
 
 [Run]
 Filename: "{app}\Instalar.bat"; Parameters: "-DesdeInstalador"; WorkingDir: "{app}"; StatusMsg: "Preparando Python, FFmpeg y los componentes. Puede tardar mucho. No cierres la ventana negra."; Flags: waituntilterminated
