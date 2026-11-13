@@ -9,8 +9,12 @@ INTRO_AVISO = (
 )
 PUNTOS_AVISO = (
     (
-        "Código y nombre",
-        "El código personal y el nombre con el que el administrador lo creó.",
+        "Nombre y oficina",
+        "El nombre de la persona y el de la oficina donde se instala el programa.",
+    ),
+    (
+        "Código de acceso",
+        "El código personal que el administrador entrega si aprueba la solicitud.",
     ),
     (
         "Nombre de este equipo",
@@ -41,9 +45,23 @@ CASILLA_AVISO = (
 
 TITULO_CODIGO = "Código personal"
 TEXTO_CODIGO = (
-    "El administrador te ha dado un código personal. Se comprueba con su servidor "
-    "y, si es válido, se guarda cifrado en este equipo. No se vuelve a pedir, "
-    "salvo que lo revoque o lo cambies."
+    "Si todavía no tienes código, escribe tu nombre y la oficina y pulsa Pedir acceso. "
+    "El administrador lo verá y, si lo aprueba, te pasará el código. "
+    "Si ya te lo dio, escríbelo abajo y pulsa Entrar. Se guarda cifrado en este equipo."
+)
+MENSAJE_SOLICITUD_ENVIADA = (
+    "Solicitud enviada. Cuando el administrador te pase el código, escríbelo aquí."
+)
+MENSAJE_SOLICITUD_PENDIENTE = (
+    "Ya hay una solicitud pendiente para este equipo. "
+    "Cuando te pasen el código, escríbelo aquí."
+)
+MENSAJE_SOLICITUD_APROBADA = (
+    "Este equipo ya tiene un código aprobado. Pídeselo al administrador y escríbelo aquí. "
+    "El servidor no vuelve a mostrarlo."
+)
+MENSAJE_SOLICITUD_LIMITADA = (
+    "Demasiadas solicitudes desde esta red. Espera un rato y vuelve a probar."
 )
 PLACEHOLDER_CODIGO = "DRAKO-XXXX-XXXX-XXXX-XXXX"
 

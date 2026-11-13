@@ -30,6 +30,10 @@ from app.drako.auditoria import (
 from app.drako.configuracion import ConfiguracionLocal
 from app.drako.licencia_config import gracia_local_segundos, resolver_clave, resolver_url, url_aceptada
 from app.drako.textos_licencia import (
+    MENSAJE_SOLICITUD_APROBADA,
+    MENSAJE_SOLICITUD_ENVIADA,
+    MENSAJE_SOLICITUD_LIMITADA,
+    MENSAJE_SOLICITUD_PENDIENTE,
     MENSAJES_ARRANQUE,
     MENSAJES_FORMULARIO,
     VERSION_AVISO,
@@ -188,6 +192,16 @@ class ClienteLicencia:
     ) -> RespuestaLicencia:
         return self._pedir("/v1/cerrar", codigo, huella, equipo, sesion, timeout)
 
+    def solicitar(self, nombre: str, oficina: str, huella: str, equipo: str) -> RespuestaLicencia:
+        if not self.configurado():
+            raise ErrorConfiguracionLicencia("Servidor de acceso sin configurar.")
+        estado, datos = self.transporte.post(
+            self.url + "/v1/solicitud",
+            {"nombre": nombre, "oficina": oficina, "huella": huella, "equipo": equipo},
+            None,
+        )
+        return self._interpretar(estado, datos)
+
     def _pedir(
         self,
         ruta: str,
@@ -204,6 +218,9 @@ class ClienteLicencia:
             {"codigo": codigo, "huella": huella, "equipo": equipo, "sesion": sesion},
             timeout,
         )
+        return self._interpretar(estado, datos)
+
+    def _interpretar(self, estado: int, datos: dict) -> RespuestaLicencia:
         carga = datos.get("carga")
         firma = datos.get("firma")
         if estado != 200 or not isinstance(carga, dict) or not isinstance(firma, str):
@@ -456,6 +473,32 @@ class GestorLicencia:
             self._guardar_codigo(normal)
             self._persistir(decision)
             return decision
+
+    def enviar_solicitud(self, nombre: str, oficina: str) -> DecisionAcceso:
+        with self._lock:
+            if not self.cliente.configurado():
+                return _denegar("sin_configurar", "formulario")
+            try:
+                respuesta = self.cliente.solicitar(nombre, oficina, self.huella, self.equipo)
+            except ErrorDeRed:
+                return _denegar("sin_red", "formulario")
+            if not respuesta.firma_ok or str(respuesta.carga.get("accion")) != "solicitud":
+                return _denegar("firma_invalida", "formulario")
+            if str(respuesta.carga.get("huella") or "") != self.huella:
+                return _denegar("firma_invalida", "formulario")
+            motivo = str(respuesta.carga.get("motivo") or "")
+            textos = {
+                "enviada": MENSAJE_SOLICITUD_ENVIADA,
+                "ya_pendiente": MENSAJE_SOLICITUD_PENDIENTE,
+                "ya_aprobada": MENSAJE_SOLICITUD_APROBADA,
+                "limitada": MENSAJE_SOLICITUD_LIMITADA,
+                "mal_formato": MENSAJES_FORMULARIO["mal_formato"],
+            }
+            return DecisionAcceso(
+                permitir=False,
+                motivo=motivo or "sin_red",
+                mensaje=textos.get(motivo) or MENSAJES_FORMULARIO["sin_red"],
+            )
 
     def comprobar_arranque(self) -> DecisionAcceso:
         with self._lock:

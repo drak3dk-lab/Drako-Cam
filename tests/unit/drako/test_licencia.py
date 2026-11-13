@@ -279,6 +279,17 @@ class ServidorFalso:
         if self.fallar:
             raise ErrorDeRed("sin red")
         accion = url.rsplit("/", 1)[-1]
+        if accion == "solicitud":
+            return self._firmar(
+                "solicitud",
+                True,
+                "enviada",
+                "pendiente",
+                "",
+                cuerpo.get("huella") or "",
+                str(cuerpo.get("nombre") or ""),
+                "sol-1",
+            )
         codigo = normalizar_codigo(cuerpo.get("codigo", "")) or ""
         huella = cuerpo.get("huella") or ""
         persona = self.personas.get(codigo)
@@ -414,6 +425,27 @@ def test_una_respuesta_corrupta_no_guarda_el_codigo(tmp_path):
     assert gestor.leer_codigo() is None
 
 
+def test_la_solicitud_no_entrega_el_codigo_ni_lo_guarda(tmp_path):
+    servidor = ServidorFalso()
+    marca = {"t": float(servidor.ahora)}
+    gestor = _gestor(tmp_path, servidor, marca)
+    decision = gestor.enviar_solicitud("Ana García", "Sexta planta")
+    assert decision.motivo == "enviada"
+    assert "DRAKO-" not in decision.mensaje
+    assert gestor.leer_codigo() is None
+
+
+def test_sin_servidor_el_instalador_avisa_y_no_falla(monkeypatch, capsys):
+    monkeypatch.setattr("app.drako.licencia_config.URL_SERVIDOR", "")
+    monkeypatch.setattr("app.drako.licencia_config.CLAVE_PUBLICA_HEX", "")
+    monkeypatch.delenv("DRAKO_CAM_LICENCIA_URL", raising=False)
+    monkeypatch.delenv("DRAKO_CAM_LICENCIA_CLAVE_PUBLICA", raising=False)
+    from app.drako.solicitud_instalador import main
+
+    assert main(["--estado"]) == 10
+    assert "Falta la configuración del servidor" in capsys.readouterr().out
+
+
 def test_el_aviso_nombra_ip_uso_y_ubicacion_y_no_hay_secretos_en_el_repo():
     texto = " ".join(
         [textos.INTRO_AVISO, textos.CIERRE_AVISO, textos.CASILLA_AVISO]
@@ -431,10 +463,15 @@ def test_el_aviso_nombra_ip_uso_y_ubicacion_y_no_hay_secretos_en_el_repo():
         "@BotFather",
         "Europe/Bucharest",
         "DRAKO_CAM_LICENCIA_URL",
+        "/pendientes",
+        "callback_query",
+        "Aprobar",
     ):
         assert obligatorio in guia
-    sql = (RAIZ / "server" / "migrations" / "0001_inicio.sql").read_text(encoding="utf-8").strip()
-    assert sql in (RAIZ / "server" / "src" / "esquema.ts").read_text(encoding="utf-8")
+    esquema = (RAIZ / "server" / "src" / "esquema.ts").read_text(encoding="utf-8")
+    for nombre in ("0001_inicio.sql", "0002_solicitudes.sql"):
+        sql = (RAIZ / "server" / "migrations" / nombre).read_text(encoding="utf-8").strip()
+        assert sql in esquema
     toml = (RAIZ / "server" / "wrangler.toml").read_text(encoding="utf-8")
     assert "SIGNING_SEED =" not in toml
     assert "MODO_PRUEBA" not in toml

@@ -32,8 +32,14 @@ export function textoLugar(ciudad: string, pais: string): string {
   return ciudad || pais || "ubicación no disponible";
 }
 
+export function textoOficina(oficina: string | null | undefined): string {
+  const limpio = (oficina || "").trim();
+  return limpio || "no indicada";
+}
+
 export function textoInicio(datos: {
   persona: string;
+  oficina?: string | null;
   equipo: string;
   ciudad: string;
   pais: string;
@@ -43,6 +49,7 @@ export function textoInicio(datos: {
   return [
     "Drako Cam — sesión iniciada",
     `Persona: ${datos.persona}`,
+    `Oficina: ${textoOficina(datos.oficina)}`,
     `Equipo: ${datos.equipo}`,
     `Lugar: ${textoLugar(datos.ciudad, datos.pais)}`,
     `IP: ${datos.ip || "no disponible"}`,
@@ -52,6 +59,7 @@ export function textoInicio(datos: {
 
 export function textoCierre(datos: {
   persona: string;
+  oficina?: string | null;
   equipo: string;
   duracion: number;
   ahora: number;
@@ -59,6 +67,7 @@ export function textoCierre(datos: {
   return [
     "Drako Cam — sesión cerrada",
     `Persona: ${datos.persona}`,
+    `Oficina: ${textoOficina(datos.oficina)}`,
     `Equipo: ${datos.equipo}`,
     `Duración: ${textoDuracion(datos.duracion)}`,
     `Hora de cierre: ${formatearHora(datos.ahora)}`,
@@ -67,6 +76,7 @@ export function textoCierre(datos: {
 
 export function textoCorte(datos: {
   persona: string;
+  oficina?: string | null;
   equipo: string;
   duracion: number;
   ahora: number;
@@ -75,6 +85,7 @@ export function textoCorte(datos: {
     "Drako Cam — sesión cortada",
     "Motivo: código revocado",
     `Persona: ${datos.persona}`,
+    `Oficina: ${textoOficina(datos.oficina)}`,
     `Equipo: ${datos.equipo}`,
     `Duración: ${textoDuracion(datos.duracion)}`,
     `Hora: ${formatearHora(datos.ahora)}`,
@@ -84,6 +95,7 @@ export function textoCorte(datos: {
 export function textoRechazo(datos: {
   motivo: string;
   codigo: string;
+  oficina?: string | null;
   equipo: string;
   ciudad: string;
   pais: string;
@@ -100,6 +112,7 @@ export function textoRechazo(datos: {
     "Drako Cam — código rechazado",
     `Motivo: ${motivos[datos.motivo] || datos.motivo}`,
     `Código: ${datos.codigo || "no indicado"}`,
+    `Oficina: ${textoOficina(datos.oficina)}`,
     `Equipo: ${datos.equipo || "desconocido"}`,
     `Lugar: ${textoLugar(datos.ciudad, datos.pais)}`,
     `IP: ${datos.ip || "no disponible"}`,
@@ -111,19 +124,36 @@ export function tokenPareceValido(token: string): boolean {
   return token.length >= 20 && token.length <= 200 && /^[0-9]+:[A-Za-z0-9_-]+$/.test(token);
 }
 
-export async function enviarTelegram(env: Env, texto: string): Promise<void> {
+export async function llamarTelegram(
+  env: Env,
+  metodo: string,
+  cuerpo: Record<string, unknown>,
+): Promise<void> {
   const token = (env.TELEGRAM_BOT_TOKEN || "").trim();
-  const chat = (env.TELEGRAM_ADMIN_CHAT_ID || "").trim();
-  if (!token || !chat || !texto || !tokenPareceValido(token)) return;
+  if (!token || !tokenPareceValido(token) || !/^[A-Za-z]+$/.test(metodo)) return;
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${token}/${metodo}`, {
       method: "POST",
       headers: { "content-type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ chat_id: chat, text: texto.slice(0, 4000) }),
+      body: JSON.stringify(cuerpo),
     });
   } catch {
     // El acceso no depende de que Telegram conteste.
   }
+}
+
+export async function enviarTelegram(
+  env: Env,
+  texto: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  const chat = (env.TELEGRAM_ADMIN_CHAT_ID || "").trim();
+  if (!chat || !texto) return;
+  await llamarTelegram(env, "sendMessage", {
+    chat_id: chat,
+    text: texto.slice(0, 4000),
+    ...extra,
+  });
 }
 
 export function dejarAviso(ctx: ExecutionContext, env: Env, texto: string): void {

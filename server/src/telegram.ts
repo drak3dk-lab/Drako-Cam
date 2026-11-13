@@ -1,5 +1,6 @@
-import { enviarTelegram, formatearHora, textoDuracion, textoLugar } from "./avisos";
+import { enviarTelegram, formatearHora, textoDuracion, textoLugar, textoOficina } from "./avisos";
 import { generarCodigo, iguales, limpiarNombre, normalizarCodigo } from "./crypto";
+import { contestarCallback } from "./solicitud";
 import type { Env, Persona, Sesion } from "./tipos";
 
 const AYUDA = [
@@ -9,6 +10,7 @@ const AYUDA = [
   "/revocar <código> — impide que vuelva a entrar",
   "/activos — quién lo está usando ahora",
   "/historial <código> — últimas sesiones",
+  "/pendientes — solicitudes que aún no has decidido",
   "/borrar <código> — elimina a la persona y su historial",
   "/ayuda — esta lista",
 ].join("\n");
@@ -31,10 +33,38 @@ export async function atenderWebhook(
   if (!iguales(recibido, secreto)) {
     return Response.json({ error: "no autorizado" }, { status: 401 });
   }
-  let update: { message?: { text?: unknown; chat?: { id?: unknown } } };
+  let update: {
+    message?: { text?: unknown; chat?: { id?: unknown } };
+    callback_query?: {
+      id?: unknown;
+      data?: unknown;
+      from?: { id?: unknown };
+      message?: { message_id?: unknown; chat?: { id?: unknown } };
+    };
+  };
   try {
     update = (await request.json()) as typeof update;
   } catch {
+    return jsonVacio();
+  }
+  const consulta = update.callback_query;
+  if (consulta && typeof consulta.id === "string") {
+    const chatId = consulta.message?.chat?.id;
+    const desde = consulta.from?.id;
+    const esAdmin = iguales(String(chatId ?? ""), chatAdmin) && iguales(String(desde ?? ""), chatAdmin);
+    if (!esAdmin) {
+      return jsonVacio();
+    }
+    await contestarCallback(
+      env,
+      {
+        id: consulta.id,
+        data: typeof consulta.data === "string" ? consulta.data : "",
+        chatId: String(chatId),
+        messageId: typeof consulta.message?.message_id === "number" ? consulta.message.message_id : null,
+      },
+      ahora,
+    );
     return jsonVacio();
   }
   const mensaje = update.message;
@@ -58,6 +88,7 @@ async function orden(env: Env, texto: string, ahora: number): Promise<string> {
   if (comando === "revocar") return revocar(env, argumento, ahora);
   if (comando === "activos") return activos(env, ahora);
   if (comando === "historial") return historial(env, argumento);
+  if (comando === "pendientes") return pendientes(env);
   if (comando === "borrar") return borrar(env, argumento);
   return "Ese comando no existe.\n\n" + AYUDA;
 }
@@ -87,14 +118,15 @@ async function crear(env: Env, argumento: string, ahora: number): Promise<string
 
 async function listar(env: Env): Promise<string> {
   const filas = await env.DB.prepare(
-    "SELECT codigo, nombre, revocado_en, huella, equipo FROM personas ORDER BY creado_en DESC LIMIT 40",
+    "SELECT codigo, nombre, oficina, revocado_en, huella, equipo FROM personas ORDER BY creado_en DESC LIMIT 40",
   ).all<Persona>();
   const personas = filas.results || [];
   if (!personas.length) return "Todavía no hay códigos. Crea uno con /nuevo <nombre>.";
   const lineas = personas.map((persona) => {
     const estado = persona.revocado_en ? "revocado" : "activo";
     const equipo = persona.equipo ? ` — ${persona.equipo}` : " — sin equipo";
-    return `• ${persona.nombre} — ${persona.codigo} — ${estado}${persona.revocado_en ? "" : equipo}`;
+    const oficina = ` — ${textoOficina(persona.oficina)}`;
+    return `• ${persona.nombre} — ${persona.codigo} — ${estado}${oficina}${persona.revocado_en ? "" : equipo}`;
   });
   return [`Códigos (${personas.length}):`, ...lineas].join("\n");
 }
@@ -152,7 +184,7 @@ async function activos(env: Env, ahora: number): Promise<string> {
   if (!sesiones.length) return "Ahora mismo nadie está usando Drako Cam.";
   const lineas = sesiones.map((sesion) => {
     const minutos = Math.max(0, Math.floor((ahora - sesion.inicio) / 60));
-    return `• ${sesion.nombre} — ${sesion.equipo} — ${textoLugar(sesion.ciudad, sesion.pais)} — desde ${formatearHora(sesion.inicio)} — hace ${minutos} min`;
+    return `• ${sesion.nombre} — ${textoOficina(sesion.oficina)} — ${sesion.equipo} — ${textoLugar(sesion.ciudad, sesion.pais)} — desde ${formatearHora(sesion.inicio)} — hace ${minutos} min`;
   });
   return [`En uso ahora (${sesiones.length}):`, ...lineas].join("\n");
 }
@@ -176,19 +208,41 @@ async function historial(env: Env, argumento: string): Promise<string> {
     .bind(codigo)
     .all<Sesion>();
   const sesiones = filas.results || [];
-  const cabecera = `Historial de ${persona.nombre} (${codigo}):`;
+  const cabecera = `Historial de ${persona.nombre}, oficina ${textoOficina(persona.oficina)} (${codigo}):`;
   if (!sesiones.length) return `${cabecera}\nTodavía no hay sesiones.`;
   const lineas = sesiones.map((sesion) => {
     const lugar = textoLugar(sesion.ciudad, sesion.pais);
     const ip = sesion.ip ? ` — ${sesion.ip}` : "";
+    const oficina = textoOficina(sesion.oficina || persona.oficina);
     if (sesion.fin == null) {
-      return `• ${formatearHora(sesion.inicio)} — en curso — ${sesion.equipo} — ${lugar}${ip}`;
+      return `• ${formatearHora(sesion.inicio)} — en curso — ${sesion.equipo} — ${oficina} — ${lugar}${ip}`;
     }
     const duracion = textoDuracion(sesion.duracion_segundos ?? Math.max(0, sesion.fin - sesion.inicio));
     const motivo = sesion.motivo_cierre === "sin_latido" ? " — se quedó sin latido" : "";
-    return `• ${formatearHora(sesion.inicio)} — ${duracion} — ${sesion.equipo} — ${lugar}${ip}${motivo}`;
+    return `• ${formatearHora(sesion.inicio)} — ${duracion} — ${sesion.equipo} — ${oficina} — ${lugar}${ip}${motivo}`;
   });
   return [cabecera, ...lineas].join("\n");
+}
+
+async function pendientes(env: Env): Promise<string> {
+  const filas = await env.DB.prepare(
+    `SELECT nombre, oficina, equipo, ciudad, pais, creada_en
+     FROM solicitudes WHERE estado = 'pendiente'
+     ORDER BY creada_en DESC LIMIT 40`,
+  ).all<{
+    nombre: string;
+    oficina: string;
+    equipo: string;
+    ciudad: string;
+    pais: string;
+    creada_en: number;
+  }>();
+  const lista = filas.results || [];
+  if (!lista.length) return "No hay solicitudes pendientes.";
+  const lineas = lista.map((fila) =>
+    `• ${fila.nombre} — ${textoOficina(fila.oficina)} — ${fila.equipo} — ${textoLugar(fila.ciudad, fila.pais)} — ${formatearHora(fila.creada_en)}`,
+  );
+  return [`Solicitudes pendientes (${lista.length}):`, ...lineas].join("\n");
 }
 
 async function borrar(env: Env, argumento: string): Promise<string> {

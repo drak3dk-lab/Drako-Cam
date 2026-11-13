@@ -1,6 +1,7 @@
 import { prepararFirmante } from "./crypto";
 import { leerLugar } from "./lugar";
 import { atenderLicencia } from "./licencia";
+import { atenderSolicitud } from "./solicitud";
 import { atenderWebhook } from "./telegram";
 import type { Env } from "./tipos";
 
@@ -35,6 +36,12 @@ export async function atender(
       if (request.method !== "POST") return json({ error: "metodo" }, 405);
       const lugar = leerLugar(request, env);
       return await atenderWebhook(request, env, lugar.ahora);
+    }
+    if (url.pathname === "/v1/solicitud") {
+      if (request.method !== "POST") return json({ error: "metodo" }, 405);
+      const firmante = await prepararFirmante(env.SIGNING_SEED);
+      const lugar = leerLugar(request, env);
+      return await atenderSolicitud(request, env, ctx, firmante, lugar);
     }
     const accion = RUTAS[url.pathname as keyof typeof RUTAS];
     if (!accion) return json({ error: "ruta" }, 404);

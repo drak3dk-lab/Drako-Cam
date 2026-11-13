@@ -34,11 +34,13 @@ QLabel#cuerpo { color: #f0f0f0; font-size: 15px; }
 QLabel#punto { color: #f0f0f0; font-size: 15px; font-weight: 600; }
 QLabel#detalle { color: #c6c6c6; font-size: 14px; }
 QLabel#error { color: #ffb4b4; font-size: 14px; }
-QLineEdit#codigo {
+QLineEdit {
     font-size: 16px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
     min-height: 44px;
     padding: 8px 10px;
+}
+QLineEdit#codigo {
+    font-family: "Cascadia Mono", "Consolas", monospace;
 }
 QPushButton#primario {
     background-color: #4090a3;
@@ -221,54 +223,120 @@ def _pedir_privacidad(padre) -> bool:
     return dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted and casilla.isChecked()
 
 
-def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
-    while True:
-        dialogo = _dialogo("Drako Cam — código de acceso", padre)
-        dialogo.layout().addWidget(_etiqueta("Acceso", "sobre", dialogo))
-        titulo = "Cambiar el código" if cambio else TITULO_CODIGO
-        dialogo.layout().addWidget(_etiqueta(titulo, "titulo", dialogo))
-        dialogo.layout().addWidget(_etiqueta(TEXTO_CODIGO, "cuerpo", dialogo))
-        campo = QtWidgets.QLineEdit(dialogo)
+def _campo(dialogo, nombre: str, placeholder: str, accesible: str, codigo: bool = False) -> QtWidgets.QLineEdit:
+    campo = QtWidgets.QLineEdit(dialogo)
+    if codigo:
         campo.setObjectName("codigo")
-        campo.setPlaceholderText(PLACEHOLDER_CODIGO)
-        campo.setMinimumHeight(44)
-        campo.setMaxLength(40)
-        campo.setAccessibleName("Código de acceso")
-        campo.setClearButtonEnabled(True)
-        dialogo.layout().addWidget(campo)
-        error = _etiqueta("", "error", dialogo)
-        error.hide()
-        dialogo.layout().addWidget(error)
-        fila, _salir, aceptar = _botones(dialogo, "Continuar")
+    campo.setPlaceholderText(placeholder)
+    campo.setMinimumHeight(44)
+    campo.setAccessibleName(accesible)
+    campo.setClearButtonEnabled(True)
+    return campo
 
-        def continuar(aceptar=aceptar, campo=campo, error=error, dialogo=dialogo) -> None:
-            aceptar.setEnabled(False)
-            error.setText("Comprobando el código…")
-            error.show()
-            try:
-                decision = _ejecutar(
-                    lambda: gestor.probar_codigo(campo.text()),
-                    dialogo,
-                    "Comprobando el código…",
-                )
-            except Exception:
-                logger.exception("No se pudo comprobar el código.")
-                error.setText("No se pudo comprobar el código. Inténtalo otra vez.")
-                aceptar.setEnabled(True)
-                return
-            if decision.permitir:
-                dialogo.accept()
-                return
-            error.setText(decision.mensaje)
-            error.show()
-            aceptar.setEnabled(True)
 
-        aceptar.clicked.connect(continuar)
-        campo.returnPressed.connect(continuar)
+def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
+    dialogo = _dialogo("Drako Cam — código de acceso", padre)
+    dialogo.layout().addWidget(_etiqueta("Acceso", "sobre", dialogo))
+    titulo = "Cambiar el código" if cambio else TITULO_CODIGO
+    dialogo.layout().addWidget(_etiqueta(titulo, "titulo", dialogo))
+    dialogo.layout().addWidget(_etiqueta(TEXTO_CODIGO, "cuerpo", dialogo))
+    if not cambio:
+        dialogo.layout().addWidget(_etiqueta("Nombre de la persona", "detalle", dialogo))
+        nombre = _campo(dialogo, "nombre", "Ana García", "Nombre de la persona")
+        nombre.setMaxLength(80)
+        dialogo.layout().addWidget(nombre)
+        dialogo.layout().addWidget(_etiqueta("Oficina donde se instala", "detalle", dialogo))
+        oficina = _campo(dialogo, "oficina", "Oficina central", "Oficina")
+        oficina.setMaxLength(80)
+        dialogo.layout().addWidget(oficina)
+    else:
+        nombre = None
+        oficina = None
+    dialogo.layout().addWidget(_etiqueta("Código, si ya te lo han dado", "detalle", dialogo))
+    campo = _campo(dialogo, "codigo", PLACEHOLDER_CODIGO, "Código de acceso", codigo=True)
+    campo.setMaxLength(40)
+    dialogo.layout().addWidget(campo)
+    error = _etiqueta("", "error", dialogo)
+    error.hide()
+    dialogo.layout().addWidget(error)
+    fila = QtWidgets.QHBoxLayout()
+    fila.setSpacing(10)
+    salir = QtWidgets.QPushButton("Salir", dialogo)
+    salir.setObjectName("secundario")
+    salir.setMinimumHeight(44)
+    pedir = QtWidgets.QPushButton("Pedir acceso", dialogo)
+    pedir.setObjectName("secundario")
+    pedir.setMinimumHeight(44)
+    entrar = QtWidgets.QPushButton("Entrar", dialogo)
+    entrar.setObjectName("primario")
+    entrar.setMinimumHeight(44)
+    entrar.setAutoDefault(False)
+    entrar.setDefault(False)
+    salir.clicked.connect(dialogo.reject)
+    if cambio:
+        pedir.hide()
+
+    def al_entrar() -> None:
+        entrar.setEnabled(False)
+        pedir.setEnabled(False)
+        error.setText("Comprobando el código…")
+        error.show()
+        try:
+            decision = _ejecutar(
+                lambda: gestor.probar_codigo(campo.text()),
+                dialogo,
+                "Comprobando el código…",
+            )
+        except Exception:
+            logger.exception("No se pudo comprobar el código.")
+            error.setText("No se pudo comprobar el código. Inténtalo otra vez.")
+            entrar.setEnabled(True)
+            pedir.setEnabled(True)
+            return
+        if decision.permitir:
+            dialogo.accept()
+            return
+        error.setText(decision.mensaje)
+        error.show()
+        entrar.setEnabled(True)
+        pedir.setEnabled(True)
+
+    def al_pedir() -> None:
+        if nombre is None or oficina is None:
+            return
+        entrar.setEnabled(False)
+        pedir.setEnabled(False)
+        error.setText("Enviando la solicitud…")
+        error.show()
+        try:
+            decision = _ejecutar(
+                lambda: gestor.enviar_solicitud(nombre.text(), oficina.text()),
+                dialogo,
+                "Enviando la solicitud…",
+            )
+        except Exception:
+            logger.exception("No se pudo enviar la solicitud.")
+            error.setText("No se pudo enviar la solicitud. Inténtalo otra vez.")
+            entrar.setEnabled(True)
+            pedir.setEnabled(True)
+            return
+        error.setText(decision.mensaje)
+        error.show()
+        entrar.setEnabled(True)
+        pedir.setEnabled(True)
+
+    entrar.clicked.connect(al_entrar)
+    pedir.clicked.connect(al_pedir)
+    campo.returnPressed.connect(al_entrar)
+    if nombre is not None:
+        nombre.setFocus()
+    else:
         campo.setFocus()
-        if dialogo.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-            return False
-        return True
+    fila.addWidget(salir)
+    fila.addWidget(pedir)
+    fila.addWidget(entrar)
+    dialogo.layout().addLayout(fila)
+    return dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted
 
 
 class VigilanteLicencia(QtCore.QObject):

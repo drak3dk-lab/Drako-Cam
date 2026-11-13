@@ -62,6 +62,11 @@ def test_instalar_cubre_lo_que_drako_necesita():
         "tensorrt-cu13",
         "Microsoft Store",
         "Lo reutilizo",
+        "solicitud_instalador",
+        "Nombre de la persona",
+        "Nombre de la oficina donde se instala",
+        "Falta la configuración del servidor de acceso",
+        "La instalación ha terminado igual",
     ):
         assert fragmento in texto
     assert 'Join-Path $env:APPDATA "DrakoCam"' not in texto

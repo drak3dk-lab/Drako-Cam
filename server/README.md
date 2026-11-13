@@ -158,7 +158,7 @@ $direccion = Read-Host "Pega la URL del Worker, sin barra al final"
 $cuerpo = @{
   url = "$direccion/telegram/webhook"
   secret_token = $secreto
-  allowed_updates = @("message")
+  allowed_updates = @("message", "callback_query")
 } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$token/setWebhook" -ContentType "application/json; charset=utf-8" -Body $cuerpo
 ```
@@ -223,9 +223,16 @@ Comandos:
 | `/lista` | Muestra los códigos, el nombre y si ya tienen equipo. |
 | `/revocar DRAKO-....` | Ese código deja de valer. Si el programa está abierto, se cierra en el siguiente latido (como mucho un minuto). |
 | `/activos` | Quién lo está usando ahora: persona, PC, ciudad, país y desde cuándo. |
-| `/historial DRAKO-....` | Últimas sesiones: inicio, duración, PC, ciudad, país e IP. |
+| `/historial DRAKO-....` | Últimas sesiones: inicio, duración, PC, oficina, ciudad, país e IP. |
+| `/pendientes` | Solicitudes que aún no has aprobado ni rechazado. |
 | `/borrar DRAKO-....` | Borra a esa persona y su historial. El código deja de existir. |
 | `/ayuda` | Vuelve a mostrar la lista. |
+
+Al final de `Instalar.bat` se pregunta el nombre de la persona y el de la oficina, y se envía una solicitud. Si la URL o la clave pública aún no están en `app/drako/licencia_config.py`, la instalación termina igual y lo explica. La misma pregunta aparece al abrir Drako Cam si todavía no hay código.
+
+Te llega un mensaje con dos botones: **Aprobar** y **Rechazar**. Muestran la persona, la oficina, el PC, la ciudad y el país, y la hora de Bucarest. Si apruebas, el bot crea el código ya ligado a ese PC y te lo manda solo a ti, en otro mensaje, para que se lo pases. Esa persona lo escribe en el programa. Si rechazas, la solicitud queda cerrada y no hay código.
+
+La oficina se guarda con el código. Sale en los avisos de entrada y de salida, y también en `/lista`, `/activos` e `/historial`.
 
 El código tiene esta forma: `DRAKO-XXXX-XXXX-XXXX-XXXX`. Se puede escribir con o sin guiones.
 

@@ -139,6 +139,7 @@ function rechazar(
   codigo: string,
   equipo: string,
   huella: string,
+  oficina = "",
 ): void {
   dejarAviso(
     ctx,
@@ -146,6 +147,7 @@ function rechazar(
     textoRechazo({
       motivo,
       codigo,
+      oficina,
       equipo,
       ciudad: lugar.ciudad,
       pais: lugar.pais,
@@ -227,8 +229,9 @@ async function denegar(
   huella: string,
   equipo: string,
   persona: string,
+  oficina = "",
 ): Promise<Response> {
-  rechazar(ctx, env, lugar, motivo, codigo, equipo, huella);
+  rechazar(ctx, env, lugar, motivo, codigo, equipo, huella, oficina);
   const carga = await cargaBase(env, lugar, {
     accion,
     ok: false,
@@ -273,7 +276,7 @@ async function comprobarPersona(
     return {
       persona,
       respuesta: await denegar(
-        env, ctx, firmante, lugar, accion, "revocado", codigo, codigoHash, huella, equipo, persona.nombre,
+        env, ctx, firmante, lugar, accion, "revocado", codigo, codigoHash, huella, equipo, persona.nombre, persona.oficina || "",
       ),
     };
   }
@@ -281,7 +284,7 @@ async function comprobarPersona(
     return {
       persona,
       respuesta: await denegar(
-        env, ctx, firmante, lugar, accion, "otro_equipo", codigo, codigoHash, huella, equipo, persona.nombre,
+        env, ctx, firmante, lugar, accion, "otro_equipo", codigo, codigoHash, huella, equipo, persona.nombre, persona.oficina || "",
       ),
     };
   }
@@ -315,10 +318,11 @@ async function activar(
     ).bind(lugar.ahora, lugar.ahora, codigo),
     env.DB.prepare(
       `INSERT INTO sesiones
-        (id, codigo, nombre, equipo, huella, ip, pais, ciudad, inicio, ultimo_latido)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, codigo, nombre, equipo, huella, ip, pais, ciudad, oficina, inicio, ultimo_latido)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
-      id, codigo, persona.nombre, equipo, huella, lugar.ip, lugar.pais, lugar.ciudad, lugar.ahora, lugar.ahora,
+      id, codigo, persona.nombre, equipo, huella, lugar.ip, lugar.pais, lugar.ciudad,
+      persona.oficina || "", lugar.ahora, lugar.ahora,
     ),
   ]);
   dejarAviso(
@@ -326,6 +330,7 @@ async function activar(
     env,
     textoInicio({
       persona: persona.nombre,
+      oficina: persona.oficina,
       equipo,
       ciudad: lugar.ciudad,
       pais: lugar.pais,
@@ -388,8 +393,8 @@ async function latido(
 ): Promise<Response> {
   const persona = await buscarPersona(env, codigo);
   if (!persona) {
-    return denegar(
-      env, ctx, firmante, lugar, "latido", "desconocido", codigo, codigoHash, huella, equipo, "",
+      return denegar(
+      env, ctx, firmante, lugar, "latido", "desconocido", codigo, codigoHash, huella, equipo, "", "",
     );
   }
   if (persona.revocado_en) {
@@ -410,13 +415,14 @@ async function latido(
         env,
         textoCorte({
           persona: persona.nombre,
+          oficina: persona.oficina || abierta.oficina,
           equipo: abierta.equipo,
           duracion,
           ahora: lugar.ahora,
         }),
       );
     } else {
-      rechazar(ctx, env, lugar, "revocado", codigo, equipo, huella);
+      rechazar(ctx, env, lugar, "revocado", codigo, equipo, huella, persona.oficina || "");
     }
     const carga = await cargaBase(env, lugar, {
       accion: "latido",
@@ -433,7 +439,7 @@ async function latido(
   }
   if (persona.huella && persona.huella !== huella) {
     return denegar(
-      env, ctx, firmante, lugar, "latido", "otro_equipo", codigo, codigoHash, huella, equipo, persona.nombre,
+      env, ctx, firmante, lugar, "latido", "otro_equipo", codigo, codigoHash, huella, equipo, persona.nombre, persona.oficina || "",
     );
   }
   const sesion = sesionId
@@ -488,7 +494,7 @@ async function cerrar(
   if (!persona || (persona.huella && persona.huella !== huella)) {
     const motivo = !persona ? "desconocido" : "otro_equipo";
     return denegar(
-      env, ctx, firmante, lugar, "cerrar", motivo, codigo, codigoHash, huella, equipo, persona?.nombre || "",
+      env, ctx, firmante, lugar, "cerrar", motivo, codigo, codigoHash, huella, equipo, persona?.nombre || "", persona?.oficina || "",
     );
   }
   const sesion = sesionId
@@ -532,7 +538,13 @@ async function cerrar(
   dejarAviso(
     ctx,
     env,
-    textoCierre({ persona: persona.nombre, equipo: equipo || sesion.equipo, duracion, ahora: lugar.ahora }),
+    textoCierre({
+      persona: persona.nombre,
+      oficina: persona.oficina || sesion.oficina,
+      equipo: equipo || sesion.equipo,
+      duracion,
+      ahora: lugar.ahora,
+    }),
   );
   const carga = await cargaBase(env, lugar, {
     accion: "cerrar",

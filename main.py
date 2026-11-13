@@ -36,6 +36,7 @@ MODULOS_DRAKO = (
     "app.drako.licencia_config",
     "app.drako.textos_licencia",
     "app.drako.licencia",
+    "app.drako.solicitud_instalador",
     "app.drako.sesion",
     "app.drako.registro",
     "app.drako.cuda_aviso",

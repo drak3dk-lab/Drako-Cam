@@ -8,6 +8,7 @@ export interface Env {
   LATIDO_SEGUNDOS?: string;
   SESION_ACTIVA_SECS?: string;
   LIMITE_INTENTOS?: string;
+  LIMITE_SOLICITUDES?: string;
   /** Solo en pruebas. En producción no existe y las cabeceras de prueba se ignoran. */
   MODO_PRUEBA?: string;
   TEST_MIGRATIONS?: unknown;
@@ -44,6 +45,7 @@ export interface Persona {
   revocado_en: number | null;
   huella: string | null;
   equipo: string | null;
+  oficina?: string | null;
 }
 
 export interface Sesion {
@@ -60,6 +62,22 @@ export interface Sesion {
   ultimo_latido: number;
   duracion_segundos: number | null;
   motivo_cierre: string | null;
+  oficina?: string | null;
+}
+
+export interface Solicitud {
+  id: string;
+  nombre: string;
+  oficina: string;
+  equipo: string;
+  huella: string;
+  ip: string;
+  pais: string;
+  ciudad: string;
+  creada_en: number;
+  estado: string;
+  codigo: string | null;
+  cerrada_en: number | null;
 }
 
 export interface Firmante {

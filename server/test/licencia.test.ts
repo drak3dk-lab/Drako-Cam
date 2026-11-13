@@ -19,21 +19,25 @@ const AHORA = "1760000000";
 
 let fetchOriginal: typeof fetch;
 let avisos: string[] = [];
+let cuerpos: Record<string, unknown>[] = [];
 
 beforeEach(async () => {
   avisos = [];
+  cuerpos = [];
   fetchOriginal = globalThis.fetch;
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("https://api.telegram.org/")) {
       const cuerpo = JSON.parse(String(init?.body || "{}")) as { text?: string };
-      avisos.push(String(cuerpo.text || ""));
+      cuerpos.push(cuerpo);
+      if (cuerpo.text) avisos.push(String(cuerpo.text));
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
     return fetchOriginal(input, init);
   };
   await env.DB.prepare("DELETE FROM intentos").run();
   await env.DB.prepare("DELETE FROM sesiones").run();
+  await env.DB.prepare("DELETE FROM solicitudes").run();
   await env.DB.prepare("DELETE FROM personas").run();
 });
 
@@ -284,5 +288,138 @@ describe("acceso", () => {
     const lista = await bot("/lista");
     expect(avisos.at(-1)).toContain("Todavía no hay códigos");
     expect(lista.respuesta.status).toBe(200);
+  });
+
+  it("recibe una solicitud, la aprueba con botones y liga el código a ese PC", async () => {
+    const pedida = await llamar("/v1/solicitud", {
+      nombre: "Ana García",
+      oficina: "Sexta planta",
+      huella: HUELLA_A,
+      equipo: "PC-CASA",
+    });
+    expect(pedida.datos.carga?.motivo).toBe("enviada");
+    expect(pedida.datos.carga?.ok).toBe(true);
+    expect(JSON.stringify(pedida.datos.carga)).not.toContain("DRAKO-");
+    expect(await firmaValida(pedida.datos.carga as Carga, pedida.datos.firma || "")).toBe(true);
+    const aviso = cuerpos.find((cuerpo) => cuerpo.reply_markup);
+    const teclado = aviso?.reply_markup as {
+      inline_keyboard: { text: string; callback_data: string }[][];
+    };
+    expect(teclado.inline_keyboard[0].map((boton) => boton.text)).toEqual(["Aprobar", "Rechazar"]);
+    expect(avisos.some((texto) => texto.includes("Sexta planta") && texto.includes("PC-CASA"))).toBe(true);
+    const repetida = await llamar("/v1/solicitud", {
+      nombre: "Ana García",
+      oficina: "Sexta planta",
+      huella: HUELLA_A,
+      equipo: "PC-CASA",
+    });
+    expect(repetida.datos.carga?.motivo).toBe("ya_pendiente");
+
+    const id = teclado.inline_keyboard[0][0].callback_data.split(":")[1];
+    avisos = [];
+    const ajeno = await llamar(
+      "/telegram/webhook",
+      {
+        callback_query: {
+          id: "cb-ajeno",
+          data: `aprobar:${id}`,
+          from: { id: 999 },
+          message: { message_id: 4, chat: { id: 999 } },
+        },
+      },
+      { "X-Telegram-Bot-Api-Secret-Token": "secreto-de-prueba-webhook" },
+    );
+    expect(ajeno.respuesta.status).toBe(200);
+    expect(avisos.some((texto) => texto.includes("DRAKO-"))).toBe(false);
+
+    const aprobada = await llamar(
+      "/telegram/webhook",
+      {
+        callback_query: {
+          id: "cb-1",
+          data: `aprobar:${id}`,
+          from: { id: 4242 },
+          message: { message_id: 7, chat: { id: 4242 } },
+        },
+      },
+      { "X-Telegram-Bot-Api-Secret-Token": "secreto-de-prueba-webhook" },
+    );
+    expect(aprobada.respuesta.status).toBe(200);
+    const conCodigo = avisos.find((texto) => texto.includes("DRAKO-"));
+    expect(conCodigo).toBeTruthy();
+    expect(conCodigo).toContain("Pásaselo tú");
+    expect(conCodigo).toContain("Sexta planta");
+    const editado = avisos.find((texto) => texto.includes("siguiente mensaje"));
+    expect(editado).toBeTruthy();
+    expect(editado).not.toContain("DRAKO-");
+    const codigo = (conCodigo || "").split("\n")[1];
+
+    const otraVez = await llamar("/v1/solicitud", {
+      nombre: "Ana García",
+      oficina: "Sexta planta",
+      huella: HUELLA_A,
+      equipo: "PC-CASA",
+    });
+    expect(otraVez.datos.carga?.motivo).toBe("ya_aprobada");
+    expect(JSON.stringify(otraVez.datos)).not.toContain(codigo);
+
+    const activado = await llamar("/v1/activar", { codigo, huella: HUELLA_A, equipo: "PC-CASA" });
+    expect(activado.datos.carga?.ok).toBe(true);
+    expect(avisos.some((texto) => texto.includes("sesión iniciada") && texto.includes("Sexta planta"))).toBe(true);
+    const intruso = await llamar("/v1/activar", { codigo, huella: HUELLA_B, equipo: "OTRO" });
+    expect(intruso.datos.carga?.motivo).toBe("otro_equipo");
+
+    const pedidaB = await llamar("/v1/solicitud", {
+      nombre: "Luis",
+      oficina: "Almacén",
+      huella: HUELLA_B,
+      equipo: "PC-LUIS",
+    });
+    expect(pedidaB.datos.carga?.motivo).toBe("enviada");
+    const botonRechazo = cuerpos
+      .map((cuerpo) => cuerpo.reply_markup as { inline_keyboard?: { callback_data: string }[][] } | undefined)
+      .filter((marca) => marca?.inline_keyboard)
+      .at(-1);
+    const idB = botonRechazo?.inline_keyboard?.[0][1].callback_data.split(":")[1] || "";
+    await llamar(
+      "/telegram/webhook",
+      {
+        callback_query: {
+          id: "cb-2",
+          data: `rechazar:${idB}`,
+          from: { id: 4242 },
+          message: { message_id: 9, chat: { id: 4242 } },
+        },
+      },
+      { "X-Telegram-Bot-Api-Secret-Token": "secreto-de-prueba-webhook" },
+    );
+    expect(avisos.some((texto) => texto.includes("Solicitud rechazada") && texto.includes("Luis"))).toBe(true);
+    avisos = [];
+    await bot("/pendientes");
+    expect(avisos[0]).toContain("No hay solicitudes pendientes");
+    avisos = [];
+    await bot("/lista");
+    expect(avisos[0]).toContain("Sexta planta");
+    await bot(`/historial ${codigo}`);
+    expect(avisos.at(-1)).toContain("Sexta planta");
+  });
+
+  it("limita las solicitudes por IP", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      const alta = await llamar("/v1/solicitud", {
+        nombre: `Persona ${i}`,
+        oficina: "Oficina",
+        huella: i.toString(16).padStart(2, "0").repeat(32),
+        equipo: "PC",
+      });
+      expect(alta.datos.carga?.motivo).toBe("enviada");
+    }
+    const limitada = await llamar("/v1/solicitud", {
+      nombre: "Una más",
+      oficina: "Oficina",
+      huella: "ff".repeat(32),
+      equipo: "PC",
+    });
+    expect(limitada.datos.carga?.motivo).toBe("limitada");
   });
 });

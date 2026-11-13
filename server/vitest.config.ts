@@ -19,6 +19,7 @@ export default defineConfig(async () => {
             TELEGRAM_WEBHOOK_SECRET: "secreto-de-prueba-webhook",
             MODO_PRUEBA: "1",
             LIMITE_INTENTOS: "3",
+            LIMITE_SOLICITUDES: "5",
             GRACIA_HORAS: "24",
             LATIDO_SEGUNDOS: "60",
             SESION_ACTIVA_SECS: "180",
