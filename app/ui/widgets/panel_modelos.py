@@ -108,8 +108,8 @@ class PanelModelos(QtWidgets.QGroupBox):
         caja.setContentsMargins(12, 16, 12, 12)
         caja.setSpacing(10)
         intro = QtWidgets.QLabel(
-            "El primer arranque baja solo lo que el cambio de cara en vivo usa "
-            "a calidad completa. Lo demás se descarga al activarlo, sin cortar la cámara.",
+            "Estos son los modelos del cambio de cara en vivo. "
+            "Si ya están y no han cambiado, el arranque no los vuelve a comprobar.",
             self,
         )
         intro.setWordWrap(True)

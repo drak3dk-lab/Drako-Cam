@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from app.drako.arranque import ContextoArranque, cambiar_contrasena
 from app.drako.auditoria import ClavesAuditoria
@@ -31,12 +31,18 @@ class _DialogoBase(QtWidgets.QDialog):
         self.setWindowTitle(titulo)
         self.setModal(True)
         self.setMinimumWidth(420)
+        self.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, True)
         self._layout = QtWidgets.QVBoxLayout(self)
         self._layout.setContentsMargins(20, 20, 20, 20)
         self._layout.setSpacing(12)
 
     def agregar(self, widget: QtWidgets.QWidget) -> None:
         self._layout.addWidget(widget)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
 
 
 def _aviso(padre, texto: str) -> None:
@@ -128,7 +134,9 @@ def _entrar(contexto: ContextoArranque, padre):
 def _avisar_acceso(contexto: ContextoArranque, motivo: str, detalle: str) -> None:
     from app.drako.sesion import texto_aviso
 
-    tipo = "bloqueo" if motivo == "bloqueada" or motivo == "bloqueo" else "intento_fallido"
+    tipo = (
+        "bloqueo" if motivo == "bloqueada" or motivo == "bloqueo" else "intento_fallido"
+    )
     contexto.telegram.avisar(
         texto_aviso(
             {
@@ -155,16 +163,16 @@ def instalar_menu(
     menu = barra.addMenu("Drako")
     cambiar = menu.addAction("Cambiar contraseña…")
     telegram = menu.addAction("Avisos de Telegram…")
-    cambiar.triggered.connect(
-        lambda: _dialogo_cambiar(ventana, contexto, claves)
-    )
+    cambiar.triggered.connect(lambda: _dialogo_cambiar(ventana, contexto, claves))
     telegram.triggered.connect(lambda: _dialogo_telegram(ventana, contexto))
     if al_cambiar_codigo is not None:
         codigo = menu.addAction("Cambiar código de acceso…")
         codigo.triggered.connect(al_cambiar_codigo)
 
 
-def _dialogo_cambiar(ventana, contexto: ContextoArranque, claves: ClavesAuditoria) -> None:
+def _dialogo_cambiar(
+    ventana, contexto: ContextoArranque, claves: ClavesAuditoria
+) -> None:
     dialogo = _DialogoBase("Drako Cam — cambiar contraseña", ventana)
     actual = _campo_clave(dialogo)
     nueva = _campo_clave(dialogo)
@@ -243,4 +251,3 @@ def _dialogo_telegram(ventana, contexto: ContextoArranque) -> None:
         if contexto.telegram.configurado()
         else "Telegram quedó sin configurar. El programa sigue funcionando.",
     )
-

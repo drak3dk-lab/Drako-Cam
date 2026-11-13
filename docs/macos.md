@@ -12,7 +12,7 @@ brew install ffmpeg
 
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements_mac.txt
-.venv/bin/python download_models.py    # live set, ~1.18 GB; add --todos for the full ~17 GB
+.venv/bin/python download_models.py    # live set, ~1.14 GB
 
 ./Start_mac.sh
 ```

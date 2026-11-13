@@ -41,9 +41,9 @@ The application supports multiple AI inference backends (CPU, CUDA, TensorRT, Te
 
 **Nvidia GPU Driver:** A recent driver supporting CUDA 12.9. If you see provider errors at launch, update your driver from the Nvidia website.
 
-**Internet connection:** Required on first run to download tools, dependencies, and the live face-swap models (about 1.18 GB). Optional models download later, when you select them. After that, the app runs offline.
+**Internet connection:** Required on first run to download tools, dependencies, and the live face-swap models (about 1.14 GB). After that, the app runs offline. See [modelos.md](modelos.md).
 
-**Disk space:** 20-30 GB free space. The dependency install (PyTorch, TensorRT, cuDNN, etc.) is several gigabytes. The live models add about 1.18 GB; the full optional library is about 17 GB if you download everything. See [modelos.md](modelos.md).
+**Disk space:** 20-30 GB free space. The dependency install (PyTorch, TensorRT, cuDNN, etc.) is several gigabytes. The live models add about 1.14 GB.
 
 ### 2.1 Installation (Portable)
 

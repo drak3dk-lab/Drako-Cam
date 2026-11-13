@@ -64,6 +64,19 @@ function Confirma([string]$Pregunta) {
     return (($resp -eq "SI") -or ($resp -eq "SÍ") -or ($resp -eq "S"))
 }
 
+function Quitar-PreferenciaGpu {
+    # Quita GpuPreference=2 escrito para python.exe, pythonw.exe y main.py.
+    $clave = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
+    if (-not (Test-Path $clave)) { return }
+    $py = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
+    $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
+    $main = Join-Path $script:Raiz "main.py"
+    foreach ($ruta in @($py, $pyw, $main)) {
+        Remove-ItemProperty -Path $clave -Name $ruta -ErrorAction SilentlyContinue
+    }
+    Write-Log "Preferencia de GPU dedicada retirada."
+}
+
 function Quitar-Acceso([string]$RutaLnk) {
     if (-not (Test-Path -LiteralPath $RutaLnk)) { return }
     Remove-Item -LiteralPath $RutaLnk -Force
@@ -107,6 +120,7 @@ try {
     $menu = [Environment]::GetFolderPath("Programs")
     if ($escritorio) { Quitar-Acceso (Join-Path $escritorio "Drako Cam.lnk") }
     if ($menu) { Quitar-Acceso (Join-Path $menu "Drako Cam.lnk") }
+    Quitar-PreferenciaGpu
 
     $datos = Join-Path $env:APPDATA "DrakoCam"
     $borrarDatos = $false

@@ -29,7 +29,7 @@ def test_cada_modelo_del_registro_esta_clasificado():
     assert all(item.porque.strip() for item in fichas())
     assert all(item.bytes > 0 for item in fichas())
     clases = {item.clase for item in fichas()}
-    assert clases == {ESENCIAL, "opcional"}
+    assert clases == {ESENCIAL}
 
 
 def test_el_camino_en_vivo_es_el_conjunto_esencial():
@@ -37,49 +37,39 @@ def test_el_camino_en_vivo_es_el_conjunto_esencial():
     assert nombres == {
         "Inswapper128",
         "Inswapper128ArcFace",
-        "RetinaFace",
+        "SCRFD2.5g",
         "FaceLandmark203",
         "Occluder",
-        "XSeg",
         "FaceParser",
         "GFPGANv1.4",
-        "RealEsrganx2Plus",
+        "GPENBFR256",
     }
-    opcionales_nombres = {item.nombre for item in opcionales()}
+    assert opcionales() == []
     for excluido in (
         "DeoldifyArt",
-        "DeoldifyStable",
-        "DeoldifyVideo",
         "RefLdm",
         "VQGAN",
-        "RefLDM_UNET_EXTERNAL_KV",
         "FaceReaging",
         "LivePortraitWarpingSpade",
         "GhostFacev1",
-        "GhostFacev2",
-        "GhostFacev3",
         "SimSwap512",
-        "InStyleSwapper256 Version A",
         "AlphaFace",
+        "XSeg",
+        "RetinaFace",
     ):
-        assert excluido in opcionales_nombres
         assert excluido not in nombres
 
 
 def test_el_primer_arranque_pesa_menos_que_el_catalogo():
     esencial = suma_bytes(esenciales())
-    total = suma_bytes(fichas())
-    assert esencial == 1_178_796_654
-    assert total == 17_362_542_270
-    assert texto_tamano(esencial) == "1,18 GB"
-    assert texto_tamano(total) == "17,36 GB"
+    assert esencial == 1_136_934_120
+    assert texto_tamano(esencial) == "1,14 GB"
     assert esencial < 2_000_000_000
-    assert total - esencial > 10_000_000_000
 
 
 def test_la_documentacion_lista_cada_modelo_y_los_totales():
     texto = Path("docs/modelos.md").read_text(encoding="utf-8")
-    assert "1,18 GB" in texto
+    assert "1,14 GB" in texto
     assert "17,36 GB" in texto
     for item in fichas():
         assert item.nombre in texto
@@ -108,6 +98,31 @@ def test_por_defecto_solo_pide_esenciales(monkeypatch):
     monkeypatch.setattr(download_models, "descargar_nombres", falso)
     assert download_models.descargar_modelos() is True
     assert vistos["nombres"] == [item.nombre for item in esenciales()]
+
+
+def test_el_manifiesto_evita_repetir_la_comprobacion(tmp_path, monkeypatch):
+    from app.drako.catalogo_modelos import (
+        ESENCIAL,
+        Ficha,
+        nombres_que_cambiarion,
+        sellar_manifiesto,
+    )
+
+    archivo = tmp_path / "peso.onnx"
+    archivo.write_bytes(b"abc")
+    ficha = Ficha(
+        "Peso", 3, "Intercambio", ESENCIAL, "porque", "http://x", str(archivo), "ab"
+    )
+    monkeypatch.setattr("app.drako.catalogo_modelos.fichas", lambda: [ficha])
+    monkeypatch.setattr(
+        "app.drako.catalogo_modelos.ruta_manifiesto",
+        lambda: tmp_path / "manifiesto.json",
+    )
+    assert nombres_que_cambiarion() == ["Peso"]
+    sellar_manifiesto(["Peso"])
+    assert nombres_que_cambiarion() == []
+    archivo.write_bytes(b"abcd")
+    assert nombres_que_cambiarion() == ["Peso"]
 
 
 def test_archivo_ya_valido_no_se_vuelve_a_bajar(tmp_path):

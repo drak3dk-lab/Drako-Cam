@@ -68,6 +68,9 @@ def test_instalar_cubre_lo_que_drako_necesita():
         "Nombre de la oficina donde se instala",
         "Falta la configuración del servidor de acceso",
         "La instalación ha terminado igual",
+        "GpuPreference=2",
+        "Fijar-GpuDedicada",
+        "NvOptimusEnablement",
     ):
         assert fragmento in texto
     assert 'Join-Path $env:APPDATA "DrakoCam"' not in texto
@@ -84,6 +87,8 @@ def test_desinstalar_no_borra_appdata_sin_confirmacion():
     assert "Drako Cam.lnk" in texto
     assert ".venv" in texto
     assert "No se ha borrado nada." in texto
+    assert "Quitar-PreferenciaGpu" in texto
+    assert "GpuPreference" in texto
 
 
 def test_arrancar_vbs_es_ascii_y_no_abre_consola():
@@ -116,6 +121,8 @@ def test_inno_copia_la_app_y_reutiliza_instalar_bat():
     assert "*.safetensors" in texto
     assert "Drako Cam" in texto
     assert "{localappdata}\\Drako Cam" in texto
+    assert "GpuPreference=2;" in texto
+    assert "UserGpuPreferences" in texto
     for requerido in (
         "main.py",
         "download_models.py",

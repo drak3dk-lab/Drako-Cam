@@ -201,7 +201,7 @@ def compute_models_sha256(models_list: Sequence[dict[str, Any] | str]) -> str | 
 
 
 def check_models_presence() -> tuple[bool, list[str]]:
-    """Avisa solo si falta un modelo esencial. Los opcionales se bajan al usarlos."""
+    """Avisa si falta un modelo del directo. El resto del catálogo heredado no se descarga."""
     from app.drako.catalogo_modelos import esenciales
 
     missing: list[str] = []

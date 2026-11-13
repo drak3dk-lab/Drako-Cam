@@ -9,6 +9,7 @@ completa: el mismo archivo, no una versión recortada.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.processors.models_data import models_list
 
@@ -160,7 +161,12 @@ _META_FILAS: dict[str, tuple[int, str, str, str]] = {
     "GhostArcFace": (260_678_021, "Reconocimiento", OPCIONAL, _ALT_ARC),
     "CSCSArcFace": (261_029_411, "Reconocimiento", OPCIONAL, _ALT_ARC),
     "CSCSIDArcFace": (262_080_575, "Reconocimiento", OPCIONAL, _ALT_ARC),
-    "SCRFD2.5g": (3_290_207, "Detección", OPCIONAL, _ALT_DET),
+    "SCRFD2.5g": (
+        3_290_207,
+        "Detección",
+        ESENCIAL,
+        "Detector rápido del directo, con 5 puntos. El seguimiento ByteTrack no trae pesos.",
+    ),
     "YoloFace8n": (12_639_351, "Detección", OPCIONAL, _ALT_DET),
     "YunetN": (317_640, "Detección", OPCIONAL, _ALT_DET),
     "YoloFace11nVR180": (
@@ -203,7 +209,12 @@ _META_FILAS: dict[str, tuple[int, str, str, str]] = {
         "Textura VGG para diferencia y transferencia. Apagada por defecto.",
     ),
     "GFPGAN1024": (365_875_079, "Restauración", OPCIONAL, _ALT_REST),
-    "GPENBFR256": (75_715_262, "Restauración", OPCIONAL, _ALT_REST),
+    "GPENBFR256": (
+        75_715_262,
+        "Restauración",
+        ESENCIAL,
+        "Restaurador ligero en tiempo real. Alternativa a GFPGAN v1.4 en el mismo hueco.",
+    ),
     "GPENBFR512": (284_250_449, "Restauración", OPCIONAL, _ALT_REST),
     "GPENBFR1024": (285_101_993, "Restauración", OPCIONAL, _ALT_REST),
     "GPENBFR2048": (285_469_146, "Restauración", OPCIONAL, _ALT_REST),
@@ -274,17 +285,17 @@ class Ficha:
 
 
 def fichas() -> list[Ficha]:
-    """Todas las fichas, en el orden del registro."""
+    """Solo los modelos que el directo descarga y carga."""
     salida: list[Ficha] = []
     for item in models_list:
         nombre = item["model_name"]
-        bytes_, grupo, clase, porque = _META_FILAS[nombre]
+        bytes_, grupo, _clase, porque = _META_FILAS[nombre]
         salida.append(
             Ficha(
                 nombre=nombre,
                 bytes=bytes_,
                 grupo=grupo,
-                clase=clase,
+                clase=ESENCIAL,
                 porque=porque,
                 url=item["url"],
                 local_path=item["local_path"],
@@ -350,6 +361,84 @@ def texto_duracion(segundos: float | None) -> str:
     if minutos:
         return f"{minutos} min {segs} s"
     return f"{segs} s"
+
+
+def ruta_manifiesto() -> Path:
+    from app.processors.models_data import models_dir
+
+    return Path(models_dir) / ".manifiesto-directo.json"
+
+
+def leer_manifiesto() -> dict:
+    ruta = ruta_manifiesto()
+    if not ruta.is_file():
+        return {}
+    try:
+        import json
+
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return datos if isinstance(datos, dict) else {}
+
+
+def guardar_manifiesto(datos: dict) -> None:
+    import json
+
+    ruta = ruta_manifiesto()
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    temporal = ruta.with_suffix(".json.tmp")
+    temporal.write_text(
+        json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    temporal.replace(ruta)
+
+
+def nombres_que_cambiarion() -> list[str]:
+    """Nombres cuyo archivo falta o cuyo tamaño o fecha no coinciden con el manifiesto.
+
+    El hash solo se calcula para estos. Si la lista sale vacía, el arranque no toca los pesos.
+    """
+    manifiesto = leer_manifiesto()
+    cambiaron: list[str] = []
+    for item in fichas():
+        ruta = Path(item.local_path)
+        try:
+            estado = ruta.stat()
+        except OSError:
+            cambiaron.append(item.nombre)
+            continue
+        previo = manifiesto.get(item.nombre)
+        if not isinstance(previo, dict):
+            cambiaron.append(item.nombre)
+            continue
+        if (
+            previo.get("bytes") != estado.st_size
+            or previo.get("mtime_ns") != estado.st_mtime_ns
+        ):
+            cambiaron.append(item.nombre)
+    return cambiaron
+
+
+def sellar_manifiesto(nombres: list[str] | None = None) -> None:
+    """Anota tamaño y fecha de los archivos que ya están. No calcula el hash."""
+    manifiesto = leer_manifiesto()
+    pedidas = set(nombres) if nombres is not None else None
+    for item in fichas():
+        if pedidas is not None and item.nombre not in pedidas:
+            continue
+        ruta = Path(item.local_path)
+        try:
+            estado = ruta.stat()
+        except OSError:
+            continue
+        if estado.st_size <= 0:
+            continue
+        manifiesto[item.nombre] = {
+            "bytes": estado.st_size,
+            "mtime_ns": estado.st_mtime_ns,
+        }
+    guardar_manifiesto(manifiesto)
 
 
 def texto_progreso(

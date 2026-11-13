@@ -13,7 +13,7 @@ You will need:
 - At least one clear source face image
 - A reasonably capable Nvidia GPU
 
-Most portable users should start VisoMaster Fusion with `Start_Portable.bat`. On first run, the launcher may download dependencies and the live face-swap models (about 1.18 GB). The rest download when you turn that feature on. See [modelos.md](modelos.md).
+Most portable users should start with `Start_Portable.bat`. Drako Cam is a live webcam-to-OBS face swap. The first run downloads about 1.14 GB of models. See [modelos.md](modelos.md).
 
 For best results, use a clear source face with good lighting, a mostly visible face, and minimal heavy shadows or obstructions.
 

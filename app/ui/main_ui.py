@@ -18,9 +18,7 @@ from app.ui.widgets.actions import filter_actions
 from app.ui.widgets.actions import save_load_actions
 from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import graphics_view_actions
-from app.ui.widgets.actions import job_manager_actions
 from app.ui.widgets.actions import preset_actions
-from app.ui.widgets.advanced_embedding_editor import EmbeddingGUI
 import app.ui.widgets.actions.control_actions as control_actions
 from app.processors.video_processor import VideoProcessor
 from app.processors.models_processor import ModelsProcessor
@@ -36,14 +34,12 @@ from app.ui.widgets.event_filters import (
 from app.ui.widgets import ui_workers
 from app.ui.widgets.common_layout_data import COMMON_LAYOUT_DATA
 from app.ui.widgets import sortable_widgets
-from app.ui.widgets.denoiser_layout_data import DENOISER_LAYOUT_DATA
 from app.ui.widgets.swapper_layout_data import (
     SWAPPER_LAYOUT_DATA,
     MASK_SHOW_DEFAULT,
     MASK_SHOW_OPTIONS,
 )
 from app.ui.widgets.settings_layout_data import SETTINGS_LAYOUT_DATA
-from app.ui.widgets.face_editor_layout_data import FACE_EDITOR_LAYOUT_DATA
 from app.helpers.app_metadata import get_app_display_metadata
 from app.helpers.miscellaneous import DFMModelManager, ParametersDict, ThumbnailManager
 from app.helpers.typing_helper import (
@@ -73,6 +69,37 @@ _FACE_STRIP_MAX_HEIGHT = 120
 _FACE_STRIP_LIST_HEIGHT = 80
 _FACE_STRIP_BUTTONS_HEIGHT = 32
 _FACES_PANEL_ROW_HEIGHT = 144
+
+
+def _proveedor_del_directo() -> str:
+    """TensorRT si la GPU y la versión sirven. Si no, CUDA. Nunca pregunta."""
+    if platform_support.has_cuda() and platform_support.has_tensorrt():
+        version = None
+        capacidad = None
+        try:
+            import tensorrt as trt
+
+            version = getattr(trt, "__version__", None)
+        except Exception:
+            version = None
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                mayor, menor = torch.cuda.get_device_capability(0)
+                capacidad = (int(mayor), int(menor))
+        except Exception:
+            capacidad = None
+        from app.drako.rendimiento.tensorrt import sirve_tensorrt
+
+        sirve, motivo = sirve_tensorrt(version, capacidad)
+        if sirve:
+            return "TensorRT"
+        print(f"[INFO] {motivo}")
+        return "CUDA"
+    if platform_support.has_cuda():
+        return "CUDA"
+    return platform_support.default_execution_provider()
 
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -533,27 +560,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         )
         layout_actions.add_widgets_to_tab_layout(
             self,
-            LAYOUT_DATA=DENOISER_LAYOUT_DATA,
-            layoutWidget=self.denoiserWidgetsLayout,
-            data_type="control",
-            section_namespace="denoiser",
-        )
-
-        # --- INJECT PURGE KV MAP STORAGE BUTTON ---
-        self.purgeKVMapsButton = QtWidgets.QPushButton("Purge Unused K/V Maps", self)
-        self.purgeKVMapsButton.setToolTip(
-            "Scans the registry and safely deletes orphaned K/V map tensors to free up disk space."
-        )
-        self.purgeKVMapsButton.setIcon(
-            self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TrashIcon)
-        )
-        self.denoiserWidgetsLayout.addWidget(self.purgeKVMapsButton)
-        self.purgeKVMapsButton.clicked.connect(
-            partial(save_load_actions.purge_unused_kv_maps, self)
-        )
-
-        layout_actions.add_widgets_to_tab_layout(
-            self,
             LAYOUT_DATA=SWAPPER_LAYOUT_DATA,
             layoutWidget=self.swapWidgetsLayout,
             data_type="parameter",
@@ -573,13 +579,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         from app.ui.widgets.panel_modelos import instalar_panel_modelos
 
         instalar_panel_modelos(self)
-        layout_actions.add_widgets_to_tab_layout(
-            self,
-            LAYOUT_DATA=FACE_EDITOR_LAYOUT_DATA,
-            layoutWidget=self.faceEditorWidgetsLayout,
-            data_type="parameter",
-            section_namespace="face_editor",
-        )
 
         # Set up output folder select button (It is inside the settings tab Widget)
         self.outputFolderButton.clicked.connect(
@@ -626,7 +625,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.tabWidget.setCurrentIndex(0)
         # widget_actions.add_groupbox_and_widgets_from_layout_map(self)
 
-        job_manager_actions.setup_job_manager_ui(self)
+        self._dejar_solo_el_directo()
 
         # Connect Denoiser Mode SelectionBox signals to update visibility
         denoiser_mode_before_combo = self.parameter_widgets.get(
@@ -964,23 +963,27 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     @QtCore.Slot(str, str)
     def show_build_dialog(self, title, text):
-        """
-        Slot to show or update the TensorRT build progress dialog.
-        This function is guaranteed to run in the main GUI thread.
-        """
-        if self.build_progress_dialog:
-            self.build_progress_dialog.setWindowTitle(title)
-            self.build_progress_dialog.setLabelText(text)
-            self.build_progress_dialog.show()
-            # Force the GUI to update immediately
-            QtCore.QCoreApplication.processEvents()
+        """La primera compilación TensorRT usa la pantalla de carga, al frente."""
+        del title, text
+        from app.ui.pantalla_carga import asegurar
+
+        pantalla = asegurar()
+        pantalla.poner(
+            "Preparando el motor TensorRT. La primera vez puede tardar unos minutos.",
+            None,
+        )
+        pantalla.barra.setRange(0, 0)
+        QtCore.QCoreApplication.processEvents()
 
     @QtCore.Slot()
     def hide_build_dialog(self):
-        """
-        Slot to hide the TensorRT build progress dialog.
-        This function is guaranteed to run in the main GUI thread.
-        """
+        from app.ui.pantalla_carga import obtener
+
+        pantalla = obtener()
+        if pantalla is not None and pantalla.isVisible():
+            pantalla.barra.setRange(0, 100)
+            pantalla.poner("Motor TensorRT listo.", 100)
+            pantalla.cerrar()
         if self.build_progress_dialog:
             self.build_progress_dialog.close()
 
@@ -993,6 +996,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self._apply_runtime_window_title()
         self.initialize_widgets()
         self.load_last_workspace()
+        self._aplicar_perfil_vram()
+
+    def _aplicar_perfil_vram(self) -> None:
+        """Elige el perfil de VRAM sin interrumpir el acceso ni la licencia."""
+        try:
+            from app.drako.rendimiento.perfiles import aplicar_al_arranque
+
+            aplicar_al_arranque(self)
+        except Exception as exc:
+            print(f"[AVISO] No se aplicó el perfil de VRAM: {exc}")
 
     @QtCore.Slot(list)
     def handle_unload_request(self, model_names: list):
@@ -1173,49 +1186,24 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 load_dialog = widget_components.LoadLastWorkspaceDialog(self)
                 load_dialog.exec_()
         else:
-            # First launch or no workspace: Prompt for execution provider
-            options = platform_support.available_execution_providers()
-            default_index = options.index(platform_support.default_execution_provider())
-
-            prompt = (
-                "No hay un espacio de trabajo anterior.\n\n"
-                "Elige el proveedor de ejecución."
-            )
-            # The TensorRT warning only makes sense where TensorRT is an option.
-            if any(o.startswith("TensorRT") for o in options):
-                prompt += (
-                    "\n(Elige CUDA o CPU si no quieres generar motores "
-                    "TensorRT en este arranque.)"
-                )
-
-            provider, ok = QtWidgets.QInputDialog.getItem(
-                self,
-                "Drako Cam — proveedor de ejecución",
-                prompt,
-                options,
-                default_index,
-                False,  # Non-editable dropdown
-            )
-
-            if ok and provider:
-                print(f"[INFO] Initial provider selected: {provider}")
-                # 1. Update the control state
-                self.control["ProvidersPrioritySelection"] = provider
-
-                # 2. Update the corresponding UI widget if it has been instantiated
-                provider_widget = self.parameter_widgets.get(
-                    "ProvidersPrioritySelection"
-                )
-                if provider_widget and hasattr(provider_widget, "setCurrentText"):
-                    provider_widget.setCurrentText(provider)
-
-                # 3. Execute the function to apply the provider changes system-wide
-                try:
-                    control_actions.change_execution_provider(self)
-                except Exception as e:
-                    print(
-                        f"[ERROR] Failed to apply execution provider during startup: {e}"
-                    )
+            provider = _proveedor_del_directo()
+            print(f"[INFO] Proveedor del directo: {provider}")
+            self.control["ProvidersPrioritySelection"] = provider
+            provider_widget = self.parameter_widgets.get("ProvidersPrioritySelection")
+            if provider_widget and hasattr(provider_widget, "setCurrentText"):
+                provider_widget.setCurrentText(provider)
+            try:
+                control_actions.change_execution_provider(self)
+            except Exception as e:
+                print(f"[ERROR] No se pudo aplicar el proveedor {provider}: {e}")
+                if provider != "CUDA" and "CUDA" in platform_support.available_execution_providers():
+                    self.control["ProvidersPrioritySelection"] = "CUDA"
+                    if provider_widget and hasattr(provider_widget, "setCurrentText"):
+                        provider_widget.setCurrentText("CUDA")
+                    try:
+                        control_actions.change_execution_provider(self)
+                    except Exception as exc:
+                        print(f"[ERROR] El respaldo CUDA tampoco arrancó: {exc}")
 
         # Re-populate and set current selection for dynamic widgets like DenoiserUNetModelSelection
         self._populate_denoiser_unet_models()
@@ -2039,6 +2027,31 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         QtCore.QTimer.singleShot(0, self._configure_faces_panel_button_column)
 
     def open_embedding_editor(self):
-        if self.embedding_editor_window is None:
-            self.embedding_editor_window = EmbeddingGUI()
-        self.embedding_editor_window.show()
+        return
+
+    def _dejar_solo_el_directo(self) -> None:
+        """Quita del producto lo que no es el cambio de cara en vivo."""
+        for pestana in (
+            getattr(self, "face_editor_tab", None),
+            getattr(self, "denoiser_tab", None),
+        ):
+            if pestana is None:
+                continue
+            indice = self.tabWidget.indexOf(pestana)
+            if indice >= 0:
+                self.tabWidget.removeTab(indice)
+        if getattr(self, "jobManagerDockWidget", None) is not None:
+            self.jobManagerDockWidget.hide()
+            self.jobManagerDockWidget.setEnabled(False)
+        for boton in (
+            getattr(self, "batchallImageButton", None),
+            getattr(self, "openEditorButton", None),
+        ):
+            if boton is not None:
+                boton.hide()
+        casilla = getattr(self, "targetVideosFilterWebcamsCheckBox", None)
+        if casilla is not None and not casilla.isChecked():
+            casilla.setChecked(True)
+        QtCore.QTimer.singleShot(
+            0, partial(list_view_actions.load_target_webcams, self)
+        )

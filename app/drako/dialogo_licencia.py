@@ -75,11 +75,19 @@ QLabel#casilla { color: #f0f0f0; font-size: 16px; }
 """
 
 
+class _DialogoLicencia(QtWidgets.QDialog):
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
+
+
 def _dialogo(titulo: str, padre=None) -> QtWidgets.QDialog:
-    dialogo = QtWidgets.QDialog(padre)
+    dialogo = _DialogoLicencia(padre)
     dialogo.setWindowTitle(titulo)
     dialogo.setModal(True)
     dialogo.setMinimumWidth(520)
+    dialogo.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, True)
     dialogo.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
     dialogo.setStyleSheet(_HOJA)
     layout = QtWidgets.QVBoxLayout(dialogo)
@@ -157,7 +165,9 @@ def _ejecutar(funcion, padre=None, texto: str | None = None):
             return
         dialogo = _dialogo("Drako Cam", padre)
         dialogo.setMinimumWidth(420)
-        dialogo.layout().addWidget(_etiqueta(texto or "Comprobando el acceso…", "cuerpo", dialogo))
+        dialogo.layout().addWidget(
+            _etiqueta(texto or "Comprobando el acceso…", "cuerpo", dialogo)
+        )
         barra = QtWidgets.QProgressBar(dialogo)
         barra.setRange(0, 0)
         barra.setFixedHeight(8)
@@ -234,7 +244,9 @@ def _pedir_privacidad(padre) -> bool:
     casilla.toggled.connect(aceptar.setEnabled)
     aceptar.clicked.connect(dialogo.accept)
     dialogo.layout().addLayout(fila)
-    return dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted and casilla.isChecked()
+    return (
+        dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted and casilla.isChecked()
+    )
 
 
 def _mostrar_espera(error: QtWidgets.QLabel, decision: DecisionAcceso) -> None:
@@ -262,7 +274,9 @@ def _bloque_contacto(dialogo) -> None:
     etiqueta.setObjectName("contacto")
     etiqueta.setWordWrap(True)
     etiqueta.setTextFormat(QtCore.Qt.TextFormat.RichText)
-    etiqueta.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
+    etiqueta.setTextInteractionFlags(
+        QtCore.Qt.TextInteractionFlag.TextBrowserInteraction
+    )
     etiqueta.setOpenExternalLinks(True)
     etiqueta.setAccessibleName(frase)
     etiqueta.setText(
@@ -280,7 +294,9 @@ def _bloque_contacto(dialogo) -> None:
     dialogo.layout().addWidget(boton)
 
 
-def _campo(dialogo, nombre: str, placeholder: str, accesible: str, codigo: bool = False) -> QtWidgets.QLineEdit:
+def _campo(
+    dialogo, nombre: str, placeholder: str, accesible: str, codigo: bool = False
+) -> QtWidgets.QLineEdit:
     campo = QtWidgets.QLineEdit(dialogo)
     if codigo:
         campo.setObjectName("codigo")
@@ -298,19 +314,27 @@ def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
     dialogo.layout().addWidget(_etiqueta(titulo, "titulo", dialogo))
     dialogo.layout().addWidget(_etiqueta(TEXTO_CODIGO, "cuerpo", dialogo))
     if not cambio:
-        dialogo.layout().addWidget(_etiqueta("Nombre de la persona", "detalle", dialogo))
+        dialogo.layout().addWidget(
+            _etiqueta("Nombre de la persona", "detalle", dialogo)
+        )
         nombre = _campo(dialogo, "nombre", "Ana García", "Nombre de la persona")
         nombre.setMaxLength(80)
         dialogo.layout().addWidget(nombre)
-        dialogo.layout().addWidget(_etiqueta("Oficina donde se instala", "detalle", dialogo))
+        dialogo.layout().addWidget(
+            _etiqueta("Oficina donde se instala", "detalle", dialogo)
+        )
         oficina = _campo(dialogo, "oficina", "Oficina central", "Oficina")
         oficina.setMaxLength(80)
         dialogo.layout().addWidget(oficina)
     else:
         nombre = None
         oficina = None
-    dialogo.layout().addWidget(_etiqueta("Código, si ya te lo han dado", "detalle", dialogo))
-    campo = _campo(dialogo, "codigo", PLACEHOLDER_CODIGO, "Código de acceso", codigo=True)
+    dialogo.layout().addWidget(
+        _etiqueta("Código, si ya te lo han dado", "detalle", dialogo)
+    )
+    campo = _campo(
+        dialogo, "codigo", PLACEHOLDER_CODIGO, "Código de acceso", codigo=True
+    )
     campo.setMaxLength(40)
     dialogo.layout().addWidget(campo)
     error = _etiqueta("", "error", dialogo)
@@ -457,16 +481,24 @@ def solicitar_licencia(contexto, claves, padre=None) -> VigilanteLicencia | None
             return None
     else:
         try:
-            decision = _ejecutar(gestor.comprobar_arranque, padre, "Comprobando el acceso…")
+            decision = _ejecutar(
+                gestor.comprobar_arranque, padre, "Comprobando el acceso…"
+            )
         except Exception:
             logger.exception("Falló la comprobación de acceso al arrancar.")
-            _aviso(padre, "No se pudo comprobar el acceso. El programa se cierra.", critico=True)
+            _aviso(
+                padre,
+                "No se pudo comprobar el acceso. El programa se cierra.",
+                critico=True,
+            )
             return None
         if not decision.permitir:
             _aviso(padre, decision.mensaje, critico=True)
             return None
         if decision.motivo == "gracia" and decision.mensaje:
-            QtWidgets.QMessageBox.information(padre, "Drako Cam — sin conexión", decision.mensaje)
+            QtWidgets.QMessageBox.information(
+                padre, "Drako Cam — sin conexión", decision.mensaje
+            )
     vigilante = VigilanteLicencia(gestor)
     vigilante.iniciar()
     return vigilante
