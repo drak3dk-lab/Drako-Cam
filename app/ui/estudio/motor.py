@@ -89,6 +89,8 @@ class MotorEnVivo:
         return ""
 
     def poner_control(self, clave: str, valor: object) -> str:
+        if clave == "LandmarkDetectToggle" and valor:
+            self._poner_valor("LandmarkDetectModelSelection", "orformer98")
         self._escribir_control(clave, valor)
         self._ajustes[clave] = valor
         if self._cara_id:
@@ -499,8 +501,11 @@ class MotorEnVivo:
 
     def _aplicar_mapa(self, mapa: dict, guardar: bool = True) -> None:
         self._ajustes.update(mapa)
-        for clave, valor in mapa.items():
+        ordenados = sorted(mapa.items(), key=lambda par: isinstance(par[1], bool))
+        for clave, valor in ordenados:
             try:
+                if clave == "LandmarkDetectToggle" and valor:
+                    self._poner_valor("LandmarkDetectModelSelection", "orformer98")
                 self._escribir_control(clave, valor)
             except Exception as exc:
                 print(f"[AVISO] No se aplicó {clave}: {exc}")

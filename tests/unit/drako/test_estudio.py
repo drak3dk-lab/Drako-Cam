@@ -99,6 +99,7 @@ def test_los_ajustes_que_drako_usa_siguen_en_el_panel():
         "Nitidez y calidad",
         "Color y luz",
         "Objetos delante",
+        "Estabilidad del borde",
     ]
     maxima = valores_de_calidad("Máxima calidad", permite_alto=True)
     fluido = valores_de_calidad("Máximo FPS")
@@ -109,6 +110,12 @@ def test_los_ajustes_que_drako_usa_siguen_en_el_panel():
     assert fluido["OccluderEnableToggle"] is False
     assert fluido["BordermaskEnableToggle"] is True
     assert valores_de_calidad("Auto")["SimilarityThresholdSlider"] == 60
+    assert valores_de_calidad("Auto")["OccluderEnableToggle"] is True
+    assert valores_de_calidad("Auto")["FaceTrackingEnableToggle"] is True
+    assert valores_de_calidad("Auto")["SuavizadoMascaraEnableToggle"] is True
+    assert valores_de_calidad("Máxima calidad")["DFLXSegEnableToggle"] is True
+    assert valores_de_calidad("Máxima calidad")["LandmarkDetectToggle"] is True
+    assert valores_de_calidad("Máximo FPS")["DFLXSegEnableToggle"] is False
 
 
 def test_los_ajustes_se_guardan_con_la_cara(tmp_path: Path):
