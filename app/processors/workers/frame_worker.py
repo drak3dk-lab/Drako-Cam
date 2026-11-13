@@ -279,7 +279,9 @@ class FrameWorker(threading.Thread):
                         # Stopped while waiting, discard task
                         break  # 'finally' will call task_done()
 
-                    # Unpack the task which includes frame, specific parameters AND precomputed detections
+                    # Unpack the task which includes frame, specific parameters AND precomputed detections.
+                    # El directo puede añadir un 9º elemento con el tensor ya en GPU.
+                    extra = task[8] if len(task) >= 9 else None
                     (
                         self.frame_number,
                         self.frame,
@@ -289,7 +291,14 @@ class FrameWorker(threading.Thread):
                         self.precomputed_kpss_5,
                         self.precomputed_kpss,
                         self.precomputed_kpss_203,
-                    ) = task
+                    ) = task[:8]
+                    self._tensor_entrada = None
+                    self._liberar_reserva = None
+                    self._t0_captura = None
+                    if isinstance(extra, dict):
+                        self._tensor_entrada = extra.get("tensor")
+                        self._liberar_reserva = extra.get("liberar")
+                        self._t0_captura = extra.get("t0")
 
                     # Store them locally in the worker
                     self.parameters = local_params_from_feeder
@@ -368,6 +377,14 @@ class FrameWorker(threading.Thread):
                     self.precomputed_kpss_203 = None
                     self.parameters = {}
                     self.local_control_state_from_feeder = {}
+                    liberar = getattr(self, "_liberar_reserva", None)
+                    if callable(liberar):
+                        try:
+                            liberar()
+                        except Exception:
+                            pass
+                    self._liberar_reserva = None
+                    self._tensor_entrada = None
                     task = None
 
             # --- Break Circular References & Clear Caches ---
@@ -498,6 +515,13 @@ class FrameWorker(threading.Thread):
                 return
 
             # Emit Signals directly with numpy.ndarray (JIT QPixmap creation is now handled by the GUI Thread)
+            t0 = getattr(self, "_t0_captura", None)
+            cronometro = getattr(self.video_processor, "cronometro_en_vivo", None)
+            if t0 is not None and cronometro is not None:
+                try:
+                    cronometro.en_cola(t0)
+                except Exception:
+                    pass
             if self.video_processor.file_type == "webcam" and not self.is_single_frame:
                 self.video_processor.webcam_frame_processed_signal.emit(self.frame)
             elif not self.is_single_frame:
@@ -528,19 +552,26 @@ class FrameWorker(threading.Thread):
             )
             if _is_cuda_error:
                 print(
-                    f"[FATAL] CUDA error in {self.name} (frame {self.frame_number}): {e}"
+                    f"[AVISO] Error CUDA en {self.name} (fotograma {self.frame_number}): {e}"
                 )
-                print(
-                    "[FATAL] CUDA context may be corrupted. If this persists, open "
-                    "Launcher → Update / Maintenance → switch provider (TensorRT ↔ CUDA) "
-                    "or rebuild the TensorRT engines."
-                )
-                try:
-                    self.video_processor.fatal_processing_error_signal.emit(
-                        f"{self.name} frame {self.frame_number}: {e}"
+                from app.drako.rendimiento.watchdog import observar_error
+
+                if observar_error(self.video_processor, _err_msg):
+                    print(
+                        "[AVISO] El directo sigue. Si se repite, Drako Cam pasa de "
+                        "TensorRT a CUDA sin cerrarse."
                     )
-                except Exception:
-                    pass
+                else:
+                    print(
+                        "[AVISO] Demasiados errores CUDA. Se detiene el directo, "
+                        "no la aplicación."
+                    )
+                    try:
+                        self.video_processor.fatal_processing_error_signal.emit(
+                            f"{self.name} fotograma {self.frame_number}: {e}"
+                        )
+                    except Exception:
+                        pass
             else:
                 print(f"[ERROR] Error in {self.name} (frame {self.frame_number}): {e}")
             traceback.print_exc()
@@ -656,12 +687,20 @@ class FrameWorker(threading.Thread):
         img_numpy_rgb_uint8 = self.frame
         assert img_numpy_rgb_uint8 is not None, "frame must be set before processing"
 
-        # Prepare the base tensor
-        img_chw = np.ascontiguousarray(img_numpy_rgb_uint8.transpose(2, 0, 1))
-
-        processed_tensor_rgb_uint8 = torch.from_numpy(img_chw).to(
-            self.models_processor.device
+        # Si el canal en vivo ya subió el fotograma, no se vuelve a copiar.
+        tensor_entrada = getattr(self, "_tensor_entrada", None)
+        residente = (
+            tensor_entrada is not None
+            and bool(control.get("PipelineResidenteEnableToggle", True))
+            and not control.get("VR180ModeEnableToggle", False)
         )
+        if residente:
+            processed_tensor_rgb_uint8 = tensor_entrada
+        else:
+            img_chw = np.ascontiguousarray(img_numpy_rgb_uint8.transpose(2, 0, 1))
+            processed_tensor_rgb_uint8 = torch.from_numpy(img_chw).to(
+                self.models_processor.device
+            )
 
         # --- ROUTING LOGIC ---
         if control.get("VR180ModeEnableToggle", False):
@@ -687,6 +726,17 @@ class FrameWorker(threading.Thread):
             processed_tensor_rgb_uint8 = self.function_worker.enhance_core(
                 processed_tensor_rgb_uint8, control=control
             )
+
+        if residente:
+            from app.drako.rendimiento.buffers import AnilloAnfitrion, bajar_bgr
+
+            anillo = getattr(self, "_anillo_salida", None)
+            if anillo is None:
+                anillo = AnilloAnfitrion(4)
+                self._anillo_salida = anillo
+            bajada = bajar_bgr(processed_tensor_rgb_uint8, anillo)
+            if bajada is not None:
+                return bajada
 
         final_img_np_rgb_uint8 = (
             processed_tensor_rgb_uint8.permute(1, 2, 0).cpu().numpy().astype(np.uint8)

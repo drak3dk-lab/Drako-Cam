@@ -12,7 +12,11 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-import torch
+
+try:
+    import torch
+except ImportError:  # el job del instalador corre pytest sin PyTorch
+    torch = None
 
 # ---------------------------------------------------------------------------
 # Make sure the project root is on sys.path so `app.*` imports resolve even
@@ -89,7 +93,9 @@ def small_equirect_np() -> np.ndarray:
 
 
 @pytest.fixture(scope="session")
-def cpu_device() -> torch.device:
+def cpu_device():
+    if torch is None:
+        pytest.skip("PyTorch no está instalado")
     return torch.device("cpu")
 
 

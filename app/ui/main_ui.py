@@ -990,6 +990,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self._apply_runtime_window_title()
         self.initialize_widgets()
         self.load_last_workspace()
+        self._aplicar_perfil_vram()
+
+    def _aplicar_perfil_vram(self) -> None:
+        """Elige el perfil de VRAM sin interrumpir el acceso ni la licencia."""
+        try:
+            from app.drako.rendimiento.perfiles import aplicar_al_arranque
+
+            aplicar_al_arranque(self)
+        except Exception as exc:
+            print(f"[AVISO] No se aplicó el perfil de VRAM: {exc}")
 
     @QtCore.Slot(list)
     def handle_unload_request(self, model_names: list):

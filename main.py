@@ -24,6 +24,9 @@ os.chdir(RAIZ)
 
 # Hay que fijarlo antes de importar torch, que ocurre dentro de _run_app.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "garbage_collection_threshold:0.8")
+# La GPU discreta, si el equipo es híbrido, se numera por el bus PCI.
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
 
 MODULOS_DRAKO = (
     "app.drako",
@@ -42,6 +45,11 @@ MODULOS_DRAKO = (
     "app.drako.cuda_aviso",
     "app.drako.camara",
     "app.drako.arranque",
+    "app.drako.rendimiento",
+    "app.drako.rendimiento.perfiles",
+    "app.drako.rendimiento.tensorrt",
+    "app.drako.rendimiento.dgpu",
+    "app.drako.rendimiento.watchdog",
 )
 
 
@@ -92,9 +100,7 @@ def comprobar_importaciones() -> int:
 
 
 def _avisar_modelos() -> bool:
-    print(
-        "[INFO] Comprobando modelos. Si faltan, se descargan y se verifica el hash."
-    )
+    print("[INFO] Comprobando modelos. Si faltan, se descargan y se verifica el hash.")
     print("[INFO] La primera vez puede tardar: hace falta red y varios gigabytes.")
     try:
         from download_models import descargar_modelos
@@ -110,11 +116,20 @@ def _run_app(argv: list[str] | None = None) -> int:
     if args.comprobar_importaciones:
         return comprobar_importaciones()
 
+    # Antes de torch y sin tocar el acceso ni la licencia: preferencia de
+    # GPU dedicada para python.exe. En Linux no hace nada.
+    try:
+        from app.drako.rendimiento.dgpu import preferir_gpu_dedicada
+
+        preferir_gpu_dedicada([sys.executable, str(RAIZ / "main.py")])
+    except Exception as exc:
+        print(f"[AVISO] No se pudo fijar la GPU dedicada: {exc}")
+
     from app.drako.arranque import activar_sesion, preparar_contexto
     from app.drako.configuracion import ConfiguracionDanada
     from app.drako.cuda_aviso import mensaje_sin_cuda
     from app.drako.dialogo import instalar_menu, solicitar_acceso
-    from app.drako.registro import mensaje_para_usuario, ruta_log_actual
+    from app.drako.registro import ruta_log_actual
     from app.drako.sesion import fijar_sesion
 
     try:
@@ -129,6 +144,17 @@ def _run_app(argv: list[str] | None = None) -> int:
     import torch
 
     torch.set_grad_enabled(False)
+    try:
+        from app.drako.rendimiento.dgpu import indice_nvidia
+
+        indice = indice_nvidia(args.gpu_id)
+        if indice != args.gpu_id:
+            logger.info(
+                "Se usa la GPU NVIDIA %s en lugar de la %s.", indice, args.gpu_id
+            )
+            args.gpu_id = indice
+    except Exception as exc:
+        logger.warning("No se pudo elegir la GPU NVIDIA: %s", exc)
 
     from PySide6 import QtWidgets
 
@@ -138,7 +164,9 @@ def _run_app(argv: list[str] | None = None) -> int:
 
     aplicacion = QtWidgets.QApplication(restantes)
     aplicacion.setStyle(ProxyStyle())
-    with open(RAIZ / "app" / "ui" / "styles" / "true_dark_styles.qss", "r", encoding="utf-8") as hoja:
+    with open(
+        RAIZ / "app" / "ui" / "styles" / "true_dark_styles.qss", "r", encoding="utf-8"
+    ) as hoja:
         estilo = hoja.read()
     estilo = (
         qdarktheme.load_stylesheet(theme="dark", custom_colors={"primary": "#4090a3"})
@@ -197,6 +225,15 @@ def _run_app(argv: list[str] | None = None) -> int:
     if texto_cuda:
         logger.warning(texto_cuda)
         QtWidgets.QMessageBox.warning(ventana, "Drako Cam — sin CUDA", texto_cuda)
+    else:
+        from app.drako.rendimiento.dgpu import aviso_gpu_integrada, nombre_dispositivo
+
+        texto_igpu = aviso_gpu_integrada(nombre_dispositivo(args.gpu_id))
+        if texto_igpu:
+            logger.warning(texto_igpu)
+            QtWidgets.QMessageBox.warning(
+                ventana, "Drako Cam — GPU integrada", texto_igpu
+            )
 
     def al_salir() -> None:
         try:

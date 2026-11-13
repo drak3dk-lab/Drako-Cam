@@ -920,7 +920,26 @@ function Nuevo-Acceso([string]$RutaLnk) {
     Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
 }
 
+function Fijar-GpuDedicada {
+    # Windows elige la GPU por ejecutable. GpuPreference=2 es alto rendimiento
+    # (la NVIDIA dedicada en un portátil híbrido). Python no puede exportar
+    # NvOptimusEnablement: ese símbolo tiene que ir en el .exe.
+    $clave = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
+    if (-not (Test-Path $clave)) {
+        New-Item -Path $clave -Force | Out-Null
+    }
+    $py = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
+    $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
+    $main = Join-Path $script:Raiz "main.py"
+    foreach ($ruta in @($py, $pyw, $main)) {
+        if (-not (Test-Path -LiteralPath $ruta)) { continue }
+        New-ItemProperty -Path $clave -Name $ruta -PropertyType String -Value "GpuPreference=2;" -Force | Out-Null
+        Write-Log ("GPU de alto rendimiento para {0}" -f $ruta)
+    }
+}
+
 function Crear-Accesos {
+    Fijar-GpuDedicada
     $escritorio = [Environment]::GetFolderPath("Desktop")
     $menu = [Environment]::GetFolderPath("Programs")
     if (-not $escritorio) {

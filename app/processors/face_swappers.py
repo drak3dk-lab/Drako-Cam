@@ -91,6 +91,16 @@ class FaceSwappers:
             for model_name in self.arcface_models:
                 self.models_processor.unload_model(model_name)
 
+    def _limite_activos(self) -> int:
+        """1 si el perfil de VRAM pide un solo swapper (el caso en directo)."""
+        try:
+            control = self.models_processor.main_window.control
+            if control.get("UnSoloSwapperEnableToggle", True):
+                return 1
+        except Exception:
+            return 1
+        return self._MAX_ACTIVE_SWAPPERS
+
     def _manage_model(self, new_model_name: str) -> None:
         # FS-RACE-01: protect read-modify-write of active swappers with lock
         with self.models_processor.model_lock:
@@ -98,8 +108,8 @@ class FaceSwappers:
                 self._active_swapper_models.move_to_end(new_model_name)
                 return
 
-            # Keep up to 2 active swapper models in VRAM for seamless dual swapping
-            while len(self._active_swapper_models) >= self._MAX_ACTIVE_SWAPPERS:
+            # En directo solo cabe un swapper. El ajuste lo puede abrir a 2.
+            while len(self._active_swapper_models) >= self._limite_activos():
                 oldest_model, _ = self._active_swapper_models.popitem(last=False)
                 if oldest_model != new_model_name:
                     self.models_processor.unload_model(oldest_model)
@@ -133,8 +143,9 @@ class FaceSwappers:
         is_lazy_build = self.models_processor.check_and_clear_pending_build(model_name)
         if is_lazy_build:
             self.models_processor.show_build_dialog.emit(
-                "Finalizing TensorRT Build",
-                f"Performing first-run inference for:\n{model_name}\n\nThis may take several minutes.",
+                "Terminando TensorRT",
+                f"Primera inferencia de:\n{model_name}\n\n"
+                "Puede tardar varios minutos. El motor queda guardado.",
             )
 
         try:

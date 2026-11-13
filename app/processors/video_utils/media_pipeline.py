@@ -262,12 +262,17 @@ class MediaPipeline(QObject):
 
     def store_webcam_frame_to_display(self, frame: numpy.ndarray) -> None:
         """Stores a processed webcam frame. Overwrites stale frames so the UI is always real-time."""
+        tirados = 0
         while not self.webcam_frames_to_display.empty():
             try:
                 stale_frame = self.webcam_frames_to_display.get_nowait()
                 del stale_frame
+                tirados += 1
             except queue.Empty:
                 break
+        cronometro = getattr(self.vp, "cronometro_en_vivo", None)
+        if cronometro is not None and tirados:
+            cronometro.descartar(tirados)
 
         self.webcam_frames_to_display.put(frame)
 
@@ -886,9 +891,257 @@ class MediaPipeline(QObject):
         time.sleep(decision.esperar_s)
         return True
 
+    def _directo_en_hilos(self) -> bool:
+        try:
+            return bool(self.main_window.control.get("PipelineHilosEnableToggle", True))
+        except Exception:
+            return True
+
+    def _feed_webcam_en_hilos(self) -> None:
+        """Captura, inferencia y salida en hilos distintos. Colas de 1 y 2."""
+        from app.drako.rendimiento.pipeline import CanalEnVivo
+
+        canal = CanalEnVivo()
+        self._canal_en_vivo = canal
+        self.vp.cronometro_en_vivo = canal.cronometro
+        inferencia = threading.Thread(
+            target=self._bucle_inferencia_webcam,
+            args=(canal,),
+            daemon=True,
+            name="DrakoInferencia",
+        )
+        salida = threading.Thread(
+            target=self._bucle_salida_virtual,
+            args=(canal,),
+            daemon=True,
+            name="DrakoSalida",
+        )
+        inferencia.start()
+        salida.start()
+        self._hilo_inferencia_webcam = inferencia
+        self._hilo_salida_webcam = salida
+        while self.vp.processing:
+            try:
+                captura = self.vp.media_capture
+                ret, frame_bgr = (False, None)
+                if captura is not None and captura.isOpened():
+                    ret, frame_bgr = misc_helpers.read_frame(
+                        captura, 0, preview_target_height=None
+                    )
+                if not ret or frame_bgr is None:
+                    if not self._recuperar_webcam():
+                        break
+                    continue
+                canal.captura.poner_fresco(self._copiar_captura(frame_bgr))
+                self._politica_webcam().exito()
+            except Exception as e:
+                print(f"[ERROR] Error en la captura de la webcam: {e}")
+                if not self._recuperar_webcam():
+                    break
+        canal.captura.vaciar()
+
+    def _copiar_captura(self, frame_bgr: numpy.ndarray) -> numpy.ndarray:
+        from app.drako.rendimiento.buffers import AnilloAnfitrion
+
+        anillo = getattr(self, "_anillo_captura", None)
+        if anillo is None:
+            anillo = AnilloAnfitrion(3)
+            self._anillo_captura = anillo
+        return anillo.copiar(frame_bgr)
+
+    def _bucle_inferencia_webcam(self, canal) -> None:
+        while self.vp.processing:
+            frame_bgr = canal.captura.tomar(0.2)
+            if frame_bgr is None:
+                continue
+            try:
+                self._encolar_fotograma_webcam(frame_bgr)
+            except Exception as e:
+                print(f"[ERROR] Error al preparar el fotograma: {e}")
+
+    def _bucle_salida_virtual(self, canal) -> None:
+        while self.vp.processing:
+            frame = canal.salida.tomar(0.2)
+            if frame is None:
+                continue
+            try:
+                self.vp.send_frame_to_virtualcam(frame)
+            except Exception as e:
+                print(f"[AVISO] No se pudo enviar el fotograma a la cámara virtual: {e}")
+            canal.cronometro.cerrar()
+
+    def _encolar_fotograma_webcam(self, frame_bgr: numpy.ndarray) -> None:
+        """Detección (o seguimiento) y entrega al worker, sin acumular fotogramas."""
+        import time
+
+        from app.drako.rendimiento.buffers import ReservaGpu
+        from app.drako.rendimiento.colas import poner_descartando
+        from app.drako.rendimiento.deteccion import PoliticaDeteccion, RastreadorRostros
+        from app.drako.rendimiento.estado import copia_estado
+
+        t0 = time.perf_counter()
+        current_shape = frame_bgr.shape
+        if (
+            not hasattr(self, "_webcam_pinned_ring_buffer")
+            or getattr(self, "_webcam_pinned_ring_shape", None) != current_shape
+        ):
+            self._webcam_pinned_ring_shape = current_shape
+            buffer_count = 4
+            self._webcam_pinned_ring_buffer = []
+            is_cuda = torch.cuda.is_available()
+            for _ in range(buffer_count):
+                if is_cuda:
+                    t = torch.empty(current_shape, dtype=torch.uint8).pin_memory()
+                    self._webcam_pinned_ring_buffer.append(t.numpy())
+                else:
+                    self._webcam_pinned_ring_buffer.append(
+                        numpy.empty(current_shape, dtype=numpy.uint8)
+                    )
+            self._webcam_pinned_ring_idx = 0
+
+        pinned_dst = self._webcam_pinned_ring_buffer[self._webcam_pinned_ring_idx]
+        self._webcam_pinned_ring_idx = (self._webcam_pinned_ring_idx + 1) % len(
+            self._webcam_pinned_ring_buffer
+        )
+        cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB, dst=pinned_dst)
+        frame_rgb = pinned_dst
+
+        with self.main_window.models_processor.model_lock:
+            if getattr(self, "ui_state_is_dirty", True) or not hasattr(
+                self, "_webcam_cached_params"
+            ):
+                self._webcam_cached_params = fast_state_copy(self.main_window.parameters)
+                self._webcam_cached_control = fast_state_copy(self.main_window.control)
+                self.ui_state_is_dirty = False
+            local_params_for_worker = copia_estado(self._webcam_cached_params)
+            local_control_for_worker = copia_estado(self._webcam_cached_control)
+
+        is_swap_active = self.main_window.swapfacesButton.isChecked()
+        is_edit_active = self.main_window.editFacesButton.isChecked()
+        residente = bool(local_control_for_worker.get("PipelineResidenteEnableToggle", True))
+        inteligente = bool(
+            local_control_for_worker.get("DeteccionInteligenteEnableToggle", True)
+        )
+        tensor = None
+        liberar = None
+        indice = None
+        if residente and torch.cuda.is_available():
+            reserva = getattr(self, "_reserva_gpu", None)
+            if reserva is None:
+                reserva = ReservaGpu(2)
+                self._reserva_gpu = reserva
+            indice = reserva.tomar()
+            if indice is not None:
+                tensor = reserva.subir_chw(indice, frame_rgb)
+                if tensor is None:
+                    reserva.devolver(indice)
+                    indice = None
+                else:
+
+                    def _liberar(i=indice, r=reserva):
+                        r.devolver(i)
+
+                    liberar = _liberar
+
+        hay_objetivo = len(self.main_window.target_faces) > 0 and (
+            is_swap_active or is_edit_active
+        )
+        if hay_objetivo:
+            self.vp._webcam_had_targets = True
+            if inteligente:
+                politica = getattr(self, "_politica_deteccion", None)
+                if politica is None:
+                    politica = PoliticaDeteccion(2)
+                    self._politica_deteccion = politica
+                rastreador = getattr(self, "_rastreador_rostros", None)
+                if rastreador is None:
+                    rastreador = RastreadorRostros()
+                    self._rastreador_rostros = rastreador
+                try:
+                    politica.cada_n = max(
+                        1, int(local_control_for_worker.get("DeteccionCadaNSlider", 2))
+                    )
+                except (TypeError, ValueError):
+                    politica.cada_n = 2
+                if politica.debe_detectar(rastreador.perdido()):
+                    bboxes, kpss_5, kpss, kpss_203 = self._detectar_webcam(
+                        frame_rgb,
+                        local_control_for_worker,
+                        local_params_for_worker,
+                        tensor,
+                    )
+                    rastreador.corregir(
+                        bboxes, kpss_5, kpss, kpss_203, frame_rgb.shape[1], frame_rgb.shape[0]
+                    )
+                    politica.anotar(bboxes is not None and len(bboxes) > 0)
+                else:
+                    rastreador.predecir()
+                    if rastreador.perdido():
+                        bboxes, kpss_5, kpss, kpss_203 = self._detectar_webcam(
+                            frame_rgb,
+                            local_control_for_worker,
+                            local_params_for_worker,
+                            tensor,
+                        )
+                        rastreador.corregir(
+                            bboxes,
+                            kpss_5,
+                            kpss,
+                            kpss_203,
+                            frame_rgb.shape[1],
+                            frame_rgb.shape[0],
+                        )
+                        politica.anotar(bboxes is not None and len(bboxes) > 0)
+                    else:
+                        bboxes, kpss_5, kpss, kpss_203 = rastreador.empaquetar()
+            else:
+                bboxes, kpss_5, kpss, kpss_203 = self._detectar_webcam(
+                    frame_rgb,
+                    local_control_for_worker,
+                    local_params_for_worker,
+                    tensor,
+                )
+        else:
+            bboxes = numpy.empty((0, 4), dtype=numpy.float32)
+            kpss_5 = numpy.empty((0, 5, 2), dtype=numpy.float32)
+            kpss = numpy.empty((0, 68, 2), dtype=numpy.float32)
+            kpss_203 = numpy.empty((0, 203, 2), dtype=numpy.float32)
+            if self.vp._webcam_had_targets:
+                self.vp.sequential_detector.reset_state()
+                self.vp._webcam_had_targets = False
+                if hasattr(self, "_rastreador_rostros"):
+                    self._rastreador_rostros.pistas.clear()
+
+        extra = {"tensor": tensor, "liberar": liberar, "t0": t0}
+        tarea = (
+            0,
+            frame_rgb,
+            local_params_for_worker,
+            local_control_for_worker,
+            bboxes,
+            kpss_5,
+            kpss,
+            kpss_203,
+            extra,
+        )
+        poner_descartando(self.vp.frame_queue, tarea)
+
+    def _detectar_webcam(self, frame_rgb, control, params, tensor):
+        return self.vp.sequential_detector.run(
+            frame_rgb=frame_rgb,
+            local_control_for_worker=control,
+            local_params_for_worker=params,
+            is_master_edit_active=self.main_window.editFacesButton.isChecked(),
+            frame_tensor=tensor,
+            frame_number=0,
+        )
+
     def _feed_webcam(self) -> None:
         """Continuous extraction loop for Live Webcam hardware."""
         self.ui_state_is_dirty = True
+        if self._directo_en_hilos():
+            self._feed_webcam_en_hilos()
+            return
         while self.vp.processing:
             try:
                 in_flight_frames = (
@@ -1305,6 +1558,9 @@ class MediaPipeline(QObject):
 
         if self.vp.file_type == "webcam":
             if self.webcam_frames_to_display.empty():
+                from app.drako.rendimiento.watchdog import observar_atasco
+
+                observar_atasco(self.vp)
                 return
             frame = self.webcam_frames_to_display.get()
         else:
@@ -1355,7 +1611,15 @@ class MediaPipeline(QObject):
                 self.heartbeat_frame_counter = 0
                 self.vp.processing_heartbeat_signal.emit()
 
-        self.vp.send_frame_to_virtualcam(frame)
+        canal = getattr(self, "_canal_en_vivo", None)
+        if self.vp.file_type == "webcam" and canal is not None:
+            canal.salida.poner_fresco(frame, al_descartar=canal.cronometro.descartar)
+        else:
+            self.vp.send_frame_to_virtualcam(frame)
+        if self.vp.file_type == "webcam":
+            from app.drako.rendimiento.watchdog import observar_latido
+
+            observar_latido(self.vp)
 
         if self.vp.is_processing_segments or self.vp.recording:
             if self.vp.encoder.is_running():
@@ -1391,8 +1655,16 @@ class MediaPipeline(QObject):
                         self.main_window, frame_number_to_display
                     )
 
-        # CREATE QPIXMAP JUST-IN-TIME (GUI Thread safety)
-        pixmap = common_widget_actions.get_pixmap_from_frame(self.main_window, frame)
+        # CREATE QPIXMAP JUST-IN-TIME (GUI Thread safety).
+        # En modo emisión la vista previa no se pinta: la GPU se queda para la salida.
+        from app.drako.rendimiento.emision import debe_omitir_preview
+
+        omitir_preview = (
+            self.vp.file_type == "webcam" and debe_omitir_preview(self.main_window.control)
+        )
+        pixmap = None
+        if not omitir_preview:
+            pixmap = common_widget_actions.get_pixmap_from_frame(self.main_window, frame)
         slider_display_frame = frame_number_to_display
         if (
             self.vp._used_ffmpeg_cap
@@ -1404,9 +1676,10 @@ class MediaPipeline(QObject):
                 self.vp.output_to_source_frame(frame_number_to_display), src_slider_max
             )
 
-        graphics_view_actions.update_graphics_view(
-            self.main_window, pixmap, slider_display_frame
-        )
+        if pixmap is not None:
+            graphics_view_actions.update_graphics_view(
+                self.main_window, pixmap, slider_display_frame
+            )
         self._update_playback_fps_display()
 
         self.main_window.models_processor.check_deferred_unloads(

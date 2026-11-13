@@ -82,6 +82,13 @@ Type: filesandordirs; Name: "{app}\.venv"
 Type: filesandordirs; Name: "{app}\dependencies\ffmpeg"
 Type: filesandordirs; Name: "{app}\logs"
 
+[Registry]
+; GpuPreference=2 pide la GPU de alto rendimiento (NVIDIA dedicada).
+; Python no puede exportar NvOptimusEnablement; Windows lee esta clave.
+Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\.venv\Scripts\python.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\.venv\Scripts\pythonw.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\main.py"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
+
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
