@@ -943,7 +943,14 @@ class TargetFaceCardButton(CardButton):
 
                 # 1. Apply Mean or Median
                 if control.get("EmbMergeMethodSelection", "Mean") == "Mean":
-                    merged_emb = np.mean(embeddings_to_merge, axis=0)
+                    # Cada foto se normaliza antes de promediar: un embedding
+                    # ruidoso no arrastra al resto de la misma persona.
+                    vectores = []
+                    for emb in embeddings_to_merge:
+                        vector = np.asarray(emb, dtype=np.float32).reshape(-1)
+                        norma = float(np.linalg.norm(vector))
+                        vectores.append(vector / norma if norma > 0 else vector)
+                    merged_emb = np.mean(vectores, axis=0)
                 elif control.get("EmbMergeMethodSelection", "Mean") == "Median":
                     merged_emb = np.median(embeddings_to_merge, axis=0)
                 else:

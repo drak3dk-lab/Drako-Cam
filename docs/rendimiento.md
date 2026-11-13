@@ -144,6 +144,42 @@ proveedor a CUDA (sin TensorRT) y sigue. Si aun así sigue fallando, o
 si no llega ningún fotograma tras varias recuperaciones, se detiene el
 directo y se muestra el cuadro de siempre. La aplicación queda abierta.
 
+## Calidad del directo, medida sin GPU
+
+El temblor es el error RMS, en píxeles, de un punto con 1,6 px de ruido
+de detección, frente a la posición limpia. La media exponencial 0,35 es
+la que ya tenía el worker. One Euro (frecuencia mínima 1,0 Hz, beta 0,07)
+es el filtro del seguimiento. 30 FPS, 90 fotogramas, semilla fija.
+
+| Señal | En bruto | Media 0,35 | One Euro | Retraso del pico |
+| --- | ---: | ---: | ---: | ---: |
+| Cara quieta | 1,55 px | 0,78 px | 0,75 px | igual que la media |
+| Cara que se mueve (0,4 Hz) | 1,35 px | 1,40 px | 1,05 px | 4 fotogramas, igual que la media |
+
+En reposo One Euro deja el temblor a la mitad de la detección y un poco
+por debajo de la media. En movimiento la media se queda por detrás del
+gesto y empeora el error; One Euro lo baja de 1,40 px a 1,05 px sin
+añadir retraso.
+
+Si el rastro se pierde, el fundido baja el último swap en 8 fotogramas
+en vez de enseñar la cara real al instante.
+
+La sobrecarga del canal, ya con One Euro, sigue fuera del presupuesto
+de un fotograma. No incluye detección ni swap:
+
+| Perfil | Resolución | Latencia p50 | p95 |
+| --- | --- | ---: | ---: |
+| 6 GB | 1280×720, detección cada 4 | 0,30 ms | 2,66 ms |
+| RTX 50 (Alto) | 1920×1080, detección cada 2 | 0,64 ms | 5,18 ms |
+
+A 30 FPS el fotograma dura 33 ms. Esta sobrecarga no es el FPS del
+cambio de cara: eso hay que medirlo en la 4050 y en una RTX 50.
+
+El preset Auto pone el swap a 128 px con GFPGAN en 6 GB, a 256 px en
+8 GB y a 512 px (el pixel boost de Inswapper) en 12 GB o más. Máximo
+FPS fuerza 128 px y apaga el restaurador. En 6 GB, Máxima calidad no
+pasa de 256 px.
+
 ## Qué hay que validar en las tarjetas reales
 
 Esta rama no se ejecutó sobre una RTX 50 ni sobre la 4050. Antes de

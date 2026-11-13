@@ -208,7 +208,14 @@ def escribir_perfil(ventana: object, perfil: Perfil, *, forzar: bool) -> None:
             ventana, "MejoradoresPerezososEnableToggle", perfil.mejoradores_perezosos
         )
         _poner(ventana, "PermitirMejoradoresPesadosToggle", perfil.mejoradores_pesados)
+        from app.drako.rendimiento.calidad import aplicar_preset, preset_elegido
+
+        preset = preset_elegido(control, perfil.id)
+        aplicar_preset(
+            ventana, preset, max(perfil.deteccion_cada, preset.deteccion_cada)
+        )
         control["_PerfilAplicado"] = perfil.id
+        control["_PresetAplicado"] = preset.nombre
     vp = getattr(ventana, "video_processor", None)
     if vp is not None and forzar:
         try:

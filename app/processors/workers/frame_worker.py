@@ -299,6 +299,7 @@ class FrameWorker(threading.Thread):
                         self._tensor_entrada = extra.get("tensor")
                         self._liberar_reserva = extra.get("liberar")
                         self._t0_captura = extra.get("t0")
+                        self._fundido = float(extra.get("fundido", 1.0))
 
                     # Store them locally in the worker
                     self.parameters = local_params_from_feeder
@@ -727,6 +728,11 @@ class FrameWorker(threading.Thread):
                 processed_tensor_rgb_uint8, control=control
             )
 
+        if control.get("FundidoCaraEnableToggle", True):
+            processed_tensor_rgb_uint8 = self._fundir_si_se_pierde(
+                processed_tensor_rgb_uint8
+            )
+
         if residente:
             from app.drako.rendimiento.buffers import AnilloAnfitrion, bajar_bgr
 
@@ -745,6 +751,19 @@ class FrameWorker(threading.Thread):
             final_img_np_rgb_uint8 = np.ascontiguousarray(final_img_np_rgb_uint8)
 
         return final_img_np_rgb_uint8[..., ::-1]
+
+    def _fundir_si_se_pierde(self, procesado: torch.Tensor) -> torch.Tensor:
+        """Aguanta el último swap y lo funde con la cara real si el rastro se pierde."""
+        alfa = float(getattr(self, "_fundido", 1.0))
+        if alfa >= 0.999:
+            self._ultimo_directo = procesado.detach().clone()
+            return procesado
+        ultimo = getattr(self, "_ultimo_directo", None)
+        if ultimo is None or tuple(ultimo.shape) != tuple(procesado.shape):
+            self._ultimo_directo = procesado.detach()
+            return procesado
+        mezcla = ultimo.float().mul(alfa).add(procesado.float(), alpha=1.0 - alfa)
+        return mezcla.to(dtype=procesado.dtype)
 
     def get_face_similarity_tform(
         self, swapper_model: str, kps_5: np.ndarray

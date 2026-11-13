@@ -736,6 +736,15 @@ SETTINGS_LAYOUT_DATA: Any = {
         },
     },
     "Rendimiento en vivo": {
+        "PresetCalidadSelection": {
+            "level": 1,
+            "label": "Calidad del directo",
+            "options": ["Auto", "Máxima calidad", "Equilibrado", "Máximo FPS"],
+            "default": "Auto",
+            "help": "Auto elige según la GPU: 128 px y GFPGAN suave en 6 GB, 256 px en 8 GB y 512 px en 12 GB o más. Máximo FPS deja el swap en 128 y apaga el restaurador.",
+            "exec_function": control_actions.cambiar_perfil_vram,
+            "exec_function_args": [],
+        },
         "PerfilVramSelection": {
             "level": 1,
             "label": "Perfil de VRAM",

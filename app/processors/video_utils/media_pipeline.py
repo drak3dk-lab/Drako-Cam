@@ -1112,7 +1112,13 @@ class MediaPipeline(QObject):
                 if hasattr(self, "_rastreador_rostros"):
                     self._rastreador_rostros.pistas.clear()
 
-        extra = {"tensor": tensor, "liberar": liberar, "t0": t0}
+        rastreador_vivo = getattr(self, "_rastreador_rostros", None)
+        extra = {
+            "tensor": tensor,
+            "liberar": liberar,
+            "t0": t0,
+            "fundido": getattr(rastreador_vivo, "alfa", 1.0) if hay_objetivo else 1.0,
+        }
         tarea = (
             0,
             frame_rgb,
