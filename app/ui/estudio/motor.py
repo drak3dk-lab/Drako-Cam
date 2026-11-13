@@ -39,6 +39,8 @@ class MotorEnVivo:
         self._cara_id = str(self.biblioteca.estado().get("ultima_cara") or "")
         self._indice = int(self.biblioteca.estado().get("ultima_camara") or 0)
         self._calidad = str(self.biblioteca.estado().get("calidad") or "Auto")
+        self._aspecto = str(self.biblioteca.estado().get("aspecto") or "auto")
+        self._perfil_id = ""
         self._sin_cara: float | None = None
         self._loader = None
         self._entrando = False
@@ -199,11 +201,117 @@ class MotorEnVivo:
         if ajuste.deteccion_cada is not None:
             self._poner_valor("DeteccionCadaNSlider", ajuste.deteccion_cada)
             self._poner_toggle("DeteccionInteligenteEnableToggle", True)
-        self._aplicar_mapa(valores_de_calidad(nombre, self._permite_60()))
+        from app.ui.estudio.controles import CLAVES_RENDIMIENTO
+
+        completo = valores_de_calidad(nombre, self._permite_60())
+        self._aplicar_mapa(
+            {clave: valor for clave, valor in completo.items() if clave in CLAVES_RENDIMIENTO}
+        )
         if ajuste.resolucion or ajuste.fps:
             posicion = self.indice_camara()
             if posicion >= 0 and self._camara_abierta():
                 self.elegir_camara(posicion)
+
+    def poner_aspecto(self, ident: str) -> str:
+        from app.drako.perfiles.aspecto import valores_de_aspecto
+
+        self._aspecto = ident
+        self.biblioteca.recordar(aspecto=ident)
+        if ident == "auto":
+            return self.analizar_aspecto()
+        self._aplicar_mapa(valores_de_aspecto(ident))
+        self.mensaje = ""
+        return ""
+
+    def analizar_aspecto(self) -> str:
+        from app.drako.perfiles.aspecto import (
+            fraccion_barba,
+            luminancia_piel,
+            valores_sugeridos,
+        )
+
+        rgb, etiquetas = self._muestra_de_cara()
+        if rgb is None:
+            self.mensaje = "Elige una foto para sugerir el aspecto."
+            return self.mensaje
+        luz = luminancia_piel(rgb, etiquetas)
+        mapa, frase = valores_sugeridos(luz, fraccion_barba(etiquetas))
+        self._aspecto = "auto"
+        self._aplicar_mapa(mapa)
+        self.mensaje = frase
+        return frase
+
+    def guardar_perfil(self, nombre: str) -> str:
+        from app.drako.perfiles.almacen import AlmacenPerfiles
+        from app.drako.rutas import directorio_perfiles
+        from app.ui.estudio.controles import por_clave
+
+        fotos = self._fotos_elegidas()
+        if not fotos:
+            self.mensaje = "Elige al menos una foto para el perfil."
+            return self.mensaje
+        almacen = AlmacenPerfiles(directorio_perfiles())
+        perfil = almacen.crear(
+            nombre,
+            dict(self._ajustes),
+            getattr(self, "_aspecto", "auto"),
+            self._calidad,
+            fotos,
+            self._embedding_medio(),
+            set(por_clave()),
+        )
+        self._perfil_id = perfil.id
+        self.mensaje = f"Perfil guardado: {perfil.nombre}"
+        return ""
+
+    def aplicar_perfil(self, ident: str) -> str:
+        from app.drako.perfiles.almacen import AlmacenPerfiles
+        from app.drako.rutas import directorio_perfiles
+
+        perfil = AlmacenPerfiles(directorio_perfiles()).cargar(ident)
+        self._perfil_id = perfil.id
+        self._aspecto = perfil.aspecto
+        self._calidad = perfil.calidad
+        self._aplicar_mapa(perfil.ajustes, guardar=False)
+        for foto in perfil.fotos:
+            self._pedir_embedding(foto)
+        self._fundir_perfil(perfil)
+        self.mensaje = perfil.nombre
+        return ""
+
+    def accion_perfil(self, ident: str, accion: str, extra: str = "") -> str:
+        from app.drako.perfiles.almacen import AlmacenPerfiles
+        from app.drako.rutas import directorio_perfiles
+
+        almacen = AlmacenPerfiles(directorio_perfiles())
+        if accion == "renombrar":
+            almacen.renombrar(ident, extra)
+        elif accion == "duplicar":
+            almacen.duplicar(ident)
+        elif accion == "favorito":
+            almacen.favorito(ident, extra == "1")
+        elif accion == "borrar":
+            if self._perfil_id == ident:
+                self._perfil_id = ""
+            almacen.borrar(ident)
+        elif accion == "exportar" and extra:
+            almacen.exportar(ident, Path(extra))
+            self.mensaje = "Perfil exportado."
+        elif accion == "importar" and extra:
+            from app.ui.estudio.controles import por_clave
+
+            perfil = almacen.importar(Path(extra), set(por_clave()))
+            self.mensaje = f"Perfil importado: {perfil.nombre}"
+        return ""
+
+    def perfiles(self) -> list[tuple[str, str, str, bool]]:
+        from app.drako.perfiles.almacen import AlmacenPerfiles
+        from app.drako.rutas import directorio_perfiles
+
+        return [
+            (perfil.id, perfil.nombre, str(perfil.miniatura or ""), perfil.favorito)
+            for perfil in AlmacenPerfiles(directorio_perfiles()).listar()
+        ]
 
     def poner_fuerza(self, valor: int) -> None:
         self._poner_toggle("StrengthEnableToggle", int(valor) != 50)
@@ -429,6 +537,129 @@ class MotorEnVivo:
         )
         self._loader = worker
         worker.start()
+
+    def _muestra_de_cara(self):
+        foto = self._foto_seleccionada()
+        if foto is None:
+            return None, None
+        try:
+            import numpy as np
+            from PySide6.QtGui import QImage
+
+            imagen = QImage(str(foto.ruta)).convertToFormat(QImage.Format.Format_RGB888)
+            if imagen.isNull():
+                return None, None
+            ancho, alto = imagen.width(), imagen.height()
+            linea = int(imagen.bytesPerLine())
+            buf = np.frombuffer(imagen.constBits(), dtype=np.uint8, count=alto * linea)
+            rgb = np.ascontiguousarray(buf.reshape(alto, linea)[:, : ancho * 3]).reshape(
+                alto, ancho, 3
+            )
+            return rgb, self._etiquetas(rgb)
+        except Exception:
+            return None, None
+
+    def _etiquetas(self, rgb):
+        try:
+            import numpy as np
+            import torch
+            from torchvision.transforms import v2
+
+            tensor = torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1)
+            tensor = v2.functional.resize(tensor.unsqueeze(0), [512, 512]).squeeze(0)
+            mascaras = self.ventana.models_processor.face_masks
+            # El parser vive en el worker de máscaras, si ya está cargado.
+            worker = getattr(self.ventana, "function_worker", None)
+            etiquetas = None
+            if worker is not None and hasattr(worker, "face_masks"):
+                etiquetas = worker.face_masks._faceparser_labels(tensor)
+            elif mascaras is not None:
+                etiquetas = mascaras._faceparser_labels(tensor)
+            if etiquetas is None:
+                return None
+            return etiquetas.detach().cpu().numpy()
+        except Exception:
+            return None
+
+    def _fotos_elegidas(self) -> list:
+        foto = self._foto_seleccionada()
+        return [foto.ruta] if foto is not None else []
+
+    def _embedding_medio(self):
+        foto = self._foto_seleccionada()
+        if foto is None:
+            return None
+        boton = self._boton_entrada(foto.ruta)
+        if boton is None:
+            return None
+        almacen = getattr(boton, "embedding_store", None) or {}
+        for vector in almacen.values():
+            try:
+                import numpy as np
+
+                return np.asarray(vector, dtype=np.float32).reshape(-1).tolist()
+            except Exception:
+                continue
+        return None
+
+    def _embedding_activo(self):
+        import numpy as np
+
+        for destino in getattr(self.ventana, "target_faces", {}).values():
+            vectores = getattr(destino, "assigned_input_embedding", None) or {}
+            for vector in vectores.values():
+                return np.asarray(vector, dtype=np.float32).reshape(-1)
+        return None
+
+    def _escribir_embedding(self, vector) -> None:
+        for destino in getattr(self.ventana, "target_faces", {}).values():
+            actual = getattr(destino, "assigned_input_embedding", None)
+            if not isinstance(actual, dict) or not actual:
+                continue
+            clave = next(iter(actual))
+            actual[clave] = vector
+
+    def _fundir_perfil(self, perfil) -> None:
+        from app.drako.perfiles.fader import mezclar, pasos
+
+        anterior = self._embedding_activo()
+        nuevo = None
+        if perfil.embedding:
+            import numpy as np
+
+            nuevo = np.asarray(perfil.embedding, dtype=np.float32)
+        if anterior is None or nuevo is None or anterior.shape != nuevo.shape:
+            QtCore.QTimer.singleShot(700, lambda: self._asignar_fotos(perfil))
+            return
+
+        secuencia = pasos(8)
+
+        def paso(indice: int = 0) -> None:
+            if indice >= len(secuencia):
+                self._asignar_fotos(perfil)
+                return
+            self._escribir_embedding(mezclar(anterior, nuevo, secuencia[indice]))
+            QtCore.QTimer.singleShot(50, lambda indice=indice + 1: paso(indice))
+
+        paso()
+
+    def _asignar_fotos(self, perfil) -> None:
+        botones = [self._boton_entrada(foto) for foto in perfil.fotos]
+        botones = [boton for boton in botones if boton is not None]
+        if not botones:
+            return
+        caras = list(getattr(self.ventana, "target_faces", {}).values())
+        if not caras:
+            self._cara_id = botones[0].face_id if hasattr(botones[0], "face_id") else self._cara_id
+            return
+        for destino in caras:
+            destino.assigned_input_faces = {
+                boton.face_id: boton.embedding_store for boton in botones
+            }
+            try:
+                destino.calculate_assigned_input_embedding()
+            except Exception:
+                pass
 
     def _foto_seleccionada(self):
         if not self._cara_id:

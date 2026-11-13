@@ -21,3 +21,8 @@ def directorio_datos(entorno: os._Environ | dict | None = None) -> Path:
         return Path(base) / "DrakoCam"
     base = str(env.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     return Path(base) / "DrakoCam"
+
+
+def directorio_perfiles(entorno: os._Environ | dict | None = None) -> Path:
+    """Perfiles de cara. En Windows: %APPDATA%\\DrakoCam\\perfiles."""
+    return directorio_datos(entorno) / "perfiles"

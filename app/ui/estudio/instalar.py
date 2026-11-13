@@ -67,6 +67,16 @@ def _conectar(estudio: Estudio, motor: MotorEnVivo) -> None:
     estudio.pedir_original.connect(lambda original: _hacer(estudio, motor, lambda: motor.ver_original(original) or ""))
     estudio.pedir_virtual.connect(lambda activa: _hacer(estudio, motor, lambda: motor.camara_virtual(activa) or ""))
     estudio.pedir_calidad.connect(lambda nombre: _hacer(estudio, motor, lambda: motor.poner_calidad(nombre) or ""))
+    estudio.pedir_aspecto.connect(lambda ident: _hacer(estudio, motor, lambda: motor.poner_aspecto(ident) or ""))
+    estudio.pedir_perfil.connect(lambda ident: _hacer(estudio, motor, lambda: motor.aplicar_perfil(ident) or ""))
+    estudio.pedir_guardar_perfil.connect(
+        lambda nombre: _hacer(estudio, motor, lambda: motor.guardar_perfil(nombre) or "")
+    )
+    estudio.pedir_accion_perfil.connect(
+        lambda ident, accion, extra: _hacer(
+            estudio, motor, lambda: motor.accion_perfil(ident, accion, extra) or ""
+        )
+    )
     estudio.pedir_fuerza.connect(lambda valor: _hacer(estudio, motor, lambda: motor.poner_fuerza(valor) or ""))
     estudio.pedir_nitidez.connect(lambda valor: _hacer(estudio, motor, lambda: motor.poner_nitidez(valor) or ""))
     estudio.pedir_frente.connect(lambda valor: _hacer(estudio, motor, lambda: motor.poner_frente(valor) or ""))
@@ -99,6 +109,7 @@ def _refrescar(estudio: Estudio, motor: MotorEnVivo) -> None:
         caras, seleccion = motor.caras()
         estudio.mostrar_caras(caras, seleccion)
         estudio.mostrar_camaras(motor.camaras(), motor.indice_camara())
+        estudio.mostrar_perfiles(motor.perfiles())
         estado = motor.estado()
         estudio.mostrar_estado(
             sesion=bool(estado["cambio_activo"]),
