@@ -526,14 +526,10 @@ class VideoProcessor(QObject):
                     return
                 height, width = frame.shape[0], frame.shape[1]
                 if self.virtcam.height != height or self.virtcam.width != width:
-                    # La salida va bloqueada al tamaño de los ajustes. Si la
-                    # cámara se abrió con otro, se reabre una sola vez.
-                    print(
-                        f"[INFO] Cámara virtual {self.virtcam.width}x{self.virtcam.height} "
-                        f"→ {width}x{height}. Se reabre."
-                    )
-                    self.enable_virtualcam()
-                    return
+                    # Reabrir cambia el dispositivo y OBS pierde la fuente.
+                    from app.drako.rendimiento.camara_virtual import encajar
+
+                    frame = encajar(frame, self.virtcam.width, self.virtcam.height)
 
                 if self.virtcam:
                     try:

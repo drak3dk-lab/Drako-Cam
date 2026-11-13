@@ -17,7 +17,7 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
 - El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
 
-La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara se aplica sola a la persona de enfrente, la más grande y centrada, y la sigue si se mueve o se tapa un momento. No hay que buscar caras ni elegir un destino. Si falta la foto, EN VIVO lo dice. Cambiar todas las caras, o elegir la de la izquierda o la derecha, está en **Avanzado**.
+La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara se aplica sola a la persona de enfrente y la imagen sale a OBS. Si falta la foto, EN VIVO lo dice. Cambiar todas las caras, o elegir la de la izquierda o la derecha, está en **Avanzado**. Cómo añadir la fuente está en [OBS](#obs).
 
 ## Requisitos
 
@@ -163,7 +163,18 @@ npm test
 
 1. Elige una foto en la galería, o pulsa **Añadir foto**. También vale un perfil guardado, o soltar un JPG, PNG, WEBP o BMP.
 2. La cámara ya está elegida (la última, o la primera). Si hay varias, el selector está junto a **EN VIVO**.
-3. Pulsa **EN VIVO**. La persona de enfrente, la más grande y centrada, se cambia sola y se sigue aunque se mueva o se tape un momento. No hay que buscar caras ni elegir un destino. Si faltaba la foto, lo dice y no se queda en silencio. Con varias personas solo cambia esa. **PARAR** lo apaga. **Original / Cambiada** compara sin cerrar la cámara.
+3. Pulsa **EN VIVO**. La persona de enfrente se cambia sola y la imagen sale a la cámara virtual, sin otro botón. **PARAR** quita el cambio de cara; la salida hacia OBS sigue, al mismo tamaño. **Original / Cambiada** compara sin cerrar la cámara.
+
+## OBS
+
+La primera vez se abre un asistente. También está en **Cómo añadirlo**.
+
+1. Instala [OBS Studio](https://obsproject.com). Si puedes, instala también [Unity Capture](https://github.com/schellingb/UnityCapture): es la cámara que OBS lista como fuente y no se mezcla con la salida del propio OBS.
+2. Pulsa **EN VIVO** en Drako Cam. La salida se abre sola, a un tamaño y unos FPS fijos. No los cambies en mitad del directo: OBS perdería la fuente.
+3. En OBS, en Fuentes, pulsa **+** → **Dispositivo de captura de vídeo** → elige **Unity Video Capture**. Si no está, elige **OBS Virtual Camera**. Si ninguna aparece, pulsa **Ventana** y en OBS usa **Captura de ventana** sobre «Drako Cam — salida». No la minimices: si lo haces, el programa la devuelve detrás y te avisa.
+4. **Probar salida** manda un recuadro claro para comprobar que OBS la ve.
+
+Si se pierde la cara, la salida no se corta. Cerrar el panel de ajustes tampoco. El indicador dice **OBS recibiendo** cuando OBS está abierto y la salida va, o **Salida activa** si la salida va y OBS todavía no.
 
 Favoritos con estrella, y F1–F8 para saltar entre ellos. **Modo compacto** deja la ventana pequeña al lado de OBS. Si la cara se pierde, el programa lo dice y la transición suave sigue siendo la del motor.
 

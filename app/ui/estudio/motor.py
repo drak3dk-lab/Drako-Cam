@@ -57,6 +57,12 @@ class MotorEnVivo:
         self._entrando = False
         self._reintentos = 0
         self._virtual = bool(self.biblioteca.estado().get("camara_virtual") or False)
+        self._salida_activa = False
+        self._ventana_salida = None
+        self._reloj_salida = QtCore.QTimer()
+        self._reloj_salida.setInterval(33)
+        self._reloj_salida.timeout.connect(self._empujar_ventana)
+        self._obs_cache: tuple[float, object] | None = None
         self._ajustes: dict[str, object] = {}
         self.al_cargar = None
 
@@ -174,6 +180,9 @@ class MotorEnVivo:
             self._sin_cara = None
             self._fijar_cambio(False)
             self.mensaje = ""
+            from app.drako.rendimiento.emision import fijar_prioridad
+
+            fijar_prioridad(False)
             return ""
         foto = self._foto_seleccionada()
         if foto is not None and not self._camara_abierta() and self.camaras():
@@ -199,19 +208,133 @@ class MotorEnVivo:
             self._fijar_cambio(not original)
 
     def camara_virtual(self, activa: bool) -> None:
-        self._virtual = bool(activa)
-        self.biblioteca.recordar(camara_virtual=self._virtual)
-        self._poner_toggle("SendVirtCamFramesEnableToggle", self._virtual)
+        if activa:
+            self._encender_salida()
+            return
+        self._virtual = False
+        self.biblioteca.recordar(camara_virtual=False)
+        self._poner_toggle("SendVirtCamFramesEnableToggle", False)
+        procesador = getattr(self.ventana, "video_processor", None)
+        if procesador is not None and hasattr(procesador, "disable_virtualcam"):
+            try:
+                procesador.disable_virtualcam()
+            except Exception:
+                pass
+        self._salida_activa = self._ventana_salida is not None and self._ventana_salida.isVisible()
+
+    def _estado_obs(self):
+        from app.drako.rendimiento.obs_salida import detectar, procesos_windows
+
+        ahora = time.monotonic()
+        if self._obs_cache and ahora - self._obs_cache[0] < 3:
+            return self._obs_cache[1]
+        estado = detectar(procesos=procesos_windows())
+        self._obs_cache = (ahora, estado)
+        return estado
+
+    def _encender_salida(self) -> str:
+        from app.drako.rendimiento.emision import fijar_prioridad
+
+        estado = self._estado_obs()
+        fijar_prioridad(True)
+        if estado.eleccion.backend:
+            self._poner_valor("VirtCamBackendSelection", estado.eleccion.backend)
+            self._virtual = True
+            self.biblioteca.recordar(camara_virtual=True)
+            self._poner_toggle("SendVirtCamFramesEnableToggle", True)
+            procesador = getattr(self.ventana, "video_processor", None)
+            if procesador is not None and hasattr(procesador, "enable_virtualcam"):
+                try:
+                    procesador.enable_virtualcam(backend=estado.eleccion.backend)
+                except Exception as exc:
+                    self.mensaje = f"No pude abrir la cámara virtual. {exc}"
+        else:
+            self.abrir_ventana_salida()
+        self._salida_activa = True
+        self.mensaje = "" if estado.eleccion.backend else estado.eleccion.motivo
+        return self.texto_salida()
+
+    def abrir_ventana_salida(self) -> None:
+        from app.drako.rendimiento.camara_virtual import ConfiguracionSalida
+        from app.ui.estudio.ventana_salida import VentanaSalida
+
+        cfg = ConfiguracionSalida.desde_control(getattr(self.ventana, "control", {}))
+        if self._ventana_salida is None:
+            self._ventana_salida = VentanaSalida(cfg.ancho, cfg.alto)
+            self._ventana_salida.aviso.connect(self._aviso_ventana)
+        else:
+            self._ventana_salida.fijar_tamano(cfg.ancho, cfg.alto)
+        self._ventana_salida.show()
+        self._ventana_salida.raise_()
+        self._reloj_salida.start()
+        self._salida_activa = True
+
+    def _aviso_ventana(self, texto: str) -> None:
+        self.mensaje = texto
+
+    def _empujar_ventana(self) -> None:
+        if self._ventana_salida is None or not self._ventana_salida.isVisible():
+            return
+        procesador = getattr(self.ventana, "video_processor", None)
+        frame = getattr(procesador, "current_frame", None) if procesador else None
+        if frame is None:
+            return
+        self._ventana_salida.mostrar_frame(frame)
+
+    def probar_salida(self) -> str:
+        texto = self._encender_salida()
+        procesador = getattr(self.ventana, "video_processor", None)
+        if procesador is None or getattr(procesador, "virtcam", None) is not None:
+            return texto or "Salida activa. En OBS debe verse la imagen."
+        from app.drako.rendimiento.camara_virtual import ConfiguracionSalida
+        from app.drako.rendimiento.obs_salida import fotograma_prueba
+
+        cfg = ConfiguracionSalida.desde_control(getattr(self.ventana, "control", {}))
+        frame = fotograma_prueba(cfg.ancho, cfg.alto)
+        try:
+            procesador.current_frame = frame
+            procesador.send_frame_to_virtualcam(frame)
+        except Exception as exc:
+            self.mensaje = f"No pude probar la salida. {exc}"
+            return self.mensaje
+        if getattr(procesador, "virtcam", None) is None:
+            self.abrir_ventana_salida()
+            self._ventana_salida.mostrar_frame(frame)
+            return "No se abrió la cámara virtual. Dejé la ventana de salida con una prueba."
+        return "Salida activa. En OBS debe verse un recuadro claro."
+
+    def texto_salida(self) -> str:
+        from app.drako.rendimiento.obs_salida import texto_indicador
+
+        estado = self._estado_obs()
+        procesador = getattr(self.ventana, "video_processor", None)
+        abierto = bool(getattr(procesador, "virtcam", None))
+        ventana = self._ventana_salida is not None and self._ventana_salida.isVisible()
+        return texto_indicador(
+            dispositivo_abierto=abierto or self._virtual,
+            obs_en_marcha=estado.obs_en_marcha,
+            ventana=ventana,
+        )
+
+    def detalle_salida(self) -> str:
+        from app.drako.rendimiento.camara_virtual import ConfiguracionSalida
+
+        cfg = ConfiguracionSalida.desde_control(getattr(self.ventana, "control", {}))
+        nombre = self._estado_obs().eleccion.nombre or "ventana de salida"
+        return f"{cfg.ancho}×{cfg.alto} · {cfg.fps} FPS · {nombre}"
 
     def poner_calidad(self, nombre: str) -> None:
         self._calidad = nombre
         self.biblioteca.recordar(calidad=nombre)
         ajuste = ajuste_calidad(nombre, self._permite_60())
         self.nota_calidad = ajuste.nota
-        if ajuste.resolucion:
-            self._poner_valor("WebcamMaxResSelection", ajuste.resolucion)
-        if ajuste.fps:
-            self._poner_valor("WebCamMaxFPSSelection", ajuste.fps)
+        if self._salida_activa:
+            self.mensaje = "La resolución y los FPS se quedan fijos mientras OBS recibe."
+        else:
+            if ajuste.resolucion:
+                self._poner_valor("WebcamMaxResSelection", ajuste.resolucion)
+            if ajuste.fps:
+                self._poner_valor("WebCamMaxFPSSelection", ajuste.fps)
         if ajuste.deteccion_cada is not None:
             self._poner_valor("DeteccionCadaNSlider", ajuste.deteccion_cada)
             self._poner_toggle("DeteccionInteligenteEnableToggle", True)
@@ -222,6 +345,8 @@ class MotorEnVivo:
             {clave: valor for clave, valor in completo.items() if clave in CLAVES_RENDIMIENTO}
         )
         if ajuste.resolucion or ajuste.fps:
+            if self._salida_activa:
+                return
             posicion = self.indice_camara()
             if posicion >= 0 and self._camara_abierta():
                 self.elegir_camara(posicion)
@@ -347,6 +472,9 @@ class MotorEnVivo:
             fps = 30
         else:
             self.mensaje = ""
+        if self._salida_activa:
+            self.mensaje = "Los FPS se quedan fijos mientras OBS recibe."
+            return
         self._poner_valor("WebCamMaxFPSSelection", str(fps))
         posicion = self.indice_camara()
         if posicion >= 0 and self._camara_abierta():
@@ -435,7 +563,9 @@ class MotorEnVivo:
             "vigilante": self._vigilante(),
             "mensaje": mensaje,
             "calidad_nota": self.nota_calidad,
-            "virtual": virtual,
+            "virtual": virtual or self._salida_activa,
+            "salida_texto": self.texto_salida() if self._salida_activa or virtual else "APAGADA",
+            "salida_detalle": self.detalle_salida(),
             "resolucion": resolucion,
             "fps_salida": fps_salida,
             "fondo": fondo_visible,
@@ -451,6 +581,7 @@ class MotorEnVivo:
         self.mensaje = ""
         self._aplicar_cara(redetectar=True)
         self._fijar_cambio(not self.original)
+        self._encender_salida()
         return ""
 
     def _reintentar_en_vivo(self) -> None:

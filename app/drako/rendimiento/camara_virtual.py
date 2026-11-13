@@ -201,6 +201,23 @@ def _aplicar_verde(destino, caja, preparador: PreparadorSalida) -> None:
     destino[fuera, 2] = 0
 
 
+def encajar(frame, ancho: int, alto: int):
+    """Deja el fotograma en el tamaño ya abierto. No reabre el dispositivo."""
+    import numpy as np
+
+    src = np.asarray(frame)
+    if src.ndim != 3 or ancho <= 0 or alto <= 0:
+        return src
+    if src.shape[0] == alto and src.shape[1] == ancho:
+        return src
+    canales = src.shape[2]
+    destino = np.empty((alto, ancho, canales), dtype=np.uint8)
+    ys = np.linspace(0, src.shape[0] - 1, alto).astype(np.int32)
+    xs = np.linspace(0, src.shape[1] - 1, ancho).astype(np.int32)
+    np.copyto(destino, src[ys][:, xs])
+    return destino
+
+
 def _aplicar_alfa(destino, caja, preparador: PreparadorSalida) -> None:
     mascara = _mascara(preparador, destino.shape[0], destino.shape[1], caja)
     destino[:, :, 3] = 0
