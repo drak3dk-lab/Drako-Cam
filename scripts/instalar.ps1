@@ -914,9 +914,13 @@ function Nuevo-Acceso([string]$RutaLnk) {
     $lnk.WorkingDirectory = $script:Raiz
     $lnk.WindowStyle = 1
     $lnk.Description = "Abrir Drako Cam"
-    $lnk.IconLocation = "$pyw,0"
+    $icono = Join-Path $script:Raiz "installer\logo.ico"
+    if (-not (Test-Path -LiteralPath $icono)) {
+        throw "No encuentro installer\logo.ico. Sin ese isotipo el acceso directo no puede crearse."
+    }
+    $lnk.IconLocation = "$icono,0"
     $lnk.Save()
-    Write-Log ("Acceso directo: {0}" -f $RutaLnk)
+    Write-Log ("Acceso directo: {0} (icono {1})" -f $RutaLnk, $icono)
     Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
 }
 

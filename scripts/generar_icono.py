@@ -51,7 +51,14 @@ def main() -> None:
     pngs = [(lado, _png(lado)) for lado in TAMANOS]
     destino = RAIZ / "installer" / "logo.ico"
     destino.write_bytes(_ico(pngs))
+    from PySide6.QtGui import QImage
+
+    marca = QImage.fromData(pngs[-1][1])
+    bmp = RAIZ / "installer" / "wizard-logo.bmp"
+    if not marca.save(str(bmp), "BMP"):
+        raise SystemExit(f"No pude escribir {bmp}")
     print(f"Icono con {len(pngs)} tamaños en {destino}")
+    print(f"Imagen del asistente en {bmp}")
 
 
 if __name__ == "__main__":

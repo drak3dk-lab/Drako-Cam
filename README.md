@@ -42,7 +42,7 @@ Para Windows 10 u 11, de 64 bits, con internet. No hace falta instalar Python, F
 2. Doble clic en `Instalar.bat`.
 3. Espera. Instala uv y Python 3.12 solo, sin el alias de la Microsoft Store y sin activar nada. Luego descarga varios gigabytes (PyTorch y TensorRT) y puede tardar más de media hora. Hacen falta unos 25 GB libres, mejor 30. No cierres la ventana.
 4. Si algo falla, la ventana se queda abierta con el motivo. El detalle queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
-5. Al terminar hay un acceso directo **Drako Cam** en el escritorio y en el menú Inicio. Ábrelo: no sale una ventana de consola.
+5. Al terminar hay un acceso directo **Drako Cam** en el escritorio y en el menú Inicio, con el isotipo metálico. `Instalar.bat` no puede llevar icono propio; el acceso directo sí. Ábrelo: no sale una ventana de consola.
 6. Si no hay una GPU NVIDIA con CUDA, la instalación termina igual y lo dice con claridad. El programa puede abrirse, pero el directo no irá a velocidad de cámara.
 
 Volver a ejecutar `Instalar.bat` repara o actualiza lo que falte (componentes y accesos directos).

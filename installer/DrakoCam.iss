@@ -68,6 +68,7 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Step by step guide to install Conda and Visomaster for RTX 50xx series.pdf"; DestDir: "{app}"; Flags: ignoreversion
+Source: "wizard-logo.bmp"; Flags: dontcopy
 
 [Icons]
 Name: "{autodesktop}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\logo.ico"; Comment: "Abrir Drako Cam"
@@ -92,6 +93,21 @@ Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: 
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\main.py"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 
 [Code]
+procedure InitializeWizard;
+var
+  Logo: TBitmapImage;
+begin
+  ExtractTemporaryFile('wizard-logo.bmp');
+  Logo := TBitmapImage.Create(WizardForm);
+  Logo.Parent := WizardForm;
+  Logo.Bitmap.LoadFromFile(ExpandConstant('{tmp}\wizard-logo.bmp'));
+  Logo.Stretch := True;
+  Logo.Width := 72;
+  Logo.Height := 72;
+  Logo.Left := ScaleX(16);
+  Logo.Top := ScaleY(8);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Datos: String;
