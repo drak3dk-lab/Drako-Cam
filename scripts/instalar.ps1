@@ -900,17 +900,24 @@ function Probar-Cuda {
 }
 
 function Nuevo-Acceso([string]$RutaLnk) {
+    $compilado = Join-Path $script:Raiz "DrakoCam.exe"
     $pyw = Pythonw-DelVenv
     $main = Join-Path $script:Raiz "main.py"
-    if (-not (Test-Path -LiteralPath $pyw)) {
+    $usaCompilado = Test-Path -LiteralPath $compilado
+    if (-not $usaCompilado -and -not (Test-Path -LiteralPath $pyw)) {
         throw "No encuentro pythonw.exe. Sin él, el acceso directo no puede abrir Drako Cam."
     }
     $dir = Split-Path -Parent $RutaLnk
     Asegurar-Directorio $dir
     $wsh = New-Object -ComObject WScript.Shell
     $lnk = $wsh.CreateShortcut($RutaLnk)
-    $lnk.TargetPath = $pyw
-    $lnk.Arguments = '"' + $main + '"'
+    if ($usaCompilado) {
+        $lnk.TargetPath = $compilado
+        $lnk.Arguments = ""
+    } else {
+        $lnk.TargetPath = $pyw
+        $lnk.Arguments = '"' + $main + '"'
+    }
     $lnk.WorkingDirectory = $script:Raiz
     $lnk.WindowStyle = 1
     $lnk.Description = "Abrir Drako Cam"
@@ -921,7 +928,11 @@ function Nuevo-Acceso([string]$RutaLnk) {
     $lnk.IconLocation = "$icono,0"
     $lnk.Save()
     Write-Log ("Acceso directo: {0} (icono {1})" -f $RutaLnk, $icono)
-    Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
+    if ($usaCompilado) {
+        Write-Log ("Abre con el programa compilado: {0}" -f $compilado)
+    } else {
+        Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
+    }
 }
 
 function Fijar-GpuDedicada {
@@ -935,7 +946,8 @@ function Fijar-GpuDedicada {
     $py = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
     $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
     $main = Join-Path $script:Raiz "main.py"
-    foreach ($ruta in @($py, $pyw, $main)) {
+    $compilado = Join-Path $script:Raiz "DrakoCam.exe"
+    foreach ($ruta in @($py, $pyw, $main, $compilado)) {
         if (-not (Test-Path -LiteralPath $ruta)) { continue }
         New-ItemProperty -Path $clave -Name $ruta -PropertyType String -Value "GpuPreference=2;" -Force | Out-Null
         Write-Log ("GPU de alto rendimiento para {0}" -f $ruta)
@@ -1049,6 +1061,15 @@ try {
         Write-Log "Hay internet."
     } else {
         Write-Log "No hay internet. Solo puedo reparar lo que ya esté descargado."
+    }
+    $hayEnlace = $env:DRAKO_CAM_URL_RELEASE -or (Test-Path -LiteralPath (Join-Path $script:Raiz "installer\descarga.url"))
+    if ($hayEnlace) {
+        Write-Log "Hay un enlace de release. Descargo sin usar tokens del repositorio."
+        $descarga = Join-Path $PSScriptRoot "descargar_release.ps1"
+        & $descarga
+        if ($LASTEXITCODE -ne 0) {
+            throw "No se pudo descargar el release. Revisa installer\descarga.url y, si el repo es privado, ejecuta gh auth login. No pegues un token en el programa."
+        }
     }
     Mirar-Nvidia
     if (-not $script:ResumenNvidia) {

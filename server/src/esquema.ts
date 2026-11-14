@@ -67,6 +67,11 @@ CREATE INDEX IF NOT EXISTS idx_solicitudes_ip ON solicitudes (ip, creada_en);
 CREATE INDEX IF NOT EXISTS idx_solicitudes_huella ON solicitudes (huella, estado);
 `;
 
+/** Igual que `migrations/0004_reasignar.sql`. */
+export const ESQUEMA_REASIGNAR = `
+ALTER TABLE solicitudes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'acceso';
+`;
+
 /** Igual que `migrations/0003_bot_estado.sql`. */
 export const ESQUEMA_BOT = `
 CREATE TABLE IF NOT EXISTS bot_estado (

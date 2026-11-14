@@ -105,7 +105,7 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
 6. En la pantalla: elige una foto (o arrástrala) o un perfil y pulsa **EN VIVO**. Para OBS, enciende la cámara virtual y, en OBS, añade un dispositivo de captura de vídeo llamado **Drako Cam**.
 
-El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra.
+El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra. El código queda atado al PC. Copiar la carpeta a otro equipo pide una aprobación nueva en el bot de Telegram. Cómo poner el repo en privado, compilar el .exe y descargar un release sin guardar tokens está en [docs/privado.md](docs/privado.md).
 
 Para saltarte la descarga en una prueba de importación:
 

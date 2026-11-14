@@ -78,6 +78,7 @@ export interface Solicitud {
   estado: string;
   codigo: string | null;
   cerrada_en: number | null;
+  tipo?: string | null;
 }
 
 export interface Firmante {

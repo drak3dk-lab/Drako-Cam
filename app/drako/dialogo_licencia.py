@@ -410,7 +410,12 @@ class VigilanteLicencia(QtCore.QObject):
     def __init__(self, gestor: GestorLicencia):
         super().__init__()
         self.gestor = gestor
+        self.al_cortar_directo = None
+        self.al_restaurar = None
         self._activo = True
+        self._cortado = False
+        self._aviso_mostrado = False
+        self._sin_red_desde: float | None = None
         self._tarea: _Tarea | None = None
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(60_000)
@@ -441,11 +446,51 @@ class VigilanteLicencia(QtCore.QObject):
         self._tarea.start()
 
     def _aplicar(self, decision: DecisionAcceso) -> None:
-        if not self._activo or decision is None or decision.permitir:
+        if not self._activo or decision is None:
+            return
+        import time
+
+        from app.drako.licencia import INMEDIATOS, corte_del_directo
+        from app.drako.textos_licencia import mensaje_corte_directo
+
+        ahora = time.time()
+        if decision.permitir and decision.motivo != "gracia":
+            self._sin_red_desde = None
+            if self._cortado:
+                self._cortado = False
+                self._aviso_mostrado = False
+                restaurar = self.al_restaurar
+                if callable(restaurar):
+                    restaurar()
+            return
+        if decision.motivo not in INMEDIATOS and self._sin_red_desde is None:
+            self._sin_red_desde = ahora
+        if not corte_del_directo(decision.motivo, self._sin_red_desde, ahora):
+            return
+        self._cortar(decision, mensaje_corte_directo(), decision.motivo in INMEDIATOS)
+
+    def _cortar(self, decision: DecisionAcceso, texto: str, definitivo: bool) -> None:
+        if not self._cortado:
+            self._cortado = True
+            cortar = self.al_cortar_directo
+            if callable(cortar):
+                try:
+                    cortar()
+                except Exception:
+                    logger.exception("No se pudo detener el directo.")
+        if definitivo:
+            aviso = decision.mensaje or texto
+            if "@" not in aviso:
+                aviso = f"{aviso}\n\n{texto}"
+        else:
+            aviso = texto
+        if not self._aviso_mostrado:
+            self._aviso_mostrado = True
+            _aviso(None, aviso, critico=True)
+        if not definitivo:
             return
         self._activo = False
         self._timer.stop()
-        _aviso(None, decision.mensaje, critico=True)
         aplicacion = QtWidgets.QApplication.instance()
         if aplicacion is not None:
             aplicacion.quit()

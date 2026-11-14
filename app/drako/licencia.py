@@ -47,7 +47,26 @@ logger = logging.getLogger("drako.licencia")
 SESGO_S = 600
 EXITOS = {"ok", "sin_vincular", "ya_cerrada"}
 DEFINITIVOS = {"revocado", "desconocido", "otro_equipo"}
+INMEDIATOS = DEFINITIVOS | {"firma_invalida", "respuesta_invalida", "manipulado", "integridad"}
+MARGEN_DIRECTO_S = 180
 ESTADOS_VALIDOS = {"activa", "sin_vincular", "cerrada"}
+
+
+def corte_del_directo(
+    motivo: str,
+    sin_red_desde: float | None,
+    ahora: float,
+    margen_s: float = MARGEN_DIRECTO_S,
+) -> bool:
+    """True si hay que parar el directo. La revocación es inmediata.
+
+    Un corte de red espera el margen corto. No decide dentro del bucle de vídeo.
+    """
+    if motivo in INMEDIATOS:
+        return True
+    if motivo in {"sin_red", "gracia", "gracia_agotada", "error_red"}:
+        return sin_red_desde is not None and ahora - sin_red_desde >= margen_s
+    return False
 
 
 class ErrorDeRed(Exception):

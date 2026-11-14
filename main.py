@@ -178,6 +178,14 @@ def _run_app(argv: list[str] | None = None) -> int:
     )
     aplicacion.setStyleSheet(estilo)
 
+    from app.drako.integridad import verificar_instalacion
+
+    integra, aviso_integridad = verificar_instalacion(RAIZ)
+    if not integra:
+        logger.error("Integridad: %s", aviso_integridad)
+        QtWidgets.QMessageBox.critical(None, "Drako Cam — acceso", aviso_integridad)
+        return 1
+
     def mostrar_error(texto: str) -> None:
         QtWidgets.QMessageBox.critical(None, "Drako Cam — error inesperado", texto)
 
@@ -222,6 +230,21 @@ def _run_app(argv: list[str] | None = None) -> int:
 
     ventana = main_ui.MainWindow(gpu_id=args.gpu_id)
     instalar_menu(ventana, contexto, claves, al_cambiar_codigo=vigilante.pedir_cambio)
+
+    def cortar_directo() -> None:
+        ventana._licencia_cortada = True
+        motor = getattr(ventana, "_motor_estudio", None)
+        if motor is not None:
+            motor.poner_en_vivo(False)
+        procesador = getattr(ventana, "video_processor", None)
+        if procesador is not None and getattr(procesador, "processing", False):
+            procesador.stop_processing()
+
+    def restaurar_directo() -> None:
+        ventana._licencia_cortada = False
+
+    vigilante.al_cortar_directo = cortar_directo
+    vigilante.al_restaurar = restaurar_directo
     ventana.show()
 
     texto_cuda = mensaje_sin_cuda(bool(torch.cuda.is_available()))

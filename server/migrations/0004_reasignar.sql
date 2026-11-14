@@ -1,0 +1,1 @@
+ALTER TABLE solicitudes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'acceso';
