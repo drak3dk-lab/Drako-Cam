@@ -1,8 +1,8 @@
 """Logo de Drako Cam.
 
-El símbolo oficial es el isotipo que Drako aprobó
+El símbolo oficial es el PNG que Drako aprobó
 (`assets/drakocam/isotipo.png`): la D plateada con el ojo rojo
-hecho lente. El SVG trazado está en `app/ui/core/media/isotipo.svg`.
+hecho lente. En la app se usa ese archivo, recortado, no un redibujo.
 
 Para volver al logo de la marca, sin tocarlo, cambia una sola línea
 en `app/ui/core/media/logo.usar`: escribe `marca` en vez de `producto`.
@@ -13,14 +13,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6 import QtCore, QtGui, QtSvg, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 ROJO = "#F20A1C"
 
 _MEDIA = Path(__file__).resolve().parents[1] / "core" / "media"
 RUTA_USAR = _MEDIA / "logo.usar"
 RUTA_ISOTIPO = _MEDIA / "isotipo-limpio.png"
-RUTA_SVG = _MEDIA / "isotipo.svg"
+RUTA_MINI = _MEDIA / "isotipo-mini.png"
 RUTA_DRAKO = _MEDIA / "drako-plata.png"
 RUTA_D_MARCA = _MEDIA / "d-plata.png"
 
@@ -33,46 +33,36 @@ def variante() -> str:
     return "marca" if texto == "marca" else "producto"
 
 
-def _svg(ruta: Path) -> QtSvg.QSvgRenderer | None:
-    if not ruta.is_file():
-        return None
-    dibujo = QtSvg.QSvgRenderer(str(ruta))
-    return dibujo if dibujo.isValid() else None
-
-
 def pixmap_simbolo(lado: int) -> QtGui.QPixmap:
-    """La D. Por debajo de 40 px se usa el SVG, que aguanta mejor el tamaño."""
+    """La D del PNG aprobado. Solo por debajo de 40 px se usa la reducción de 64."""
     imagen = QtGui.QImage(lado, lado, QtGui.QImage.Format.Format_ARGB32)
     imagen.fill(QtGui.QColor("#000000"))
     pintor = QtGui.QPainter(imagen)
     pintor.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
     pintor.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform)
     if variante() == "marca" and RUTA_D_MARCA.is_file():
-        marca = QtGui.QPixmap(str(RUTA_D_MARCA))
-        pintor.drawPixmap(imagen.rect(), marca, marca.rect())
-    elif lado <= 40 and (dibujo := _svg(RUTA_SVG)) is not None:
-        margen = max(1, lado // 16)
-        dibujo.render(pintor, QtCore.QRectF(margen, margen, lado - 2 * margen, lado - 2 * margen))
-        if lado <= 32:
-            _ojo_simple(pintor, lado)
+        origen = RUTA_D_MARCA
+    elif lado <= 32 and RUTA_MINI.is_file():
+        origen = RUTA_MINI
     else:
-        simbolo = QtGui.QPixmap(str(RUTA_ISOTIPO))
-        if not simbolo.isNull():
-            escala = min(lado / simbolo.width(), lado / simbolo.height())
-            ancho = int(simbolo.width() * escala)
-            alto = int(simbolo.height() * escala)
-            pintor.drawPixmap((lado - ancho) // 2, (lado - alto) // 2, ancho, alto, simbolo)
+        origen = RUTA_ISOTIPO
+    simbolo = QtGui.QPixmap(str(origen))
+    if not simbolo.isNull():
+        escala = min(lado / simbolo.width(), lado / simbolo.height())
+        ancho = max(1, int(round(simbolo.width() * escala)))
+        alto = max(1, int(round(simbolo.height() * escala)))
+        pintor.drawPixmap(
+            (lado - ancho) // 2,
+            (lado - alto) // 2,
+            simbolo.scaled(
+                ancho,
+                alto,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            ),
+        )
     pintor.end()
     return QtGui.QPixmap.fromImage(imagen)
-
-
-def _ojo_simple(pintor: QtGui.QPainter, lado: int) -> None:
-    """En 16–32 px el iris se reduce a un punto rojo, para que se lea."""
-    centro = QtCore.QPointF(lado * 0.56, lado * 0.52)
-    radio = max(1.6, lado * 0.07)
-    pintor.setPen(QtGui.QPen(QtGui.QColor("#F4F6FA"), max(1.0, lado * 0.035)))
-    pintor.setBrush(QtGui.QColor(ROJO))
-    pintor.drawEllipse(centro, radio, radio)
 
 
 def pixmap_lockup(ancho: int) -> QtGui.QPixmap:

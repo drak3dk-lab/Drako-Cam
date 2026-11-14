@@ -1,8 +1,7 @@
 """Icono de la app a partir del isotipo oficial.
 
-Tamaños 16, 24, 32, 48, 64, 128 y 256. Los de 16 y 32 usan el SVG,
-que se lee mejor que el PNG reducido. El archivo que elige la variante
-es app/ui/core/media/logo.usar.
+Sale del PNG aprobado. 48 px en adelante es ese archivo, bien
+reducido. 16 y 32 usan la reducción preparada para que el ojo se lea.
 """
 
 from __future__ import annotations
