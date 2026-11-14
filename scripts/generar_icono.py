@@ -1,11 +1,13 @@
-"""Genera el icono del instalador a partir del SVG provisional.
+"""Icono de la app a partir del isotipo oficial.
 
-El archivo que se sustituye es app/ui/core/media/logo.svg.
-Luego: python scripts/generar_icono.py
+Tamaños 16, 24, 32, 48, 64, 128 y 256. Los de 16 y 32 usan el SVG,
+que se lee mejor que el PNG reducido. El archivo que elige la variante
+es app/ui/core/media/logo.usar.
 """
 
 from __future__ import annotations
 
+import struct
 import sys
 from pathlib import Path
 
@@ -13,28 +15,44 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
+TAMANOS = (16, 24, 32, 48, 64, 128, 256)
+
+
+def _png(lado: int) -> bytes:
+    from PySide6.QtCore import QBuffer, QIODevice
+    from app.ui.estudio.ojo import pixmap_simbolo
+
+    imagen = pixmap_simbolo(lado).toImage()
+    buf = QBuffer()
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    imagen.save(buf, "PNG")
+    return bytes(buf.data())
+
+
+def _ico(pngs: list[tuple[int, bytes]]) -> bytes:
+    cabecera = struct.pack("<HHH", 0, 1, len(pngs))
+    entradas = b""
+    datos = b""
+    offset = 6 + 16 * len(pngs)
+    for lado, blob in pngs:
+        ancho = 0 if lado >= 256 else lado
+        entradas += struct.pack("<BBBBHHII", ancho, ancho, 0, 0, 1, 32, len(blob), offset)
+        offset += len(blob)
+        datos += blob
+    return cabecera + entradas + datos
+
 
 def main() -> None:
     import os
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtGui import QImage, QPainter
     from PySide6.QtWidgets import QApplication
 
-    from app.ui.estudio.ojo import RUTA_LOGO, renderer
-
-    _app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
+    pngs = [(lado, _png(lado)) for lado in TAMANOS]
     destino = RAIZ / "installer" / "logo.ico"
-    imagen = QImage(256, 256, QImage.Format.Format_ARGB32)
-    imagen.fill(0)
-    pintor = QPainter(imagen)
-    renderer(False).render(pintor)
-    pintor.end()
-    if not imagen.save(str(destino), "ICO"):
-        png = destino.with_suffix(".png")
-        imagen.save(str(png), "PNG")
-        raise SystemExit(f"Qt no escribió el ICO. Quedó el PNG en {png}.")
-    print(f"Icono escrito en {destino} desde {RUTA_LOGO}")
+    destino.write_bytes(_ico(pngs))
+    print(f"Icono con {len(pngs)} tamaños en {destino}")
 
 
 if __name__ == "__main__":

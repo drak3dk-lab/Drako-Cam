@@ -31,7 +31,7 @@ class _Dibujo(QtWidgets.QWidget):
             pintor.setPen(QtGui.QColor("#1C2430"))
             pintor.setBrush(QtGui.QColor("#121620"))
             pintor.drawRoundedRect(rect, 16, 16)
-            pintor.setPen(QtGui.QColor("#5CE1F0"))
+            pintor.setPen(QtGui.QColor("#F20A1C"))
             fuente = pintor.font()
             fuente.setPixelSize(18)
             fuente.setBold(True)

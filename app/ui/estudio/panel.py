@@ -104,10 +104,9 @@ class MarcoVista(QtWidgets.QWidget):
         pintor.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         rect = QtCore.QRectF(self.rect()).adjusted(8, 8, -8, -8)
         if self._vivo:
-            color = QtGui.QColor(92, 225, 240, int(70 + 90 * self._aliento))
-            pintor.setPen(QtGui.QPen(color, 2))
-            brillo = QtGui.QColor(80, 150, 255, int(40 + 80 * self._aliento))
-            pintor.setBrush(brillo)
+            color = QtGui.QColor(242, 10, 28, int(50 + 70 * self._aliento))
+            pintor.setPen(QtGui.QPen(color, 1.5))
+            pintor.setBrush(QtGui.QColor("#050608"))
         else:
             pintor.setPen(QtGui.QPen(QtGui.QColor(160, 190, 255, 28), 1))
             pintor.setBrush(QtGui.QColor("#050608"))
@@ -167,7 +166,7 @@ class FichaCara(QtWidgets.QFrame):
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
             self.foto.setPixmap(pixmap)
-        borde = "#5CE1F0" if seleccionada else "rgba(160,190,255,0.16)"
+        borde = "#F20A1C" if seleccionada else "rgba(160,190,255,0.16)"
         grosor = "2px" if seleccionada else "1px"
         self.foto.setStyleSheet(
             f"border: {grosor} solid {borde}; border-radius: 12px; background: #121620;"
@@ -356,7 +355,7 @@ class Estudio(QtWidgets.QWidget):
         self.banner.hide()
         self.chip_vivo = QtWidgets.QLabel("EN VIVO", self.marco)
         self.chip_vivo.setStyleSheet(
-            "background: rgba(4,6,10,0.72); color: #7FEAF5; border-radius: 13px; "
+            "background: rgba(4,6,10,0.72); color: #F20A1C; border-radius: 13px; "
             "padding: 4px 10px; font-weight: 700;"
         )
         self.chip_vivo.hide()
@@ -747,7 +746,7 @@ class Estudio(QtWidgets.QWidget):
                 boton.clicked.connect(lambda _=False, ident=cara.id: self.pedir_cara.emit(ident))
                 if cara.id == seleccion:
                     _propiedad(boton, "vivo", True)
-                    boton.setStyleSheet("background: #5CE1F0; color: #041014; border: none;")
+                    boton.setStyleSheet("background: #F20A1C; color: #FFF6F6; border: none;")
                 self.favoritos.addWidget(boton, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
         self.cuenta.setText(f"Biblioteca\n{len(caras)} caras")
         if not favoritas:
@@ -826,7 +825,7 @@ class Estudio(QtWidgets.QWidget):
             self.detalle_obs.setText(salida_detalle)
         if virtual:
             self.pill_obs.setStyleSheet(
-                "background: rgba(92,225,240,0.12); color: #7FEAF5; border-radius: 11px; "
+                "background: #121620; color: #F4F7FB; border-radius: 11px; "
                 "padding: 3px 8px; font-weight: 700;"
             )
         else:
