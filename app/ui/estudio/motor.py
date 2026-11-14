@@ -194,6 +194,13 @@ class MotorEnVivo:
         return ""
 
     def poner_en_vivo(self, activo: bool) -> str:
+        if activo and getattr(self.ventana, "_licencia_cortada", False):
+            from app.drako.textos_licencia import mensaje_corte_directo
+
+            self.en_vivo = False
+            self._fijar_cambio(False)
+            self.mensaje = mensaje_corte_directo()
+            return self.mensaje
         if not activo:
             self.en_vivo = False
             self._sin_cara = None

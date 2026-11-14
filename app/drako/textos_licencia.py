@@ -97,8 +97,8 @@ MENSAJES_ARRANQUE = {
         "Compruébalo con el administrador."
     ),
     "otro_equipo": (
-        "Este código ya está ligado a otro equipo. El programa se cierra. "
-        "Pide al administrador un código nuevo para este PC."
+        "Este código ya está ligado a otro equipo. Se ha pedido una aprobación "
+        "nueva para este PC. Escribe al administrador por Telegram."
     ),
     "mal_formato": MENSAJE_FORMATO,
     "limitada": (
@@ -113,7 +113,10 @@ MENSAJES_ARRANQUE = {
 MENSAJES_FORMULARIO = {
     "revocado": "Ese código está revocado. Pide uno nuevo al administrador.",
     "desconocido": "Ese código no es válido. Revísalo o pide uno al administrador.",
-    "otro_equipo": "Ese código ya está ligado a otro equipo. Pide uno nuevo para este PC.",
+    "otro_equipo": (
+        "Ese código ya está ligado a otro equipo. Se ha pedido una aprobación "
+        "nueva para este PC. Escribe al administrador por Telegram."
+    ),
     "mal_formato": MENSAJE_FORMATO,
     "limitada": "Demasiados intentos desde esta red. Espera un rato y vuelve a probar.",
     "firma_invalida": (
@@ -123,6 +126,19 @@ MENSAJES_FORMULARIO = {
     "gracia_agotada": MENSAJE_SIN_RED_PRIMERA,
     "sin_configurar": MENSAJE_SIN_CONFIGURAR,
 }
+
+
+def mensaje_corte_directo() -> str:
+    from app.drako.licencia_config import mensaje_contacto_telegram
+
+    contacto = mensaje_contacto_telegram()
+    base = (
+        "El directo se detuvo. Este equipo no tiene permiso, "
+        "o no se pudo comprobar el acceso a tiempo."
+    )
+    if contacto:
+        return base + " " + contacto + "."
+    return base
 
 
 def mensaje_gracia(limite_unix: float) -> str:

@@ -84,6 +84,48 @@ export function textoSolicitud(datos: {
   ].join("\n");
 }
 
+export async function pedirReasignacion(
+  env: Env,
+  lugar: Lugar,
+  datos: { codigo: string; nombre: string; oficina: string; equipo: string; huella: string },
+): Promise<void> {
+  const previa = await env.DB.prepare(
+    "SELECT id FROM solicitudes WHERE codigo = ? AND huella = ? AND estado = 'pendiente' AND tipo = 'reasignar'",
+  )
+    .bind(datos.codigo, datos.huella)
+    .first<{ id: string }>();
+  if (previa) return;
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO solicitudes
+      (id, nombre, oficina, equipo, huella, ip, pais, ciudad, creada_en, estado, codigo, tipo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, 'reasignar')`,
+  )
+    .bind(
+      id,
+      datos.nombre,
+      datos.oficina,
+      datos.equipo,
+      datos.huella,
+      lugar.ip,
+      lugar.pais,
+      lugar.ciudad,
+      lugar.ahora,
+      datos.codigo,
+    )
+    .run();
+  const texto = [
+    "Drako Cam — otro PC pide un código ya ligado",
+    `Persona: ${datos.nombre}`,
+    `Oficina: ${textoOficina(datos.oficina)}`,
+    `Equipo nuevo: ${datos.equipo}`,
+    `Lugar: ${textoLugar(lugar.ciudad, lugar.pais)}`,
+    `IP: ${lugar.ip || "no disponible"}`,
+    "Si apruebas, el mismo código pasa a este PC y deja de valer en el anterior.",
+  ].join("\n");
+  await enviarTelegram(env, texto, { reply_markup: teclado(id) });
+}
+
 function teclado(id: string): Record<string, unknown> {
   return {
     inline_keyboard: [[
@@ -143,7 +185,7 @@ export async function atenderSolicitud(
     });
   }
   const pendiente = await env.DB.prepare(
-    "SELECT id FROM solicitudes WHERE huella = ? AND estado = 'pendiente' LIMIT 1",
+    "SELECT id FROM solicitudes WHERE huella = ? AND estado = 'pendiente' AND tipo = 'acceso' LIMIT 1",
   )
     .bind(huella)
     .first<{ id: string }>();
@@ -217,6 +259,38 @@ export async function decidirSolicitud(
     .run();
   if (!marca.meta.changes) {
     return { aviso: `La solicitud de ${solicitud.nombre} ya no está pendiente.`, codigo: "" };
+  }
+  if (aprobar && solicitud.tipo === "reasignar" && solicitud.codigo) {
+    const cambio = await env.DB.prepare(
+      "UPDATE personas SET huella = ?, equipo = ? WHERE codigo = ?",
+    )
+      .bind(solicitud.huella, solicitud.equipo, solicitud.codigo)
+      .run();
+    if (!cambio.meta.changes) {
+      await env.DB.prepare("UPDATE solicitudes SET estado = 'pendiente' WHERE id = ?")
+        .bind(id)
+        .run();
+      return {
+        aviso: "No se encontró el código para cambiar de PC. La solicitud sigue pendiente.",
+        codigo: "",
+      };
+    }
+    await env.DB.prepare(
+      "UPDATE sesiones SET fin = ?, motivo_cierre = 'reasignada', duracion_segundos = 0 WHERE codigo = ? AND fin IS NULL",
+    )
+      .bind(ahora, solicitud.codigo)
+      .run();
+    await env.DB.prepare("UPDATE solicitudes SET estado = 'aprobada', cerrada_en = ? WHERE id = ?")
+      .bind(ahora, id)
+      .run();
+    return {
+      aviso: [
+        `El código de ${solicitud.nombre} ahora vale en ${solicitud.equipo}.`,
+        solicitud.codigo,
+        "El PC anterior deja de poder usarlo. Pásale el mismo código a esa persona.",
+      ].join("\n"),
+      codigo: solicitud.codigo,
+    };
   }
   if (!aprobar) {
     await env.DB.prepare(

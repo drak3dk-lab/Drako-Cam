@@ -58,6 +58,8 @@ Source: "..\Desinstalar.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Start.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Start_mac.sh"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\main.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\DrakoCam.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\integridad_manifiesto.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\launcher.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\download_models.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements_cu13.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -91,6 +93,7 @@ Type: filesandordirs; Name: "{app}\logs"
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\.venv\Scripts\python.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\.venv\Scripts\pythonw.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\main.py"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\DrakoCam.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 
 [Code]
 procedure InitializeWizard;
