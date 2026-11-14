@@ -19,7 +19,7 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 
 La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara de enfrente se cambia sola y la imagen sale a OBS. No se abre un vídeo, no hay prueba sin cámara y no se elige otra persona. Si falta la foto, EN VIVO lo dice. Cómo añadir la fuente está en [OBS](#obs).
 
-El logo provisional es un ojo, en un solo archivo: `app/ui/core/media/logo.svg`. Va en el icono, en el título y en la espera del acceso. En el resto de la pantalla no hay ojos: EN VIVO solo tiene un borde fino cuando está activo. El logo final se pone en ese SVG, con los grupos `abierto` y `cerrado`. Después, `python scripts/generar_icono.py` escribe `installer/logo.ico`.
+El símbolo de Drako Cam es la D plateada con el ojo rojo hecho lente, el archivo que aprobó Drako: `assets/drakocam/isotipo.png`. El trazado está en `app/ui/core/media/isotipo.svg`. El logo de la marca, sin tocar, está en `assets/marca/`. Para usarlo en la app en vez de la variante de producto, cambia `app/ui/core/media/logo.usar` a `marca`. El rojo `#F20A1C` solo marca EN VIVO y el foco. `python scripts/generar_icono.py` escribe `installer/logo.ico` de 16 a 256.
 
 ## Requisitos
 

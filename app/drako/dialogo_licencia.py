@@ -28,7 +28,7 @@ from app.drako.textos_licencia import (
 logger = logging.getLogger("drako.licencia")
 
 _HOJA = """
-QLabel#sobre { color: #4090a3; font-size: 13px; font-weight: 600; }
+QLabel#sobre { color: #B7C0CE; font-size: 13px; font-weight: 600; }
 QLabel#titulo { font-size: 22px; font-weight: 700; color: #f0f0f0; }
 QLabel#cuerpo { color: #f0f0f0; font-size: 15px; }
 QLabel#punto { color: #f0f0f0; font-size: 15px; font-weight: 600; }
@@ -44,16 +44,16 @@ QLineEdit {
     background-color: #1e1e1e;
     color: #f0f0f0;
     border: 1px solid #3a3a3a;
-    selection-background-color: #156a7d;
+    selection-background-color: #F20A1C;
     selection-color: #f0f0f0;
 }
 QLineEdit#codigo {
     font-family: "Cascadia Mono", "Consolas", monospace;
 }
 QPushButton#primario {
-    background-color: #4090a3;
-    color: #101010;
-    border: 1px solid #156a7d;
+    background-color: #F20A1C;
+    color: #FFF6F6;
+    border: 1px solid #F20A1C;
     font-weight: 700;
     min-height: 44px;
     padding: 6px 16px;
@@ -156,10 +156,12 @@ def _ejecutar(funcion, padre=None, texto: str | None = None):
         if not bucle.isRunning():
             return
         dialogo = _dialogo("Drako Cam", padre)
-        dialogo.setMinimumWidth(420)
-        from app.ui.estudio.ojo import MarcaOjo
+        dialogo.setMinimumWidth(520)
+        from app.ui.estudio.ojo import FondoCarga
 
-        dialogo.layout().addWidget(MarcaOjo(40), alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        fondo = FondoCarga(dialogo)
+        fondo.setMinimumHeight(300)
+        dialogo.layout().addWidget(fondo)
         dialogo.layout().addWidget(_etiqueta(texto or "Comprobando el acceso…", "cuerpo", dialogo))
         barra = QtWidgets.QProgressBar(dialogo)
         barra.setRange(0, 0)
@@ -296,6 +298,9 @@ def _campo(dialogo, nombre: str, placeholder: str, accesible: str, codigo: bool 
 
 def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
     dialogo = _dialogo("Drako Cam — código de acceso", padre)
+    from app.ui.estudio.ojo import MarcaCompleta
+
+    dialogo.layout().addWidget(MarcaCompleta(240), alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
     dialogo.layout().addWidget(_etiqueta("Acceso", "sobre", dialogo))
     titulo = "Cambiar el código" if cambio else TITULO_CODIGO
     dialogo.layout().addWidget(_etiqueta(titulo, "titulo", dialogo))

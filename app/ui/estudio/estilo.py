@@ -1,7 +1,7 @@
 """Tokens de la dirección Halo, aplicados solo a la pantalla nueva.
 
-El cian #5CE1F0 es la luz de lo que está en directo. El resto es
-tinta clara sobre un escenario casi negro.
+El rojo #F20A1C, el del ojo del logo, marca solo lo que está en directo
+y el foco. El resto es tinta clara sobre un escenario casi negro.
 """
 
 ESTILO = """
@@ -63,8 +63,11 @@ ESTILO = """
     border: none;
 }
 #Estudio QPushButton#enVivo[vivo="true"] {
-    background: #5CE1F0;
-    color: #041014;
+    background: #F20A1C;
+    color: #FFF6F6;
+}
+#Estudio QComboBox:focus, #Estudio QLineEdit:focus {
+    border: 1px solid rgba(242, 10, 28, 0.85);
 }
 #Estudio QPushButton#anadirFoto {
     border: 1px dashed rgba(160, 190, 255, 0.35);
@@ -93,8 +96,8 @@ ESTILO = """
     border: 1px solid rgba(160, 190, 255, 0.16);
 }
 #Estudio QPushButton#segmento[vivo="true"]:checked {
-    color: #041014;
-    background: #5CE1F0;
+    color: #FFF6F6;
+    background: #F20A1C;
     border: none;
 }
 #Estudio QComboBox, #Estudio QSlider {
