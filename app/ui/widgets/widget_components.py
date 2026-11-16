@@ -421,28 +421,32 @@ class TargetMediaCardButton(CardButton):
             main_window.video_processor.max_frame_number = max_frames_number
 
         elif self.file_type == "webcam":
-            # MODIFICATION: Set rotation to 0 for webcam
             main_window.video_processor.media_rotation = 0
-            res_width, res_height = self.main_window.control[
-                "WebcamMaxResSelection"
-            ].split("x")
-
-            media_capture = cv2.VideoCapture(self.webcam_index, self.webcam_backend)
-
             try:
-                fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-                media_capture.set(cv2.CAP_PROP_FOURCC, fourcc)
+                res_width, res_height = self.main_window.control[
+                    "WebcamMaxResSelection"
+                ].split("x")
+                ancho_pedido, alto_pedido = int(res_width), int(res_height)
             except Exception:
-                pass
+                ancho_pedido, alto_pedido = 0, 0
+            from app.drako.camaras import abrir_webcam
 
-            media_capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(res_width))
-            media_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res_height))
+            apertura = abrir_webcam(int(self.webcam_index), ancho_pedido, alto_pedido, 0)
             max_frames_number = 999999
-            _, frame = misc_helpers.read_frame(media_capture, 0)  # 0 for webcam
-            main_window.video_processor.media_capture = media_capture
-            self.media_capture = media_capture
-            main_window.video_processor.fps = media_capture.get(cv2.CAP_PROP_FPS)
-            main_window.video_processor.max_frame_number = max_frames_number
+            if apertura is None:
+                frame = None
+                media_capture = None
+            else:
+                media_capture = apertura.captura
+                frame = apertura.primer_frame
+                main_window.video_processor.media_capture = media_capture
+                self.media_capture = media_capture
+                self.webcam_backend = apertura.backend_id
+                main_window.video_processor.fps = apertura.fps
+                main_window.video_processor.max_frame_number = max_frames_number
+                if isinstance(getattr(main_window, "control", None), dict):
+                    main_window.control["WebcamBackendSelection"] = apertura.backend
+                    main_window.control["WebcamDeviceSelection"] = int(self.webcam_index)
 
         if frame is not None:
             main_window.scene.clear()

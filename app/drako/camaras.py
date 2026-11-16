@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 MENSAJE_OCUPADA = (
@@ -21,6 +22,195 @@ MENSAJE_AUSENTE = "No hay cámara. Conéctala y pulsa actualizar."
 
 _cache: tuple[float, list[str]] | None = None
 _TTL_S = 20.0
+
+
+@dataclass
+class AperturaWebcam:
+    captura: object
+    backend: str
+    backend_id: int
+    ancho: int
+    alto: int
+    fps: float
+    primer_frame: object
+    informe: str
+
+
+def backends_de_apertura() -> list[tuple[str, int]]:
+    """En Windows, DirectShow primero: es el que usa Deep-Live-Cam y las webcams integradas."""
+    import cv2
+
+    if os.name == "nt":
+        return [
+            ("DirectShow", int(cv2.CAP_DSHOW)),
+            ("MSMF", int(cv2.CAP_MSMF)),
+            ("Default", int(cv2.CAP_ANY)),
+        ]
+    return [("Default", int(cv2.CAP_ANY))]
+
+
+def abrir_webcam(
+    indice: int,
+    ancho: int = 0,
+    alto: int = 0,
+    fps: int = 0,
+    *,
+    abrir=None,
+    leer=None,
+    esperar=None,
+    soltar=None,
+    backends=None,
+) -> AperturaWebcam | None:
+    """Abre la webcam y espera un fotograma real.
+
+    No fuerza MJPG ni una resolución antes del primer frame: eso enciende la luz
+    y luego deja la captura muda en muchas webcams integradas.
+    """
+    intentos = backends if backends is not None else backends_de_apertura()
+    abrir = abrir or _abrir_cv
+    leer = leer or _leer_cv
+    esperar = esperar or time.sleep
+    soltar = soltar or _soltar_cv
+    informe: list[str] = []
+
+    def anotar(linea: str) -> None:
+        informe.append(linea)
+        print(linea)
+
+    for nombre, backend_id in intentos:
+        anotar(f"[INFO] Webcam índice {indice}, pruebo {nombre} ({backend_id}).")
+        try:
+            captura = abrir(indice, backend_id)
+        except Exception as exc:
+            anotar(f"[ERROR] Webcam índice {indice}, {nombre}: no se creó la captura: {exc}")
+            continue
+        if captura is None or not _esta_abierta(captura):
+            anotar(f"[ERROR] Webcam índice {indice}, {nombre}: OpenCV no la abrió.")
+            soltar(captura)
+            continue
+        frame = _leer_varios(captura, leer, esperar, veces=8)
+        if frame is None:
+            anotar(
+                f"[ERROR] Webcam índice {indice}, {nombre}: abierta, pero sin fotograma tras 8 lecturas."
+            )
+            soltar(captura)
+            continue
+        if ancho > 0 and alto > 0:
+            captura, frame, ajusto = _probar_tamano(
+                captura, frame, indice, backend_id, ancho, alto, abrir, leer, esperar, soltar, anotar, nombre
+            )
+            if captura is None or frame is None:
+                continue
+        else:
+            ajusto = False
+        if fps > 0:
+            try:
+                captura.set(5, float(fps))
+            except Exception as exc:
+                anotar(f"[AVISO] Webcam índice {indice}, {nombre}: no aceptó {fps} fps ({exc}).")
+        ancho_real, alto_real, fps_real = _medidas(captura, frame, fps)
+        anotar(
+            f"[INFO] Webcam índice {indice} abierta con {nombre}: "
+            f"{ancho_real}x{alto_real} @ {fps_real:.1f} fps"
+            + (" (resolución pedida no aceptada, se deja la nativa)." if ajusto else ".")
+        )
+        return AperturaWebcam(
+            captura, nombre, int(backend_id), ancho_real, alto_real, fps_real, frame, "\n".join(informe)
+        )
+
+    anotar(f"[ERROR] No se pudo abrir la webcam índice {indice} con ningún backend.")
+    return None
+
+
+def _leer_varios(captura, leer, esperar, veces: int = 8):
+    for numero in range(veces):
+        try:
+            frame = leer(captura)
+        except Exception:
+            frame = None
+        if frame is not None:
+            return frame
+        if numero + 1 < veces:
+            esperar(0.06)
+    return None
+
+
+def _probar_tamano(captura, frame, indice, backend_id, ancho, alto, abrir, leer, esperar, soltar, anotar, nombre):
+    try:
+        captura.set(3, float(ancho))
+        captura.set(4, float(alto))
+    except Exception as exc:
+        anotar(f"[AVISO] Webcam índice {indice}, {nombre}: no pude pedir {ancho}x{alto} ({exc}).")
+        return captura, frame, True
+    siguiente = _leer_varios(captura, leer, esperar, veces=4)
+    if siguiente is not None:
+        return captura, siguiente, False
+    anotar(
+        f"[AVISO] Webcam índice {indice}, {nombre}: {ancho}x{alto} dejó de dar imagen. Vuelvo al tamaño nativo."
+    )
+    soltar(captura)
+    try:
+        captura = abrir(indice, backend_id)
+    except Exception as exc:
+        anotar(f"[ERROR] Webcam índice {indice}, {nombre}: no reabrió en nativo: {exc}")
+        return None, None, True
+    frame = _leer_varios(captura, leer, esperar, veces=8)
+    if frame is None:
+        anotar(f"[ERROR] Webcam índice {indice}, {nombre}: el tamaño nativo tampoco dio imagen.")
+        soltar(captura)
+        return None, None, True
+    return captura, frame, True
+
+
+def _esta_abierta(captura) -> bool:
+    abierta = getattr(captura, "isOpened", None)
+    if not callable(abierta):
+        return captura is not None
+    try:
+        return bool(abierta())
+    except Exception:
+        return False
+
+
+def _abrir_cv(indice: int, backend_id: int):
+    import cv2
+
+    return cv2.VideoCapture(int(indice), int(backend_id))
+
+
+def _leer_cv(captura):
+    ok, frame = captura.read()
+    if not ok or frame is None:
+        return None
+    return frame
+
+
+def _soltar_cv(captura) -> None:
+    if captura is None:
+        return
+    try:
+        captura.release()
+    except Exception:
+        pass
+
+
+def _medidas(captura, frame, fps_pedido: int) -> tuple[int, int, float]:
+    ancho = alto = 0
+    fps = 0.0
+    try:
+        ancho = int(captura.get(3) or 0)
+        alto = int(captura.get(4) or 0)
+        fps = float(captura.get(5) or 0)
+    except Exception:
+        pass
+    if ancho <= 0 or alto <= 0:
+        forma = getattr(frame, "shape", None)
+        if forma is not None and len(forma) >= 2:
+            alto = int(forma[0])
+            ancho = int(forma[1])
+    if fps <= 1:
+        fps = float(fps_pedido or 30)
+    return ancho, alto, fps
 
 
 def aviso_si_no_abre(habia_dispositivo: bool) -> str:

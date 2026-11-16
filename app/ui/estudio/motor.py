@@ -63,6 +63,10 @@ class MotorEnVivo:
 
     def arrancar(self) -> None:
         self._poner_valor("WebcamMaxNoSelection", "5")
+        import os
+
+        if os.name == "nt":
+            self._poner_valor("WebcamBackendSelection", "DirectShow")
         self._poner_valor("MaxFacesToDetectSlider", 1)
         self._poner_toggle("ForceSwapToggle", True)
         self._poner_toggle("KeepInputToggle", True)

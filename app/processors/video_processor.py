@@ -3657,78 +3657,41 @@ class VideoProcessor(QObject):
             target_fps = 30
 
         print(
-            f"[INFO] Init Webcam: Device={webcam_index}, Backend={backend_name}, Target={target_width}x{target_height} @ {target_fps}fps"
+            f"[INFO] Init Webcam: Device={webcam_index}, pedido {target_width}x{target_height}. "
+            "En Windows se prueba DirectShow, luego MSMF y al final el backend por defecto."
         )
 
-        # 2. Initialize VideoCapture with the selected Backend (Prevent Race Condition)
-        reinitialize_needed = True
+        from app.drako.camaras import abrir_webcam
 
-        # Determine if we can safely reuse the existing capture
+        ya_abierta = False
         if self.media_capture and self.media_capture.isOpened():
-            selected_btn = getattr(self.main_window, "selected_video_button", None)
-            from app.ui.qt_vivo import qt_sigue
-            from app.ui.widgets import widget_components
-
-            if (
-                qt_sigue(selected_btn)
-                and isinstance(selected_btn, widget_components.TargetMediaCardButton)
-                and getattr(selected_btn, "is_webcam", False)
-            ):
-                if (
-                    selected_btn.webcam_index == webcam_index
-                    and selected_btn.webcam_backend == backend_id
-                ):
-                    reinitialize_needed = False
-                    print(
-                        "[INFO] Reusing existing webcam capture to prevent hardware lock issues."
-                    )
-
-        if reinitialize_needed:
+            try:
+                ok, frame = self.media_capture.read()
+            except Exception as exc:
+                print(f"[AVISO] La captura ya abierta no dio imagen: {exc}")
+                ok, frame = False, None
+            if ok and frame is not None:
+                ya_abierta = True
+                self.current_frame = frame
+                print(
+                    f"[INFO] Reutilizo la webcam índice {webcam_index} que ya estaba abierta."
+                )
+        if not ya_abierta:
             if self.media_capture:
                 misc_helpers.release_capture(self.media_capture)
                 self.media_capture = None
-                # CRITICAL: Wait for OS driver hardware lock to fully release
-                time.sleep(0.5)
-
-            try:
-                self.media_capture = cv2.VideoCapture(webcam_index, backend_id)
-            except Exception as e:
-                print(f"[ERROR] Failed to init webcam with backend {backend_name}: {e}")
-                self.media_capture = cv2.VideoCapture(webcam_index)
-
-        if not (self.media_capture and self.media_capture.isOpened()):
-            print("[ERROR] Unable to open webcam source.")
-            video_control_actions.reset_media_buttons(self.main_window)
-            return
-
-        # 3. Apply Configuration
-        try:
-            # Force MJPG to allow high framerate at high res (saves USB bandwidth)
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            self.media_capture.set(cv2.CAP_PROP_FOURCC, fourcc)
-        except Exception:
-            pass
-
-        self.media_capture.set(cv2.CAP_PROP_FRAME_WIDTH, target_width)
-        self.media_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, target_height)
-        self.media_capture.set(cv2.CAP_PROP_FPS, target_fps)
-
-        # 4. Verify actual resolution obtained
-        actual_w = self.media_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-        actual_h = self.media_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        print(
-            f"[INFO] Webcam initialized at: {int(actual_w)}x{int(actual_h)} (Requested: {target_width}x{target_height})"
-        )
-
-        # Warn if the camera refused the resolution
-        if int(actual_w) != target_width or int(actual_h) != target_height:
-            print(
-                f"[WARN] Camera did not accept requested resolution. Using {int(actual_w)}x{int(actual_h)}."
-            )
-            if int(actual_w) == 640 and backend_name != "DirectShow":
+                time.sleep(0.15)
+            apertura = abrir_webcam(webcam_index, target_width, target_height, 0)
+            if apertura is None:
                 print(
-                    "[TIP] Try changing 'Webcam Backend' to 'DirectShow' in Settings to unlock HD."
+                    f"[ERROR] Unable to open webcam source. índice={webcam_index}. "
+                    "Mira el registro: cada backend deja su error de OpenCV."
                 )
+                video_control_actions.reset_media_buttons(self.main_window)
+                return
+            self.media_capture = apertura.captura
+            if apertura.primer_frame is not None:
+                self.current_frame = apertura.primer_frame
 
         print("[INFO] Starting webcam processing setup...")
 
