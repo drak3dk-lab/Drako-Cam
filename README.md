@@ -36,16 +36,16 @@ Sin CUDA el programa avisa y puede abrirse, pero el directo no irá a velocidad 
 
 Para Windows 10 u 11, de 64 bits, con internet. No hace falta instalar Python, FFmpeg ni nada más antes. La carpeta puede tener espacios, por ejemplo `C:\Users\SEXTO PISO\Downloads\Drako-Cam`.
 
-### Doble clic en Instalar.bat
+### Doble clic en Instalar.vbs
 
 1. Copia la carpeta de Drako Cam a tu equipo.
-2. Doble clic en `Instalar.bat`.
-3. Espera. Instala uv y Python 3.12 solo, sin el alias de la Microsoft Store y sin activar nada. Luego descarga varios gigabytes (PyTorch y TensorRT) y puede tardar más de media hora. Hacen falta unos 25 GB libres, mejor 30. No cierres la ventana.
-4. Si algo falla, la ventana se queda abierta con el motivo. El detalle queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
-5. Al terminar hay un acceso directo **Drako Cam** en el escritorio y en el menú Inicio, con el isotipo metálico. `Instalar.bat` no puede llevar icono propio; el acceso directo sí. Ábrelo: no sale una ventana de consola.
-6. Si no hay una GPU NVIDIA con CUDA, la instalación termina igual y lo dice con claridad. El programa puede abrirse, pero el directo no irá a velocidad de cámara.
+2. Doble clic en `Instalar.vbs`. Se abre una ventana con el logo. Pulsa **Instalar**.
+3. Espera. La ventana muestra los pasos. Puede tardar más de media hora y hacen falta unos 25 GB libres, mejor 30. No la cierres.
+4. Si quieres el texto técnico, pulsa **Ver detalles**. El registro también queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
+5. Al terminar, pulsa **Abrir Drako Cam**. También queda un acceso directo en el escritorio y en el menú Inicio.
+6. Si no hay una GPU NVIDIA, la ventana lo dice en una frase. El programa se abre igual; el directo puede ir más lento.
 
-Volver a ejecutar `Instalar.bat` repara o actualiza lo que falte (componentes y accesos directos).
+`Instalar.bat` sigue ahí como respaldo, por si la ventana no arranca. Hace lo mismo. Volver a ejecutar cualquiera de los dos repara lo que falte.
 
 ### Con el instalador .exe
 
