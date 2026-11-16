@@ -714,7 +714,9 @@ class IssueScanner:
         previous_smoothed_dense_kps_203 = copy.deepcopy(
             self.sequential_detector._smoothed_dense_kps_203
         )
-        is_master_edit_snapshot = self.main_window.editFacesButton.isChecked()
+        from app.ui.qt_vivo import edicion_activa
+
+        is_master_edit_snapshot = edicion_activa(self.main_window)
 
         total_frames_scanned = 0
         tracking_enabled = False

@@ -3,7 +3,7 @@
 from app.drako.camaras import (
     MENSAJE_AUSENTE,
     MENSAJE_OCUPADA,
-    aviso_si_no_abre,
+    mensaje_de_fallo,
     nombres_de_camaras,
     nombres_desde_ffmpeg,
 )
@@ -94,13 +94,16 @@ def test_en_windows_directshow_va_primero_y_reintenta_el_frame(monkeypatch):
     assert "DirectShow" in apertura.informe
 
 
-def test_si_la_resolucion_mata_la_imagen_vuelve_al_tamano_nativo():
-    creadas = []
+def test_no_fuerza_el_formato_aunque_pidan_tamano_y_fps():
+    ajustes = []
+
+    class _Nativa(_Captura):
+        def set(self, prop, valor):
+            ajustes.append((prop, valor))
+            return True
 
     def abrir(indice, backend):
-        captura = _Captura(frames=["nativo", "nativo2"], se_rompe_al_pedir_tamano=True)
-        creadas.append(captura)
-        return captura
+        return _Nativa(frames=["nativo"])
 
     def leer(captura):
         ok, frame = captura.read()
@@ -112,6 +115,7 @@ def test_si_la_resolucion_mata_la_imagen_vuelve_al_tamano_nativo():
         1,
         1920,
         1080,
+        60,
         abrir=abrir,
         leer=leer,
         esperar=lambda _s: None,
@@ -119,13 +123,70 @@ def test_si_la_resolucion_mata_la_imagen_vuelve_al_tamano_nativo():
         backends=[("DirectShow", 300)],
     )
     assert apertura is not None
-    assert "nativa" in apertura.informe
-    assert len(creadas) == 2
+    assert apertura.primer_frame == "nativo"
+    assert ajustes == []
+    assert "sin MJPG" in apertura.informe
 
 
-def test_ocupada_no_es_lo_mismo_que_no_hay_camara():
-    assert aviso_si_no_abre(True) == MENSAJE_OCUPADA
-    assert aviso_si_no_abre(False) == MENSAJE_AUSENTE
+def test_si_directshow_abre_no_prueba_otro_backend():
+    vistos = []
+
+    def abrir(indice, backend):
+        vistos.append(backend)
+        return _Captura(abierta=True, frames=[])
+
+    from app.drako.camaras import abrir_webcam, ultimo_fallo
+
+    apertura = abrir_webcam(
+        0,
+        abrir=abrir,
+        leer=lambda captura: None,
+        esperar=lambda _s: None,
+        soltar=lambda captura: captura.release() if captura else None,
+        backends=[("DirectShow", 300), ("MSMF", 700), ("Default", 0)],
+    )
+    assert apertura is None
+    assert vistos == [300]
+    assert "otro backend" in ultimo_fallo()
+    assert "MSMF" not in ultimo_fallo()
+
+
+def test_el_registro_anota_indice_backend_y_fotograma(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="drako")
+
+    def leer(captura):
+        ok, frame = captura.read()
+        return frame if ok else None
+
+    from app.drako.camaras import abrir_webcam
+
+    apertura = abrir_webcam(
+        0,
+        abrir=lambda indice, backend: _Captura(frames=["ok"]),
+        leer=leer,
+        esperar=lambda _s: None,
+        soltar=lambda captura: None,
+        backends=[("DirectShow", 300)],
+    )
+    assert apertura is not None
+    assert "índice 0" in caplog.text
+    assert "DirectShow" in caplog.text
+    assert "abierta=sí" in caplog.text
+    assert "primer fotograma=sí" in caplog.text
+    assert "resolución" in caplog.text
+
+
+def test_ocupada_solo_si_el_error_es_de_acceso():
+    assert mensaje_de_fallo("device or resource busy", True) == MENSAJE_OCUPADA
+    assert mensaje_de_fallo("access is denied", True) == MENSAJE_OCUPADA
+    assert mensaje_de_fallo("", False) == MENSAJE_AUSENTE
+    concreto = mensaje_de_fallo(
+        "Cámara índice 0, backend DirectShow (700): abierta=no, error OpenCV: no device",
+        True,
+    )
+    assert concreto != MENSAJE_OCUPADA
+    assert "no device" in concreto
     assert "OBS" in MENSAJE_OCUPADA
-    assert "NVIDIA Broadcast" in MENSAJE_OCUPADA
     assert MENSAJE_OCUPADA != MENSAJE_AUSENTE

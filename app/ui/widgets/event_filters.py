@@ -39,7 +39,9 @@ class videoSeekSliderLineEditEventFilter(QtCore.QObject):
                 new_value = line_edit.text()
                 # Reset the line edit value to the slider value if the user input an empty text
                 if new_value == "":
-                    new_value = str(self.main_window.videoSeekSlider.value())
+                    from app.ui.qt_vivo import valor_slider
+
+                    new_value = str(valor_slider(self.main_window, 0))
                 else:
                     new_value = int(new_value)
                     max_frame_number = self.main_window.video_processor.max_frame_number

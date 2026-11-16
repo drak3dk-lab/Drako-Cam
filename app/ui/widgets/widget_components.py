@@ -422,16 +422,9 @@ class TargetMediaCardButton(CardButton):
 
         elif self.file_type == "webcam":
             main_window.video_processor.media_rotation = 0
-            try:
-                res_width, res_height = self.main_window.control[
-                    "WebcamMaxResSelection"
-                ].split("x")
-                ancho_pedido, alto_pedido = int(res_width), int(res_height)
-            except Exception:
-                ancho_pedido, alto_pedido = 0, 0
             from app.drako.camaras import abrir_webcam
 
-            apertura = abrir_webcam(int(self.webcam_index), ancho_pedido, alto_pedido, 0)
+            apertura = abrir_webcam(int(self.webcam_index))
             max_frames_number = 999999
             if apertura is None:
                 frame = None

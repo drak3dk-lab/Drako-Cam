@@ -7,12 +7,16 @@ es el de DirectShow, el mismo que usa el backend DSHOW.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+_log = logging.getLogger("drako")
+_ultimo_fallo = ""
 
 MENSAJE_OCUPADA = (
     "La cámara la está usando otro programa "
@@ -36,8 +40,17 @@ class AperturaWebcam:
     informe: str
 
 
+def ultimo_fallo() -> str:
+    return _ultimo_fallo
+
+
 def backends_de_apertura() -> list[tuple[str, int]]:
-    """En Windows, DirectShow primero: es el que usa Deep-Live-Cam y las webcams integradas."""
+    """En Windows solo DirectShow, igual que Deep-Live-Cam.
+
+    MSMF y el backend por defecto se prueban únicamente si DirectShow ni siquiera
+    llega a abrir el dispositivo. Si DirectShow ya lo abrió, no se cierra para
+    reintentar con otro: eso deja la cámara como si estuviera en uso.
+    """
     import cv2
 
     if os.name == "nt":
@@ -61,11 +74,14 @@ def abrir_webcam(
     soltar=None,
     backends=None,
 ) -> AperturaWebcam | None:
-    """Abre la webcam y espera un fotograma real.
+    """Abre la webcam como Deep-Live-Cam: CAP_DSHOW y el formato nativo.
 
-    No fuerza MJPG ni una resolución antes del primer frame: eso enciende la luz
-    y luego deja la captura muda en muchas webcams integradas.
+    No fuerza MJPG, ni resolución, ni FPS. Esos ajustes, antes del primer
+    fotograma, encienden la luz y después dejan la captura muda. `ancho`,
+    `alto` y `fps` se ignoran a propósito.
     """
+    global _ultimo_fallo
+    del ancho, alto, fps
     intentos = backends if backends is not None else backends_de_apertura()
     abrir = abrir or _abrir_cv
     leer = leer or _leer_cv
@@ -73,52 +89,61 @@ def abrir_webcam(
     soltar = soltar or _soltar_cv
     informe: list[str] = []
 
-    def anotar(linea: str) -> None:
+    def anotar(linea: str, error: bool = False) -> None:
         informe.append(linea)
-        print(linea)
+        if error:
+            _log.error(linea)
+        else:
+            _log.info(linea)
 
     for nombre, backend_id in intentos:
-        anotar(f"[INFO] Webcam índice {indice}, pruebo {nombre} ({backend_id}).")
+        anotar(f"Cámara índice {indice}, backend {nombre} ({backend_id}): probando.")
         try:
             captura = abrir(indice, backend_id)
         except Exception as exc:
-            anotar(f"[ERROR] Webcam índice {indice}, {nombre}: no se creó la captura: {exc}")
+            anotar(
+                f"Cámara índice {indice}, backend {nombre} ({backend_id}): "
+                f"abierta=no, primer fotograma=no, error OpenCV: {exc}",
+                error=True,
+            )
             continue
+        error_cv = _error_opencv(captura)
         if captura is None or not _esta_abierta(captura):
-            anotar(f"[ERROR] Webcam índice {indice}, {nombre}: OpenCV no la abrió.")
+            detalle = error_cv or "OpenCV no abrió el dispositivo"
+            anotar(
+                f"Cámara índice {indice}, backend {nombre} ({backend_id}): "
+                f"abierta=no, primer fotograma=no, error OpenCV: {detalle}",
+                error=True,
+            )
             soltar(captura)
             continue
         frame = _leer_varios(captura, leer, esperar, veces=8)
         if frame is None:
             anotar(
-                f"[ERROR] Webcam índice {indice}, {nombre}: abierta, pero sin fotograma tras 8 lecturas."
+                f"Cámara índice {indice}, backend {nombre} ({backend_id}): "
+                "abierta=sí, primer fotograma=no. No cierro para probar otro backend.",
+                error=True,
             )
             soltar(captura)
-            continue
-        if ancho > 0 and alto > 0:
-            captura, frame, ajusto = _probar_tamano(
-                captura, frame, indice, backend_id, ancho, alto, abrir, leer, esperar, soltar, anotar, nombre
-            )
-            if captura is None or frame is None:
-                continue
-        else:
-            ajusto = False
-        if fps > 0:
-            try:
-                captura.set(5, float(fps))
-            except Exception as exc:
-                anotar(f"[AVISO] Webcam índice {indice}, {nombre}: no aceptó {fps} fps ({exc}).")
-        ancho_real, alto_real, fps_real = _medidas(captura, frame, fps)
+            break
+        ancho_real, alto_real, fps_real = _medidas(captura, frame)
+        fps_texto = f"{fps_real:.1f}" if fps_real > 1 else "nativo"
         anotar(
-            f"[INFO] Webcam índice {indice} abierta con {nombre}: "
-            f"{ancho_real}x{alto_real} @ {fps_real:.1f} fps"
-            + (" (resolución pedida no aceptada, se deja la nativa)." if ajusto else ".")
+            f"Cámara índice {indice}, backend {nombre} ({backend_id}): "
+            f"abierta=sí, primer fotograma=sí, resolución {ancho_real}x{alto_real}, "
+            f"fps {fps_texto}. Formato nativo, sin MJPG ni tamaño forzado."
         )
+        texto = "\n".join(informe)
+        _ultimo_fallo = ""
         return AperturaWebcam(
-            captura, nombre, int(backend_id), ancho_real, alto_real, fps_real, frame, "\n".join(informe)
+            captura, nombre, int(backend_id), ancho_real, alto_real, fps_real, frame, texto
         )
 
-    anotar(f"[ERROR] No se pudo abrir la webcam índice {indice} con ningún backend.")
+    anotar(
+        f"Cámara índice {indice}: no se abrió. No se forzó MJPG, resolución ni FPS.",
+        error=True,
+    )
+    _ultimo_fallo = "\n".join(informe)
     return None
 
 
@@ -135,33 +160,6 @@ def _leer_varios(captura, leer, esperar, veces: int = 8):
     return None
 
 
-def _probar_tamano(captura, frame, indice, backend_id, ancho, alto, abrir, leer, esperar, soltar, anotar, nombre):
-    try:
-        captura.set(3, float(ancho))
-        captura.set(4, float(alto))
-    except Exception as exc:
-        anotar(f"[AVISO] Webcam índice {indice}, {nombre}: no pude pedir {ancho}x{alto} ({exc}).")
-        return captura, frame, True
-    siguiente = _leer_varios(captura, leer, esperar, veces=4)
-    if siguiente is not None:
-        return captura, siguiente, False
-    anotar(
-        f"[AVISO] Webcam índice {indice}, {nombre}: {ancho}x{alto} dejó de dar imagen. Vuelvo al tamaño nativo."
-    )
-    soltar(captura)
-    try:
-        captura = abrir(indice, backend_id)
-    except Exception as exc:
-        anotar(f"[ERROR] Webcam índice {indice}, {nombre}: no reabrió en nativo: {exc}")
-        return None, None, True
-    frame = _leer_varios(captura, leer, esperar, veces=8)
-    if frame is None:
-        anotar(f"[ERROR] Webcam índice {indice}, {nombre}: el tamaño nativo tampoco dio imagen.")
-        soltar(captura)
-        return None, None, True
-    return captura, frame, True
-
-
 def _esta_abierta(captura) -> bool:
     abierta = getattr(captura, "isOpened", None)
     if not callable(abierta):
@@ -172,10 +170,51 @@ def _esta_abierta(captura) -> bool:
         return False
 
 
+def _error_opencv(captura) -> str:
+    texto = getattr(captura, "_drako_error_opencv", "") if captura is not None else ""
+    return str(texto or "").strip()
+
+
 def _abrir_cv(indice: int, backend_id: int):
+    """Una sola apertura, la misma llamada que Deep-Live-Cam."""
     import cv2
 
-    return cv2.VideoCapture(int(indice), int(backend_id))
+    recogidos: list[str] = []
+
+    def handler(*args):
+        for pieza in args:
+            if isinstance(pieza, bytes):
+                texto = pieza.decode("utf-8", "replace").strip()
+            elif isinstance(pieza, str):
+                texto = pieza.strip()
+            else:
+                continue
+            if len(texto) >= 4:
+                recogidos.append(texto)
+        return 0
+
+    anterior = None
+    redirigio = False
+    if hasattr(cv2, "redirectError"):
+        try:
+            anterior = cv2.redirectError(handler)
+            redirigio = True
+        except Exception:
+            redirigio = False
+    try:
+        captura = cv2.VideoCapture(int(indice), int(backend_id))
+    finally:
+        if redirigio:
+            try:
+                cv2.redirectError(anterior)
+            except Exception:
+                pass
+    if recogidos:
+        try:
+            captura._drako_error_opencv = " | ".join(dict.fromkeys(recogidos))
+        except Exception:
+            pass
+    return captura
 
 
 def _leer_cv(captura):
@@ -194,7 +233,7 @@ def _soltar_cv(captura) -> None:
         pass
 
 
-def _medidas(captura, frame, fps_pedido: int) -> tuple[int, int, float]:
+def _medidas(captura, frame) -> tuple[int, int, float]:
     ancho = alto = 0
     fps = 0.0
     try:
@@ -208,16 +247,60 @@ def _medidas(captura, frame, fps_pedido: int) -> tuple[int, int, float]:
         if forma is not None and len(forma) >= 2:
             alto = int(forma[0])
             ancho = int(forma[1])
-    if fps <= 1:
-        fps = float(fps_pedido or 30)
     return ancho, alto, fps
 
 
-def aviso_si_no_abre(habia_dispositivo: bool) -> str:
-    """Si el dispositivo estaba en la lista y no abre, otro programa lo tiene."""
-    if habia_dispositivo:
+_PISTAS_OCUPADA = (
+    "busy",
+    "in use",
+    "occupied",
+    "being used",
+    "access is denied",
+    "acceso denegado",
+    "en uso",
+    "ocupad",
+    "sharing violation",
+    "0x80070020",
+    "0x800700aa",
+    "device or resource busy",
+    "error 32",
+)
+
+
+def es_error_de_ocupada(informe: str) -> bool:
+    texto = (informe or "").lower()
+    return any(pista in texto for pista in _PISTAS_OCUPADA)
+
+
+def _detalle_visible(informe: str) -> str:
+    lineas = [linea.strip() for linea in (informe or "").splitlines() if linea.strip()]
+    utiles = [
+        linea
+        for linea in lineas
+        if "error" in linea.lower() or "opencv" in linea.lower() or "abierta=no" in linea.lower()
+    ]
+    elegido = utiles[-1] if utiles else (lineas[-1] if lineas else "")
+    if len(elegido) > 220:
+        elegido = elegido[:217] + "..."
+    return elegido
+
+
+def mensaje_de_fallo(informe: str, habia_dispositivo: bool) -> str:
+    """Solo dice que otro programa la usa si el error es de acceso."""
+    if es_error_de_ocupada(informe):
         return MENSAJE_OCUPADA
-    return MENSAJE_AUSENTE
+    detalle = _detalle_visible(informe)
+    if not habia_dispositivo and not detalle:
+        return MENSAJE_AUSENTE
+    if detalle:
+        return f"No pude abrir la cámara: {detalle}"
+    if not habia_dispositivo:
+        return MENSAJE_AUSENTE
+    return "No pude abrir la cámara. El detalle está en el registro."
+
+
+def aviso_si_no_abre(habia_dispositivo: bool, informe: str = "") -> str:
+    return mensaje_de_fallo(informe, habia_dispositivo)
 
 
 def olvidar_cache() -> None:

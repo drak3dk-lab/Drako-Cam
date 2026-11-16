@@ -35,6 +35,8 @@ from app.ui.widgets.event_filters import (
 )
 from app.ui.widgets import ui_workers
 from app.ui.widgets.common_layout_data import COMMON_LAYOUT_DATA
+from app.ui.qt_vivo import NOMBRES_EDITOR
+from app.ui.qt_vivo import leer_editor
 from app.ui.qt_vivo import qt_sigue as _qt_sigue
 from app.ui.qt_vivo import sincronizar_espaciado
 from app.ui.widgets import sortable_widgets
@@ -100,6 +102,11 @@ def _parar_hilo_qt(hilo) -> None:
 
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
+    def __getattribute__(self, name):
+        if name in NOMBRES_EDITOR:
+            return leer_editor(self, name)
+        return super().__getattribute__(name)
+
     placeholder_update_signal = QtCore.Signal(QtWidgets.QListWidget, bool)
     gpu_memory_update_signal = QtCore.Signal(int, int)
     model_loading_signal = QtCore.Signal()
