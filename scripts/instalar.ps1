@@ -1,11 +1,12 @@
-﻿# Instala Drako Cam en Windows: uv, Python 3.12, FFmpeg 7.1.1,
+# Instala Drako Cam en Windows: uv, Python 3.12, FFmpeg 7.1.1,
 # el entorno .venv, los componentes y los accesos directos.
 # Lo llama Instalar.bat con ExecutionPolicy Bypass, solo para este proceso.
 # Compatible con Windows PowerShell 5.1. No uses sintaxis de PowerShell 7.
 #Requires -Version 5.1
 param(
     [switch]$DesdeInstalador,
-    [switch]$SoloComprobar
+    [switch]$SoloComprobar,
+    [switch]$ModoVentana
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,9 +61,14 @@ function Write-Log([string]$Mensaje) {
     }
 }
 
+function Emitir-Ventana([string]$Linea) {
+    if ($ModoVentana -and $Linea) { Write-Output $Linea }
+}
+
 function Paso([string]$Numero, [string]$Texto) {
     Write-Log ""
     Write-Log ("[{0}] {1}" -f $Numero, $Texto)
+    Emitir-Ventana ("DRAKO_PASO " + $Numero)
 }
 
 function Asegurar-Directorio([string]$Ruta) {
@@ -312,6 +318,7 @@ function Recibir-Archivo([string]$Url, [string]$Destino) {
                     if ($total -gt 0) {
                         $porcentaje = [math]::Floor(100.0 * $leidoTotal / $total)
                         Write-Host ("  {0}%  ({1} MB)" -f $porcentaje, [math]::Round($leidoTotal / 1MB, 1))
+                        Emitir-Ventana ("DRAKO_PORCIENTO " + $porcentaje)
                     } else {
                         Write-Host ("  {0} MB" -f [math]::Round($leidoTotal / 1MB, 1))
                     }
@@ -542,6 +549,10 @@ function Python-DelVenv {
 }
 
 function Pedir-Acceso {
+    if ($ModoVentana) {
+        Write-Log "La ventana no pide el nombre ahora. Se puede hacer al abrir Drako Cam."
+        return
+    }
     try {
         $python = Python-DelVenv
         if (-not (Test-Path -LiteralPath $python)) {
@@ -1077,6 +1088,7 @@ try {
         Write-Host "AVISO: de momento no veo una tarjeta NVIDIA. La instalación sigue." -ForegroundColor Yellow
         Write-Host "Al final te diré si el programa podrá usarla." -ForegroundColor Yellow
         Write-Host ""
+        Emitir-Ventana "DRAKO_AVISO No veo una tarjeta NVIDIA. Se instala igual; el directo puede ir más lento."
     }
 
     Paso "2/7" "Preparando uv"
@@ -1104,6 +1116,7 @@ try {
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host $script:TextoAvisoGpu -ForegroundColor Yellow
         Write-Host ""
+        Emitir-Ventana "DRAKO_AVISO La tarjeta no está lista para el directo. El programa se abre igual."
     }
     Write-Host "============================================================" -ForegroundColor Green
     Write-Host "  Drako Cam está listo" -ForegroundColor Green
@@ -1124,6 +1137,7 @@ try {
         Write-Host "Cuando pulses una tecla se cerrará esta ventana y el instalador terminará."
     }
     Write-Log "Instalación terminada."
+    Emitir-Ventana "DRAKO_LISTO"
     exit 0
 } catch {
     $detalle = $_.Exception.Message
@@ -1144,5 +1158,7 @@ try {
     Write-Host ""
     Write-Host "Puedes volver a ejecutar Instalar.bat. Si ya había avanzado, continúa y repara lo que falte."
     try { Write-Log ("ERROR: " + $detalle) } catch { }
+    $unaLinea = ($detalle -replace "[\r\n]+", " ").Trim()
+    Emitir-Ventana ("DRAKO_ERROR " + $unaLinea)
     exit 1
 }
