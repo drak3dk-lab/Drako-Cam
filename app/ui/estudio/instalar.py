@@ -75,6 +75,9 @@ def _conectar(estudio: Estudio, motor: MotorEnVivo) -> None:
         lambda ident, activa: _hacer(estudio, motor, lambda: motor.fijar_favorita(ident, activa) or "")
     )
     estudio.pedir_camara.connect(lambda indice: _hacer(estudio, motor, lambda: motor.elegir_camara(indice)))
+    estudio.pedir_refrescar_camaras.connect(
+        lambda: _hacer(estudio, motor, lambda: motor.refrescar_camaras() or "")
+    )
     estudio.pedir_en_vivo.connect(lambda activo: _hacer(estudio, motor, lambda: motor.poner_en_vivo(activo)))
     estudio.pedir_original.connect(lambda original: _hacer(estudio, motor, lambda: motor.ver_original(original) or ""))
     estudio.pedir_virtual.connect(lambda activa: _hacer(estudio, motor, lambda: motor.camara_virtual(activa) or ""))

@@ -109,6 +109,18 @@ ESTILO = """
     border-radius: 12px;
     padding: 0 10px;
 }
+#Estudio QPushButton#refrescar {
+    min-width: 44px;
+    max-width: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding: 0;
+    font-size: 18px;
+    color: #F1F4F9;
+    background: #0B0E14;
+    border: 1px solid rgba(160, 190, 255, 0.16);
+    border-radius: 12px;
+}
 #Estudio QComboBox::drop-down {
     border: none;
     width: 28px;

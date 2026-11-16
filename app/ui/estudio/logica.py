@@ -13,7 +13,7 @@ FONDOS = ("Normal", "Verde", "Transparente")
 EXTENSIONES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp"})
 
 MENSAJE_FOTO = "Elige una foto o un perfil. Sin eso, EN VIVO no puede cambiar la cara."
-MENSAJE_CAMARA = "No encuentro la cámara. Conéctala y pulsa EN VIVO otra vez."
+MENSAJE_CAMARA = "No hay cámara. Conéctala y pulsa actualizar."
 MENSAJE_CARA_PERDIDA = "No te veo bien. Acércate un poco y mira a la cámara."
 MENSAJE_CARGANDO = "Preparando la foto. Un momento."
 
