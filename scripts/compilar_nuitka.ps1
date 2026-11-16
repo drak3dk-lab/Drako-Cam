@@ -1,4 +1,4 @@
-# Compila Drako Cam a DrakoCam.exe con Nuitka y escribe el manifiesto de integridad.
+﻿# Compila Drako Cam a DrakoCam.exe con Nuitka y escribe el manifiesto de integridad.
 # No publica un release. No guarda tokens.
 # Ejecutar en Windows, en la carpeta del repositorio:
 #   powershell -ExecutionPolicy Bypass -File scripts\compilar_nuitka.ps1

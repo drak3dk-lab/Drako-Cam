@@ -91,7 +91,7 @@ class FrameWorker(threading.Thread):
             frame_number:   Frame index corresponding to *frame*; ``-1`` in pool mode.
             is_single_frame: ``True`` when this is a one-shot single-frame worker.
         """
-        super().__init__()
+        super().__init__(daemon=True)
         # This event will be used to signal the thread to stop
         self.stop_event = threading.Event()
 

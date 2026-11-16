@@ -1,4 +1,4 @@
-# Instala Drako Cam en Windows: uv, Python 3.12, FFmpeg 7.1.1,
+﻿# Instala Drako Cam en Windows: uv, Python 3.12, FFmpeg 7.1.1,
 # el entorno .venv, los componentes y los accesos directos.
 # Lo llama Instalar.bat con ExecutionPolicy Bypass, solo para este proceso.
 # Compatible con Windows PowerShell 5.1. No uses sintaxis de PowerShell 7.

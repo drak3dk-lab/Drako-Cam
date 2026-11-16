@@ -1,4 +1,4 @@
-# Descarga Drako Cam desde un release o un enlace.
+﻿# Descarga Drako Cam desde un release o un enlace.
 # La dirección sale de DRAKO_CAM_URL_RELEASE o de installer\descarga.url.
 # Ese archivo no se sube al repositorio. Aquí no hay tokens.
 # En un repo privado, la persona tiene que haber hecho antes `gh auth login` en ese PC.

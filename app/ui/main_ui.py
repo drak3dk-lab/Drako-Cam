@@ -77,6 +77,28 @@ _FACE_STRIP_BUTTONS_HEIGHT = 32
 _FACES_PANEL_ROW_HEIGHT = 144
 
 
+def _parar_hilo_qt(hilo) -> None:
+    if hilo is None:
+        return
+    try:
+        if hasattr(hilo, "stop"):
+            hilo.stop()
+    except Exception:
+        pass
+    try:
+        if hasattr(hilo, "requestInterruption"):
+            hilo.requestInterruption()
+        if hasattr(hilo, "quit"):
+            hilo.quit()
+        if hasattr(hilo, "isRunning") and hilo.isRunning() and hasattr(hilo, "wait"):
+            hilo.wait(800)
+        if hasattr(hilo, "isRunning") and hilo.isRunning() and hasattr(hilo, "terminate"):
+            hilo.terminate()
+            hilo.wait(300)
+    except Exception:
+        pass
+
+
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     placeholder_update_signal = QtCore.Signal(QtWidgets.QListWidget, bool)
     gpu_memory_update_signal = QtCore.Signal(int, int)
@@ -1203,23 +1225,70 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.swapfacesButton.click()
 
     def closeEvent(self, event):
+        if getattr(self, "_salida_pedida", False):
+            event.accept()
+            return
+        self._salida_pedida = True
         self._cerrando = True
         self._detener_controles_de_medio()
         print("[INFO] MainWindow: closeEvent called.")
-
-        self.video_processor.stop_processing()
-        list_view_actions.clear_stop_loading_input_media(self)
-        list_view_actions.clear_stop_loading_target_media(self)
-
-        if self.quit_without_saving:
-            print("[INFO] MainWindow: quitting without saving the workspace.")
-        else:
-            save_load_actions.save_current_workspace(
-                self, str(self.last_workspace_path)
-            )
-        self.video_processor.join_and_clear_threads()
-        # Optionally handle the event if needed
+        try:
+            self._apagar_al_cerrar()
+        except Exception as exc:
+            print(f"[AVISO] Al cerrar Drako Cam: {exc}")
         event.accept()
+        aplicacion = QtWidgets.QApplication.instance()
+        if aplicacion is not None:
+            aplicacion.closeAllWindows()
+            QtCore.QTimer.singleShot(0, aplicacion.quit)
+
+    def _apagar_al_cerrar(self) -> None:
+        for temporizador in self.findChildren(QtCore.QTimer):
+            try:
+                temporizador.stop()
+            except RuntimeError:
+                pass
+        estudio = getattr(self, "_estudio", None)
+        reloj = getattr(estudio, "_reloj_estado", None)
+        if reloj is not None:
+            try:
+                reloj.stop()
+            except RuntimeError:
+                pass
+        motor = getattr(self, "_motor_estudio", None)
+        if motor is not None:
+            motor.en_vivo = False
+            salida = getattr(motor, "_ventana_salida", None)
+            if salida is not None:
+                try:
+                    salida.cerrar()
+                    salida.close()
+                except RuntimeError:
+                    pass
+            cargador = getattr(motor, "_loader", None)
+            _parar_hilo_qt(cargador)
+        for nombre in (
+            "video_loader_worker",
+            "input_faces_loader_worker",
+            "issue_scan_worker",
+            "job_processor",
+        ):
+            _parar_hilo_qt(getattr(self, nombre, None))
+        try:
+            list_view_actions.clear_stop_loading_input_media(self)
+            list_view_actions.clear_stop_loading_target_media(self)
+        except Exception:
+            pass
+        if not getattr(self, "quit_without_saving", False):
+            try:
+                save_load_actions.save_current_workspace(
+                    self, str(self.last_workspace_path)
+                )
+            except Exception as exc:
+                print(f"[AVISO] No se guardó el espacio al cerrar: {exc}")
+        procesador = getattr(self, "video_processor", None)
+        if procesador is not None and hasattr(procesador, "apagar"):
+            procesador.apagar()
 
     def load_last_workspace(self) -> None:
         """

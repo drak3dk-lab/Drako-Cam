@@ -1564,6 +1564,62 @@ class VideoProcessor(QObject):
 
         return True  # Processing was stopped
 
+    def apagar(self) -> None:
+        """Suelta cámara, ffmpeg e hilos al cerrar. No vuelve a abrir nada."""
+        self.processing = False
+        self.recording = False
+        self.is_processing_segments = False
+        for nombre in ("gpu_memory_update_timer", "preroll_timer", "single_frame_handoff_timer"):
+            temporizador = getattr(self, nombre, None)
+            if temporizador is None:
+                continue
+            try:
+                temporizador.stop()
+            except Exception:
+                pass
+        try:
+            self.stop_live_sound()
+        except Exception:
+            pass
+        try:
+            self._stop_recording_ffmpeg_input_stream()
+        except Exception:
+            pass
+        proceso = getattr(self, "ffmpeg_input_sp", None)
+        if proceso is not None and getattr(proceso, "poll", lambda: 0)() is None:
+            try:
+                proceso.kill()
+            except Exception:
+                pass
+            self.ffmpeg_input_sp = None
+        captura = getattr(self, "media_capture", None)
+        if captura:
+            try:
+                misc_helpers.release_capture(captura)
+            except Exception:
+                pass
+            self.media_capture = None
+        encoder = getattr(self, "encoder", None)
+        grabacion = getattr(encoder, "recording_sp", None) if encoder is not None else None
+        if grabacion is not None and grabacion.poll() is None:
+            try:
+                grabacion.kill()
+            except Exception:
+                pass
+            try:
+                encoder.recording_sp = None
+            except Exception:
+                pass
+        try:
+            if hasattr(self, "sequential_detector"):
+                self.sequential_detector.reset_state()
+        except Exception:
+            pass
+        try:
+            self.join_and_clear_threads()
+        except Exception as exc:
+            print(f"[AVISO] Al parar los hilos de vídeo: {exc}")
+
     def join_and_clear_threads(self, clear_module_caches: bool = True):
         """Facade: Delegates thread synchronization and VRAM cleanup to WorkerPoolManager."""
         self.worker_pool_manager.join_and_clear_threads(clear_module_caches)
