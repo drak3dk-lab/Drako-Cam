@@ -63,13 +63,13 @@ MENSAJE_SOLICITUD_APROBADA = (
 MENSAJE_SOLICITUD_LIMITADA = (
     "Demasiadas solicitudes desde esta red. Espera un rato y vuelve a probar."
 )
-PLACEHOLDER_CODIGO = "DRAKO-XXXX-XXXX-XXXX-XXXX"
+PLACEHOLDER_CODIGO = "DRAKO-XXXX-XXXX"
 
 MENSAJE_SIN_CONFIGURAR = (
     "Esta copia de Drako Cam no tiene configurado el servidor de acceso. "
     "Falta la dirección o la clave pública. Avísale al administrador."
 )
-MENSAJE_FORMATO = "El código debe tener la forma DRAKO-XXXX-XXXX-XXXX-XXXX."
+MENSAJE_FORMATO = "El código debe tener la forma DRAKO-XXXX-XXXX."
 MENSAJE_SIN_RED_PRIMERA = (
     "Hace falta conexión a internet la primera vez, para comprobar el código. "
     "No se ha guardado."
@@ -97,8 +97,9 @@ MENSAJES_ARRANQUE = {
         "Compruébalo con el administrador."
     ),
     "otro_equipo": (
-        "Este código ya está ligado a otro equipo. Se ha pedido una aprobación "
-        "nueva para este PC. Escribe al administrador por Telegram."
+        "Este código ya está ligado a otro equipo. Se pidió pasarlo a este PC. "
+        "Drako lo aprueba en Telegram, en Pendientes, con el botón Aprobar este PC. "
+        "Luego vuelve a entrar con el mismo código."
     ),
     "mal_formato": MENSAJE_FORMATO,
     "limitada": (
@@ -114,8 +115,8 @@ MENSAJES_FORMULARIO = {
     "revocado": "Ese código está revocado. Pide uno nuevo al administrador.",
     "desconocido": "Ese código no es válido. Revísalo o pide uno al administrador.",
     "otro_equipo": (
-        "Ese código ya está ligado a otro equipo. Se ha pedido una aprobación "
-        "nueva para este PC. Escribe al administrador por Telegram."
+        "Ese código ya está ligado a otro equipo. Se pidió pasarlo a este PC. "
+        "Drako lo aprueba en Telegram, en Pendientes. Luego vuelve a entrar con el mismo código."
     ),
     "mal_formato": MENSAJE_FORMATO,
     "limitada": "Demasiados intentos desde esta red. Espera un rato y vuelve a probar.",

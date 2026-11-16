@@ -59,8 +59,10 @@ def test_el_vector_firmado_por_el_servidor_verifica_y_un_cambio_no():
 
 def test_normaliza_el_codigo_y_no_acepta_letras_ambiguas():
     assert normalizar_codigo("  drako-aaaa-bbbb-cccc-dddd ") == CODIGO
-    assert normalizar_codigo("DRAKO-AAA1-BBBB-CCCC-DDDD") is None
+    assert normalizar_codigo("drako-abcd-efgh") == "DRAKO-ABCD-EFGH"
+    assert normalizar_codigo("DRAKO-AAA1-BBBB") is None
     assert normalizar_codigo("DRAKO-AAAA-BBBB-CCCC") is None
+    assert normalizar_codigo("DRAKO-AAAA-BBBO") is None
 
 
 def test_la_huella_no_cambia_si_solo_cambia_el_nombre_visible():

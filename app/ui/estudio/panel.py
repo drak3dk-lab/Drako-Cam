@@ -1064,7 +1064,9 @@ class Estudio(QtWidgets.QWidget):
         ventana = self.window()
         if self._compacto:
             self._tamano_previo = ventana.size()
-            ventana.resize(440, 720)
+            from app.drako.pantalla import encajar
+
+            encajar(ventana, 440, 720, 360, 480)
         elif getattr(self, "_tamano_previo", None) is not None:
             ventana.resize(self._tamano_previo)
         self.pedir_compacto.emit(self._compacto)

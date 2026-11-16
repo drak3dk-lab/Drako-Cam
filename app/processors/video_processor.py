@@ -3610,11 +3610,14 @@ class VideoProcessor(QObject):
         # Determine if we can safely reuse the existing capture
         if self.media_capture and self.media_capture.isOpened():
             selected_btn = getattr(self.main_window, "selected_video_button", None)
+            from app.ui.qt_vivo import qt_sigue
             from app.ui.widgets import widget_components
 
-            if isinstance(
-                selected_btn, widget_components.TargetMediaCardButton
-            ) and getattr(selected_btn, "is_webcam", False):
+            if (
+                qt_sigue(selected_btn)
+                and isinstance(selected_btn, widget_components.TargetMediaCardButton)
+                and getattr(selected_btn, "is_webcam", False)
+            ):
                 if (
                     selected_btn.webcam_index == webcam_index
                     and selected_btn.webcam_backend == backend_id

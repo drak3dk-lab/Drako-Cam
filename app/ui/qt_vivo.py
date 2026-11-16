@@ -20,6 +20,17 @@ def qt_sigue(obj) -> bool:
         return False
 
 
+def tocar(obj, accion) -> bool:
+    """Ejecuta accion(obj) solo si el objeto de Qt sigue vivo."""
+    if not qt_sigue(obj):
+        return False
+    try:
+        accion(obj)
+    except RuntimeError:
+        return False
+    return True
+
+
 def sincronizar_espaciado(layout, vista, centro, separadores, espaciado=12, margen=12) -> bool:
     """Ajusta el espaciado solo si el layout y los widgets siguen existiendo."""
     if not (qt_sigue(layout) and qt_sigue(vista) and qt_sigue(centro)):

@@ -7,7 +7,7 @@ shiboken6 = pytest.importorskip("shiboken6")
 
 from PySide6 import QtWidgets
 
-from app.ui.qt_vivo import qt_sigue, sincronizar_espaciado
+from app.ui.qt_vivo import qt_sigue, sincronizar_espaciado, tocar
 
 
 @pytest.fixture
@@ -27,3 +27,7 @@ def test_el_balance_ignora_un_layout_ya_borrado(qapp):
 
     assert not qt_sigue(layout)
     assert sincronizar_espaciado(layout, vista, centro, []) is False
+
+    boton = QtWidgets.QPushButton("EN VIVO")
+    shiboken6.delete(boton)
+    assert tocar(boton, lambda widget: widget.setEnabled(False)) is False

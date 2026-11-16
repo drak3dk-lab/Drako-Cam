@@ -19,7 +19,7 @@ const MENSAJES: Record<string, string> = {
   revocado: "Este código está revocado.",
   desconocido: "Este código no existe.",
   otro_equipo:
-    "Este código está ligado a otro equipo. Se pidió una aprobación nueva para este PC. Escríbele a @Drako_XX en Telegram.",
+    "Este código está ligado a otro equipo. Se pidió pasarlo a este PC. Apruébalo en Telegram, en Pendientes, con Aprobar este PC. Luego se entra otra vez con el mismo código.",
   mal_formato: "El código o la huella del equipo no son válidos.",
   sesion_desconocida: "No hay una sesión abierta. Hay que volver a entrar.",
   sesion_ajena: "Esa sesión no corresponde a este código.",

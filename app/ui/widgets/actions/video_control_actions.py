@@ -2280,16 +2280,29 @@ def initialize_media_button_icons(main_window: "MainWindow"):
     set_record_button_icon(main_window)
 
 
+def _boton_vivo(main_window: "MainWindow", nombre: str):
+    from app.ui.qt_vivo import qt_sigue
+
+    boton = getattr(main_window, nombre, None)
+    return boton if qt_sigue(boton) else None
+
+
 def set_play_button_icon_to_play(main_window: "MainWindow"):
     """Sets the Play button icon and tooltip to the 'ready-to-play' (stopped) state."""
-    main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
-    main_window.buttonMediaPlay.setToolTip("Play")
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    boton.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
+    boton.setToolTip("Play")
 
 
 def set_play_button_icon_to_stop(main_window: "MainWindow"):
     """Sets the Play button icon and tooltip to the 'playing active' (stop) state."""
-    main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
-    main_window.buttonMediaPlay.setToolTip("Stop")
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    boton.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
+    boton.setToolTip("Stop")
 
 
 def reset_media_buttons(main_window: "MainWindow"):
@@ -2297,38 +2310,51 @@ def reset_media_buttons(main_window: "MainWindow"):
     Resets the Play and Record buttons to their unchecked, enabled state without
     triggering their toggled/clicked signals.  Updates icons to match the new state.
     """
-    # Rest the state and icons of the buttons without triggering Onchange methods
-    main_window.buttonMediaPlay.blockSignals(True)
-    main_window.buttonMediaPlay.setChecked(False)
-    main_window.buttonMediaPlay.setEnabled(True)  # Re-enable the button
-    main_window.buttonMediaPlay.blockSignals(False)
-    main_window.buttonMediaRecord.blockSignals(True)
-    main_window.buttonMediaRecord.setChecked(False)
-    main_window.buttonMediaRecord.blockSignals(False)
-    set_play_button_icon(main_window)
-    set_record_button_icon(main_window)
+    # La pantalla sencilla borra estos botones. Seguir usándolos cierra el programa.
+    play = _boton_vivo(main_window, "buttonMediaPlay")
+    record = _boton_vivo(main_window, "buttonMediaRecord")
+    if play is None and record is None:
+        return
+    try:
+        if play is not None:
+            play.blockSignals(True)
+            play.setChecked(False)
+            play.setEnabled(True)
+            play.blockSignals(False)
+        if record is not None:
+            record.blockSignals(True)
+            record.setChecked(False)
+            record.blockSignals(False)
+        set_play_button_icon(main_window)
+        set_record_button_icon(main_window)
+    except RuntimeError:
+        return
 
 
 def set_play_button_icon(main_window: "MainWindow"):
     """Updates the Play button icon and tooltip to reflect its current checked state."""
-    if main_window.buttonMediaPlay.isChecked():
-        main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
-        main_window.buttonMediaPlay.setToolTip("Stop")
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    if boton.isChecked():
+        boton.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
+        boton.setToolTip("Stop")
     else:
-        main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
-        main_window.buttonMediaPlay.setToolTip("Play")
+        boton.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
+        boton.setToolTip("Play")
 
 
 def set_record_button_icon(main_window: "MainWindow"):
     """Updates the Record button icon and tooltip to reflect its current checked state."""
-    if main_window.buttonMediaRecord.isChecked():
-        main_window.buttonMediaRecord.setIcon(QtGui.QIcon(":/media/media/rec_on.png"))
-        main_window.buttonMediaRecord.setToolTip("Stop Recording")
+    boton = _boton_vivo(main_window, "buttonMediaRecord")
+    if boton is None:
+        return
+    if boton.isChecked():
+        boton.setIcon(QtGui.QIcon(":/media/media/rec_on.png"))
+        boton.setToolTip("Stop Recording")
     else:
-        main_window.buttonMediaRecord.setIcon(
-            QtGui.QIcon(":/media/media/rec_hover.png")
-        )
-        main_window.buttonMediaRecord.setToolTip("Start Recording")
+        boton.setIcon(QtGui.QIcon(":/media/media/rec_hover.png"))
+        boton.setToolTip("Start Recording")
 
 
 # @misc_helpers.benchmark

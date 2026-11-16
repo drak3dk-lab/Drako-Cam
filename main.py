@@ -249,7 +249,11 @@ def _run_app(argv: list[str] | None = None) -> int:
 
     vigilante.al_cortar_directo = cortar_directo
     vigilante.al_restaurar = restaurar_directo
+    from app.drako.pantalla import asegurar_cabe
+
+    asegurar_cabe(ventana)
     ventana.show()
+    asegurar_cabe(ventana)
 
     texto_cuda = mensaje_sin_cuda(bool(torch.cuda.is_available()))
     if texto_cuda:

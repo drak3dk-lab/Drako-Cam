@@ -367,7 +367,7 @@ async function buscarPersona(env: Env, argumento: string): Promise<Persona | nul
 
 async function revocar(env: Env, argumento: string, ahora: number): Promise<string> {
   const codigo = normalizarCodigo(argumento);
-  if (!codigo) return "Escribe el código.\nEjemplo: /revocar DRAKO-XXXX-XXXX-XXXX-XXXX";
+  if (!codigo) return "Escribe el código.\nEjemplo: /revocar DRAKO-XXXX-XXXX";
   const persona = await env.DB.prepare("SELECT * FROM personas WHERE codigo = ?")
     .bind(codigo)
     .first<Persona>();
@@ -431,7 +431,7 @@ function enteroActiva(env: Env): number {
 
 async function historial(env: Env, argumento: string): Promise<string> {
   const codigo = normalizarCodigo(argumento);
-  if (!codigo) return "Escribe el código.\nEjemplo: /historial DRAKO-XXXX-XXXX-XXXX-XXXX";
+  if (!codigo) return "Escribe el código.\nEjemplo: /historial DRAKO-XXXX-XXXX";
   const persona = await env.DB.prepare("SELECT * FROM personas WHERE codigo = ?")
     .bind(codigo)
     .first<Persona>();
@@ -460,7 +460,7 @@ async function historial(env: Env, argumento: string): Promise<string> {
 
 async function vistaPendientes(env: Env): Promise<RespuestaBot> {
   const filas = await env.DB.prepare(
-    `SELECT id, nombre, oficina, equipo, ciudad, pais, creada_en
+    `SELECT id, nombre, oficina, equipo, ciudad, pais, creada_en, tipo, codigo
      FROM solicitudes WHERE estado = 'pendiente'
      ORDER BY creada_en DESC LIMIT 8`,
   ).all<{
@@ -471,16 +471,27 @@ async function vistaPendientes(env: Env): Promise<RespuestaBot> {
     ciudad: string;
     pais: string;
     creada_en: number;
+    tipo?: string | null;
+    codigo?: string | null;
   }>();
   const lista = filas.results || [];
   if (!lista.length) return conMenu("No hay solicitudes pendientes.");
-  const lineas = lista.map((fila) =>
-    `• ${fila.nombre} — ${textoOficina(fila.oficina)} — ${fila.equipo} — ${textoLugar(fila.ciudad, fila.pais)} — ${formatearHora(fila.creada_en)}`,
-  );
-  const teclas = lista.map((fila) => [
-    { text: "Aprobar", callback_data: `aprobar:${fila.id}` },
-    { text: "Rechazar", callback_data: `rechazar:${fila.id}` },
-  ]);
+  const lineas = lista.map((fila, indice) => {
+    const marca = lista.length > 1 ? `${indice + 1}. ` : "";
+    const lugar = `${textoOficina(fila.oficina)} — ${fila.equipo} — ${textoLugar(fila.ciudad, fila.pais)} — ${formatearHora(fila.creada_en)}`;
+    if (fila.tipo === "reasignar") {
+      return `${marca}Cambio de equipo: ${fila.nombre} pide usar su código en ${fila.equipo}. Si lo apruebas, deja de valer en el PC anterior. ${lugar}`;
+    }
+    return `${marca}${fila.nombre} — acceso nuevo — ${lugar}`;
+  });
+  const teclas = lista.map((fila, indice) => {
+    const prefijo = lista.length > 1 ? `${indice + 1}. ` : "";
+    const aprobar = fila.tipo === "reasignar" ? "Aprobar este PC" : "Aprobar";
+    return [
+      { text: `${prefijo}${aprobar}`.slice(0, 64), callback_data: `aprobar:${fila.id}` },
+      { text: `${prefijo}Rechazar`.slice(0, 64), callback_data: `rechazar:${fila.id}` },
+    ];
+  });
   return plano(
     [`Solicitudes pendientes (${lista.length}):`, ...lineas].join("\n"),
     { reply_markup: { inline_keyboard: teclas } },
@@ -489,7 +500,7 @@ async function vistaPendientes(env: Env): Promise<RespuestaBot> {
 
 async function borrar(env: Env, argumento: string): Promise<string> {
   const codigo = normalizarCodigo(argumento);
-  if (!codigo) return "Escribe el código.\nEjemplo: /borrar DRAKO-XXXX-XXXX-XXXX-XXXX";
+  if (!codigo) return "Escribe el código.\nEjemplo: /borrar DRAKO-XXXX-XXXX";
   const persona = await env.DB.prepare("SELECT * FROM personas WHERE codigo = ?")
     .bind(codigo)
     .first<Persona>();
