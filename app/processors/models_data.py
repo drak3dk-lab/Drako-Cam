@@ -857,3 +857,41 @@ models_list = [
         "url": "https://raw.githubusercontent.com/VisoMasterFusion/VisoMaster-Fusion/f2d6f5ebe190b631ee5c8972332083cf7f8a3e72/model_assets/mouth_action_detector/model.pb",
     },
 ]
+
+# Conjunto mínimo del cambio de cara en vivo con Inswapper128.
+# El instalador y el arranque bajan y verifican solo esto.
+# Orden: primero lo que hace falta para leer la foto, luego el swap,
+# el realce y las máscaras que el perfil en vivo deja encendidas.
+ORDEN_REQUERIDO = (
+    "RetinaFace",
+    "Inswapper128ArcFace",
+    "Inswapper128",
+    "GFPGANv1.4",
+    "FaceParser",
+    "Occluder",
+)
+
+for _modelo in models_list:
+    _modelo["requerido"] = _modelo["model_name"] in ORDEN_REQUERIDO
+
+
+def modelos_requeridos() -> list[dict]:
+    """Modelos que el directo con Inswapper128 carga de verdad.
+
+    RetinaFace (det_10g.onnx): detector por defecto. Sus 5 puntos salen
+    del propio detector; no hace falta otro modelo de landmarks.
+    Inswapper128ArcFace (w600k_r50.onnx): reconocimiento al leer la foto
+    y al calcular el embedding del swap.
+    Inswapper128 (inswapper_128.fp16.onnx): el modelo de cambio.
+    GFPGANv1.4: el realce está encendido en Auto, Equilibrado y Máxima.
+    FaceParser: máscara por zonas, boca y «al hablar» del perfil en vivo.
+    Occluder: la oclusión (manos, micro) está encendida en ese perfil.
+
+    No entran landmarks sueltos (106, 68, 203, ORFormer, TUFA): el
+    interruptor está apagado y el 203 solo lo piden el editor, el
+    maquillaje o el restaurador de expresión, que el directo no usa.
+    Tampoco SimSwap, Ghost, InStyle, CSCS, LivePortrait, YOLO VR,
+    GPEN ni el resto de restauradores.
+    """
+    por_nombre = {modelo["model_name"]: modelo for modelo in models_list}
+    return [por_nombre[nombre] for nombre in ORDEN_REQUERIDO]

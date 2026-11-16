@@ -41,6 +41,7 @@ $nombres = @(
     "Preparando el programa",
     "Preparando el vídeo",
     "Instalando el cambio de cara",
+    "Bajando los modelos de la cara",
     "Comprobando la tarjeta gráfica",
     "Creando el acceso directo"
 )
@@ -146,8 +147,8 @@ for ($i = 0; $i -lt $nombres.Count; $i++) {
     $marca.ForeColor = $apagado
     $marca.AutoSize = $false
     $marca.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-    $marca.Size = New-Object System.Drawing.Size(22, 28)
-    $marca.Location = New-Object System.Drawing.Point(36, (236 + ($i * 30)))
+    $marca.Size = New-Object System.Drawing.Size(22, 24)
+    $marca.Location = New-Object System.Drawing.Point(36, (220 + ($i * 26)))
     $form.Controls.Add($marca)
     $script:marcas += $marca
 
@@ -157,8 +158,8 @@ for ($i = 0; $i -lt $nombres.Count; $i++) {
     $etiqueta.ForeColor = $apagado
     $etiqueta.AutoSize = $false
     $etiqueta.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-    $etiqueta.Size = New-Object System.Drawing.Size(380, 28)
-    $etiqueta.Location = New-Object System.Drawing.Point(62, (236 + ($i * 30)))
+    $etiqueta.Size = New-Object System.Drawing.Size(380, 24)
+    $etiqueta.Location = New-Object System.Drawing.Point(62, (220 + ($i * 26)))
     $form.Controls.Add($etiqueta)
     $script:etiquetas += $etiqueta
 }
@@ -234,8 +235,8 @@ $script:detallesAbiertos = $false
 
 function Actualizar-Barra {
     $fraccion = 0.0
-    if ($script:paso -gt 0) { $fraccion = ($script:paso - 1) / 7.0 }
-    if ($script:porcentaje -ge 0) { $fraccion += ($script:porcentaje / 100.0) / 7.0 }
+    if ($script:paso -gt 0) { $fraccion = ($script:paso - 1) / 8.0 }
+    if ($script:porcentaje -ge 0) { $fraccion += ($script:porcentaje / 100.0) / 8.0 }
     if ($script:fase -eq "listo") { $fraccion = 1.0 }
     if ($fraccion -gt 1) { $fraccion = 1 }
     if ($fraccion -lt 0) { $fraccion = 0 }
@@ -268,6 +269,8 @@ function Poner-Paso([int]$numero) {
     $script:porcentaje = -1
     if ($numero -eq 5) {
         $estado.Text = "Esta parte es la larga. Deja la ventana abierta."
+    } elseif ($numero -eq 6) {
+        $estado.Text = "Si se corta internet, se reanuda. No cierres la ventana."
     } else {
         $estado.Text = "No cierres esta ventana."
     }
@@ -282,6 +285,10 @@ function Aplicar-Linea([string]$linea) {
         $numero = 0
         if ($trozo -match '^(\d+)') { $numero = [int]$Matches[1] }
         Poner-Paso $numero
+        return
+    }
+    if ($linea.StartsWith("DRAKO_ESTADO ")) {
+        $estado.Text = $linea.Substring(13).Trim()
         return
     }
     if ($linea.StartsWith("DRAKO_PORCIENTO ")) {
@@ -317,7 +324,7 @@ function Refrescar-Detalles {
 
 function Mostrar-Listo {
     $script:fase = "listo"
-    $script:paso = 8
+    $script:paso = 9
     $estado.Text = "Ya está en este PC."
     $script:boton.Text = "Abrir Drako Cam"
     $script:boton.Enabled = $true
