@@ -170,27 +170,30 @@ class MotorEnVivo:
     def elegir_camara(self, posicion: int) -> str:
         pares = self._lista_camaras()
         if posicion < 0 or posicion >= len(pares):
-            self.mensaje = "No hay cámara. Conecta una y vuelve a abrir Drako Cam."
+            from app.drako.camaras import MENSAJE_AUSENTE
+
+            self.mensaje = MENSAJE_AUSENTE
             return self.mensaje
         indice, _nombre = pares[posicion]
         boton = self._boton_camara(indice)
-        if boton is None:
-            self.mensaje = "No encuentro esa cámara."
-            return self.mensaje
         self._indice = indice
         self.biblioteca.recordar(ultima_camara=indice)
+        control = getattr(self.ventana, "control", None)
+        if isinstance(control, dict):
+            control["WebcamDeviceSelection"] = indice
+        from app.drako.camaras import aviso_si_no_abre
         from app.ui.qt_vivo import tocar
 
         try:
-            boton.load_media()
-            tocar(boton, lambda tarjeta: tarjeta.setChecked(True))
+            if boton is None:
+                self._abrir_sin_tarjeta(indice)
+            else:
+                boton.load_media()
+                tocar(boton, lambda tarjeta: tarjeta.setChecked(True))
         except Exception as exc:
             print(f"[AVISO] Al abrir la cámara: {exc}")
-            if not self._camara_abierta():
-                self.mensaje = "No pude abrir la cámara. Mira que otro programa no la esté usando."
-                return self.mensaje
         if not self._camara_abierta():
-            self.mensaje = "No pude abrir la cámara. Mira que otro programa no la esté usando."
+            self.mensaje = aviso_si_no_abre(True)
             return self.mensaje
         self.mensaje = ""
         if self.en_vivo:
@@ -216,7 +219,11 @@ class MotorEnVivo:
             return ""
         foto = self._foto_seleccionada()
         if foto is not None and not self._camara_abierta() and self.camaras():
-            self.elegir_camara(max(self.indice_camara(), 0))
+            aviso_camara = self.elegir_camara(max(self.indice_camara(), 0))
+            if aviso_camara and not self._camara_abierta():
+                self.mensaje = aviso_camara
+                self.en_vivo = False
+                return aviso_camara
         aviso = puede_entrar_en_vivo(foto is not None, self._camara_abierta())
         if aviso:
             self.mensaje = aviso
@@ -722,12 +729,30 @@ class MotorEnVivo:
                 except Exception:
                     pass
 
+    def refrescar_camaras(self) -> str:
+        from app.drako.camaras import olvidar_cache
+
+        olvidar_cache()
+        self._preparar_camaras()
+        if not self._lista_camaras():
+            self.mensaje = "No hay cámara. Conéctala y pulsa actualizar."
+        else:
+            self.mensaje = ""
+        return self.mensaje
+
+    def _abrir_sin_tarjeta(self, indice: int) -> None:
+        procesador = getattr(self.ventana, "video_processor", None)
+        if procesador is None:
+            return
+        procesador.file_type = "webcam"
+        procesador.process_webcam()
+
     def _camara_inicial(self) -> None:
         if self._camara_abierta():
             return
         pares = self._lista_camaras()
         if not pares:
-            self.mensaje = "No veo ninguna cámara. Conéctala y pulsa Volver a la cámara, en Avanzado."
+            self.mensaje = "No hay cámara. Conéctala y pulsa actualizar."
             return
         posicion = 0
         for indice, (numero, _nombre) in enumerate(pares):
@@ -930,6 +955,11 @@ class MotorEnVivo:
         return vivos
 
     def _lista_camaras(self) -> list[tuple[int, str]]:
+        from app.drako.camaras import nombres_de_camaras
+
+        nombres = nombres_de_camaras()
+        if nombres:
+            return [(indice, nombre) for indice, nombre in enumerate(nombres)]
         pares = []
         for boton in self._botones_video():
             try:
