@@ -136,6 +136,9 @@ ESTILO = """
     background: transparent;
     border: none;
 }
+#Estudio QScrollArea > QWidget > QWidget {
+    background: transparent;
+}
 #Estudio QCheckBox {
     color: #F1F4F9;
     spacing: 8px;
@@ -145,6 +148,67 @@ ESTILO = """
 #Estudio QCheckBox::indicator {
     width: 18px;
     height: 18px;
+    border-radius: 5px;
+    border: 1px solid rgba(160, 190, 255, 0.40);
+    background: #0B0E14;
+}
+#Estudio QCheckBox::indicator:checked {
+    background: #F1F4F9;
+    border-color: #F1F4F9;
+}
+#Estudio QCheckBox#interruptorGrupo {
+    font-size: 15px;
+    font-weight: 650;
+    min-height: 40px;
+}
+#Estudio QCheckBox#interruptorGrupo[activo="false"] {
+    color: #8E97A6;
+    font-weight: 600;
+}
+#Estudio QCheckBox#interruptorGrupo[activo="true"] {
+    color: #F1F4F9;
+}
+#Estudio QWidget#grupoAjuste {
+    background: transparent;
+    border-top: 1px solid rgba(160, 190, 255, 0.10);
+}
+#Estudio QToolButton#plegar {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 14px;
+    font-weight: 650;
+    text-align: left;
+    color: #F1F4F9;
+    background: #121620;
+    border: 1px solid rgba(160, 190, 255, 0.16);
+    border-radius: 12px;
+}
+#Estudio QToolButton#plegar:hover,
+#Estudio QToolButton#plegar:checked {
+    background: #1A1F2B;
+}
+#Estudio QToolButton#plegar:focus {
+    border: 1px solid rgba(242, 10, 28, 0.85);
+}
+#Estudio QToolButton#restablecer {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #F1F4F9;
+    background: #121620;
+    border: 1px solid rgba(160, 190, 255, 0.16);
+    border-radius: 8px;
+}
+#Estudio QToolButton#restablecer:hover {
+    background: #1A1F2B;
+}
+#Estudio QToolButton#restablecer:focus {
+    border: 1px solid rgba(242, 10, 28, 0.85);
+}
+#Estudio QScrollArea#scrollAjustes {
+    background: transparent;
+    border: none;
 }
 #barraEstado {
     background: #04060A;
