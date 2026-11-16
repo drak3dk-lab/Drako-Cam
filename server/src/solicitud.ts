@@ -122,14 +122,15 @@ export async function pedirReasignacion(
     `Lugar: ${textoLugar(lugar.ciudad, lugar.pais)}`,
     `IP: ${lugar.ip || "no disponible"}`,
     "Si apruebas, el mismo código pasa a este PC y deja de valer en el anterior.",
+    "También está en Pendientes: el botón se llama Aprobar este PC.",
   ].join("\n");
-  await enviarTelegram(env, texto, { reply_markup: teclado(id) });
+  await enviarTelegram(env, texto, { reply_markup: teclado(id, true) });
 }
 
-function teclado(id: string): Record<string, unknown> {
+function teclado(id: string, reasignar = false): Record<string, unknown> {
   return {
     inline_keyboard: [[
-      { text: "Aprobar", callback_data: `aprobar:${id}` },
+      { text: reasignar ? "Aprobar este PC" : "Aprobar", callback_data: `aprobar:${id}` },
       { text: "Rechazar", callback_data: `rechazar:${id}` },
     ]],
   };

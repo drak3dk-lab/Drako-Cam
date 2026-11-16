@@ -266,6 +266,14 @@ def _clamp_window_frame_to_available_geometry(main_window: "MainWindow"):
 
     available = target_screen.availableGeometry()
     if (
+        main_window.minimumWidth() > available.width()
+        or main_window.minimumHeight() > available.height()
+    ):
+        main_window.setMinimumSize(
+            min(main_window.minimumWidth(), max(320, available.width())),
+            min(main_window.minimumHeight(), max(240, available.height())),
+        )
+    if (
         frame_rect.width() > available.width()
         or frame_rect.height() > available.height()
     ):

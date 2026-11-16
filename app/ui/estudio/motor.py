@@ -179,12 +179,16 @@ class MotorEnVivo:
             return self.mensaje
         self._indice = indice
         self.biblioteca.recordar(ultima_camara=indice)
+        from app.ui.qt_vivo import tocar
+
         try:
             boton.load_media()
-            boton.setChecked(True)
+            tocar(boton, lambda tarjeta: tarjeta.setChecked(True))
         except Exception as exc:
-            self.mensaje = f"No pude abrir la cámara. {exc}"
-            return self.mensaje
+            print(f"[AVISO] Al abrir la cámara: {exc}")
+            if not self._camara_abierta():
+                self.mensaje = "No pude abrir la cámara. Mira que otro programa no la esté usando."
+                return self.mensaje
         if not self._camara_abierta():
             self.mensaje = "No pude abrir la cámara. Mira que otro programa no la esté usando."
             return self.mensaje
@@ -895,26 +899,56 @@ class MotorEnVivo:
         return None
 
     def _marcar_entrada(self, boton) -> None:
-        for otro in getattr(self.ventana, "input_faces", {}).values():
-            if otro is not boton and otro.isChecked():
-                otro.setChecked(False)
-        if not boton.isChecked():
-            boton.click()
+        from app.ui.qt_vivo import qt_sigue
+
+        if not qt_sigue(boton):
+            return
+        for otro in list(getattr(self.ventana, "input_faces", {}).values()):
+            if not qt_sigue(otro) or otro is boton:
+                continue
+            try:
+                if otro.isChecked():
+                    otro.setChecked(False)
+            except RuntimeError:
+                continue
+        try:
+            if not boton.isChecked():
+                boton.click()
+        except RuntimeError:
+            return
+
+    def _botones_video(self):
+        from app.ui.qt_vivo import qt_sigue
+
+        vivos = []
+        mapa = getattr(self.ventana, "target_videos", {}) or {}
+        for clave, boton in list(mapa.items()):
+            if not qt_sigue(boton):
+                mapa.pop(clave, None)
+                continue
+            vivos.append(boton)
+        return vivos
 
     def _lista_camaras(self) -> list[tuple[int, str]]:
         pares = []
-        for boton in getattr(self.ventana, "target_videos", {}).values():
-            if getattr(boton, "file_type", "") != "webcam":
+        for boton in self._botones_video():
+            try:
+                if getattr(boton, "file_type", "") != "webcam":
+                    continue
+                indice = int(getattr(boton, "webcam_index", len(pares)))
+            except RuntimeError:
                 continue
-            indice = int(getattr(boton, "webcam_index", len(pares)))
             pares.append((indice, f"Cámara {indice + 1}"))
         pares.sort()
         return pares
 
     def _boton_camara(self, indice: int):
-        for boton in getattr(self.ventana, "target_videos", {}).values():
-            if getattr(boton, "file_type", "") == "webcam" and int(getattr(boton, "webcam_index", -1)) == indice:
-                return boton
+        for boton in self._botones_video():
+            try:
+                if getattr(boton, "file_type", "") == "webcam" and int(getattr(boton, "webcam_index", -1)) == indice:
+                    return boton
+            except RuntimeError:
+                continue
         return None
 
     def _camara_abierta(self) -> bool:
@@ -963,10 +997,17 @@ class MotorEnVivo:
                 print(f"[AVISO] No se pintaron los ajustes: {exc}")
 
     def _fijar_cambio(self, activo: bool) -> None:
-        boton = self.ventana.swapfacesButton
-        if boton.isChecked() == activo:
+        from app.ui.qt_vivo import qt_sigue
+
+        boton = getattr(self.ventana, "swapfacesButton", None)
+        if not qt_sigue(boton):
             return
-        boton.click()
+        try:
+            if boton.isChecked() == activo:
+                return
+            boton.click()
+        except RuntimeError:
+            return
 
     def _poner_toggle(self, nombre: str, activo: bool) -> None:
         widget = (getattr(self.ventana, "parameter_widgets", None) or {}).get(nombre)

@@ -253,7 +253,7 @@ Te llega un mensaje con dos botones: **Aprobar** y **Rechazar**. Muestran la per
 
 La oficina se guarda con el código. Sale en los avisos de entrada y de salida, y también en `/lista`, `/activos` e `/historial`.
 
-El código tiene esta forma: `DRAKO-XXXX-XXXX-XXXX-XXXX`. Se puede escribir con o sin guiones.
+El código nuevo tiene esta forma: `DRAKO-XXXX-XXXX`. Los códigos antiguos de cuatro grupos siguen valiendo. Se puede escribir con o sin guiones. No usa 0, O, 1 ni I, para que no se confundan.
 
 El primer PC que lo active se queda ligado a ese código. Otro PC con el mismo código no entra. Si Ana cambia de ordenador, revoca el código y crea otro con `/nuevo`.
 

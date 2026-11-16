@@ -34,7 +34,7 @@ QLabel#cuerpo { color: #f0f0f0; font-size: 15px; }
 QLabel#punto { color: #f0f0f0; font-size: 15px; font-weight: 600; }
 QLabel#detalle { color: #c6c6c6; font-size: 14px; }
 QLabel#error { color: #ffb4b4; font-size: 14px; }
-QDialog { background-color: #141414; color: #f0f0f0; }
+QDialog, QScrollArea, QWidget#interior { background-color: #141414; color: #f0f0f0; }
 QLabel#contacto { color: #e6e6e6; font-size: 16px; }
 QLabel#contacto a { color: #8fd4e4; text-decoration: underline; }
 QLineEdit {
@@ -79,13 +79,56 @@ def _dialogo(titulo: str, padre=None) -> QtWidgets.QDialog:
     dialogo = QtWidgets.QDialog(padre)
     dialogo.setWindowTitle(titulo)
     dialogo.setModal(True)
-    dialogo.setMinimumWidth(520)
+    dialogo.setMinimumWidth(360)
     dialogo.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
     dialogo.setStyleSheet(_HOJA)
-    layout = QtWidgets.QVBoxLayout(dialogo)
-    layout.setContentsMargins(24, 22, 24, 22)
-    layout.setSpacing(14)
+    exterior = QtWidgets.QVBoxLayout(dialogo)
+    exterior.setContentsMargins(16, 12, 16, 12)
+    exterior.setSpacing(10)
+    zona = QtWidgets.QScrollArea(dialogo)
+    zona.setWidgetResizable(True)
+    zona.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    zona.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    zona.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    zona.setMinimumHeight(80)
+    zona.setStyleSheet("QScrollArea { background: #141414; border: none; }")
+    interior = QtWidgets.QWidget()
+    interior.setObjectName("interior")
+    interior.setStyleSheet("background-color: #141414;")
+    columna = QtWidgets.QVBoxLayout(interior)
+    columna.setContentsMargins(8, 4, 8, 4)
+    columna.setSpacing(12)
+    zona.setWidget(interior)
+    exterior.addWidget(zona, 1)
+    pie = QtWidgets.QVBoxLayout()
+    pie.setSpacing(10)
+    exterior.addLayout(pie)
+    dialogo._cuerpo = columna
+    dialogo._pie = pie
     return dialogo
+
+
+def _cuerpo(dialogo) -> QtWidgets.QVBoxLayout:
+    return dialogo._cuerpo
+
+
+def _pie(dialogo) -> QtWidgets.QVBoxLayout:
+    return dialogo._pie
+
+
+def _presentar(dialogo, ancho: int = 520) -> None:
+    from app.drako.pantalla import encajar
+
+    dialogo.adjustSize()
+    encajar(
+        dialogo,
+        ancho,
+        dialogo.sizeHint().height(),
+        minimo_ancho=min(360, ancho),
+        minimo_alto=280,
+        margen=24,
+        tope=True,
+    )
 
 
 def _etiqueta(texto: str, nombre: str, padre) -> QtWidgets.QLabel:
@@ -160,14 +203,15 @@ def _ejecutar(funcion, padre=None, texto: str | None = None):
         from app.ui.estudio.ojo import FondoCarga
 
         fondo = FondoCarga(dialogo)
-        fondo.setMinimumHeight(300)
-        dialogo.layout().addWidget(fondo)
-        dialogo.layout().addWidget(_etiqueta(texto or "Comprobando el acceso…", "cuerpo", dialogo))
+        fondo.setMinimumHeight(180)
+        _cuerpo(dialogo).addWidget(fondo)
+        _cuerpo(dialogo).addWidget(_etiqueta(texto or "Comprobando el acceso…", "cuerpo", dialogo))
         barra = QtWidgets.QProgressBar(dialogo)
         barra.setRange(0, 0)
         barra.setFixedHeight(8)
         barra.setTextVisible(False)
-        dialogo.layout().addWidget(barra)
+        _cuerpo(dialogo).addWidget(barra)
+        _presentar(dialogo, 480)
         dialogo.show()
         espera["dialogo"] = dialogo
 
@@ -190,8 +234,8 @@ def _ejecutar(funcion, padre=None, texto: str | None = None):
 
 def _pedir_privacidad(padre) -> bool:
     dialogo = _dialogo("Drako Cam — aviso de privacidad", padre)
-    dialogo.layout().addWidget(_etiqueta("Privacidad", "sobre", dialogo))
-    dialogo.layout().addWidget(_etiqueta(TITULO_AVISO, "titulo", dialogo))
+    _cuerpo(dialogo).addWidget(_etiqueta("Privacidad", "sobre", dialogo))
+    _cuerpo(dialogo).addWidget(_etiqueta(TITULO_AVISO, "titulo", dialogo))
     contenido = QtWidgets.QWidget(dialogo)
     columna = QtWidgets.QVBoxLayout(contenido)
     columna.setContentsMargins(0, 0, 0, 0)
@@ -215,9 +259,9 @@ def _pedir_privacidad(padre) -> bool:
     zona = QtWidgets.QScrollArea(dialogo)
     zona.setWidgetResizable(True)
     zona.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-    zona.setMinimumHeight(240)
+    zona.setMinimumHeight(120)
     zona.setWidget(contenido)
-    dialogo.layout().addWidget(zona)
+    _cuerpo(dialogo).addWidget(zona)
     fila_casilla = QtWidgets.QHBoxLayout()
     fila_casilla.setSpacing(8)
     casilla = QtWidgets.QCheckBox(dialogo)
@@ -233,12 +277,13 @@ def _pedir_privacidad(padre) -> bool:
     texto_casilla.mousePressEvent = alternar
     fila_casilla.addWidget(casilla, 0, QtCore.Qt.AlignmentFlag.AlignTop)
     fila_casilla.addWidget(texto_casilla, 1)
-    dialogo.layout().addLayout(fila_casilla)
+    _pie(dialogo).addLayout(fila_casilla)
     fila, _salir, aceptar = _botones(dialogo, "Aceptar y continuar")
     aceptar.setEnabled(False)
     casilla.toggled.connect(aceptar.setEnabled)
     aceptar.clicked.connect(dialogo.accept)
-    dialogo.layout().addLayout(fila)
+    _pie(dialogo).addLayout(fila)
+    _presentar(dialogo, 520)
     return dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted and casilla.isChecked()
 
 
@@ -274,7 +319,7 @@ def _bloque_contacto(dialogo) -> None:
         "Para recibir tu código de acceso, contacta con el administrador por Telegram: "
         f'<a href="{url}">@{usuario}</a>'
     )
-    dialogo.layout().addWidget(etiqueta)
+    _cuerpo(dialogo).addWidget(etiqueta)
     boton = QtWidgets.QPushButton("Abrir Telegram", dialogo)
     boton.setObjectName("secundario")
     boton.setMinimumHeight(44)
@@ -282,48 +327,103 @@ def _bloque_contacto(dialogo) -> None:
     boton.setAccessibleName(frase)
     boton.setToolTip(url)
     boton.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)))
-    dialogo.layout().addWidget(boton)
+    _cuerpo(dialogo).addWidget(boton)
+
+
+def _icono_ojo(abierto: bool) -> QtGui.QIcon:
+    imagen = QtGui.QPixmap(28, 28)
+    imagen.fill(QtCore.Qt.GlobalColor.transparent)
+    pintor = QtGui.QPainter(imagen)
+    pintor.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    color = QtGui.QColor("#F4F6F8")
+    pintor.setPen(QtGui.QPen(color, 1.6))
+    pintor.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+    pintor.drawEllipse(QtCore.QRectF(3, 8, 22, 12))
+    pintor.setBrush(color)
+    pintor.drawEllipse(QtCore.QRectF(11, 11, 6, 6))
+    if not abierto:
+        pintor.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        pintor.drawLine(6, 22, 22, 6)
+    pintor.end()
+    return QtGui.QIcon(imagen)
 
 
 def _campo(dialogo, nombre: str, placeholder: str, accesible: str, codigo: bool = False) -> QtWidgets.QLineEdit:
     campo = QtWidgets.QLineEdit(dialogo)
     if codigo:
         campo.setObjectName("codigo")
+        campo.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
     campo.setPlaceholderText(placeholder)
     campo.setMinimumHeight(44)
     campo.setAccessibleName(accesible)
-    campo.setClearButtonEnabled(True)
+    campo.setClearButtonEnabled(not codigo)
     return campo
+
+
+def _fila_codigo(dialogo, campo: QtWidgets.QLineEdit) -> QtWidgets.QWidget:
+    fila = QtWidgets.QWidget(dialogo)
+    caja = QtWidgets.QHBoxLayout(fila)
+    caja.setContentsMargins(0, 0, 0, 0)
+    caja.setSpacing(8)
+    ojo = QtWidgets.QPushButton(fila)
+    ojo.setObjectName("ojo")
+    ojo.setFixedSize(44, 44)
+    ojo.setIcon(_icono_ojo(False))
+    ojo.setIconSize(QtCore.QSize(22, 22))
+    ojo.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+    ojo.setToolTip("Mostrar el código")
+    ojo.setAccessibleName("Mostrar el código")
+    ojo.setStyleSheet(
+        "QPushButton#ojo { background: #242424; border: 1px solid #3a3a3a; border-radius: 22px; }"
+    )
+
+    def alternar() -> None:
+        visible = campo.echoMode() == QtWidgets.QLineEdit.EchoMode.Password
+        campo.setEchoMode(
+            QtWidgets.QLineEdit.EchoMode.Normal
+            if visible
+            else QtWidgets.QLineEdit.EchoMode.Password
+        )
+        ojo.setIcon(_icono_ojo(visible))
+        ojo.setToolTip("Ocultar el código" if visible else "Mostrar el código")
+        ojo.setAccessibleName(ojo.toolTip())
+
+    ojo.clicked.connect(alternar)
+    caja.addWidget(campo, 1)
+    caja.addWidget(ojo)
+    return fila
 
 
 def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
     dialogo = _dialogo("Drako Cam — código de acceso", padre)
+    from app.drako.pantalla import disponible_de
     from app.ui.estudio.ojo import MarcaCompleta
 
-    dialogo.layout().addWidget(MarcaCompleta(240), alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
-    dialogo.layout().addWidget(_etiqueta("Acceso", "sobre", dialogo))
+    lado = 200 if disponible_de(dialogo).height() >= 820 else 140
+    _cuerpo(dialogo).addWidget(MarcaCompleta(lado), alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
+    _cuerpo(dialogo).addWidget(_etiqueta("Acceso", "sobre", dialogo))
     titulo = "Cambiar el código" if cambio else TITULO_CODIGO
-    dialogo.layout().addWidget(_etiqueta(titulo, "titulo", dialogo))
-    dialogo.layout().addWidget(_etiqueta(TEXTO_CODIGO, "cuerpo", dialogo))
+    _cuerpo(dialogo).addWidget(_etiqueta(titulo, "titulo", dialogo))
+    _cuerpo(dialogo).addWidget(_etiqueta(TEXTO_CODIGO, "cuerpo", dialogo))
     if not cambio:
-        dialogo.layout().addWidget(_etiqueta("Nombre de la persona", "detalle", dialogo))
+        _cuerpo(dialogo).addWidget(_etiqueta("Nombre de la persona", "detalle", dialogo))
         nombre = _campo(dialogo, "nombre", "Ana García", "Nombre de la persona")
         nombre.setMaxLength(80)
-        dialogo.layout().addWidget(nombre)
-        dialogo.layout().addWidget(_etiqueta("Oficina donde se instala", "detalle", dialogo))
+        _cuerpo(dialogo).addWidget(nombre)
+        _cuerpo(dialogo).addWidget(_etiqueta("Oficina donde se instala", "detalle", dialogo))
         oficina = _campo(dialogo, "oficina", "Oficina central", "Oficina")
         oficina.setMaxLength(80)
-        dialogo.layout().addWidget(oficina)
+        _cuerpo(dialogo).addWidget(oficina)
     else:
         nombre = None
         oficina = None
-    dialogo.layout().addWidget(_etiqueta("Código, si ya te lo han dado", "detalle", dialogo))
+    _cuerpo(dialogo).addWidget(_etiqueta("Código, si ya te lo han dado", "detalle", dialogo))
     campo = _campo(dialogo, "codigo", PLACEHOLDER_CODIGO, "Código de acceso", codigo=True)
     campo.setMaxLength(40)
-    dialogo.layout().addWidget(campo)
+    _cuerpo(dialogo).addWidget(_fila_codigo(dialogo, campo))
     error = _etiqueta("", "error", dialogo)
     error.hide()
-    dialogo.layout().addWidget(error)
+    _cuerpo(dialogo).addWidget(error)
     _bloque_contacto(dialogo)
     fila = QtWidgets.QHBoxLayout()
     fila.setSpacing(10)
@@ -402,7 +502,8 @@ def _pedir_codigo(gestor: GestorLicencia, padre, cambio: bool = False) -> bool:
     fila.addWidget(salir)
     fila.addWidget(pedir)
     fila.addWidget(entrar)
-    dialogo.layout().addLayout(fila)
+    _pie(dialogo).addLayout(fila)
+    _presentar(dialogo, 520)
     return dialogo.exec() == QtWidgets.QDialog.DialogCode.Accepted
 
 

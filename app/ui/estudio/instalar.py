@@ -46,9 +46,11 @@ def instalar(ventana) -> bool:
         ventana.setWindowIcon(icono())
         ventana.setWindowTitle("Drako Cam")
         ventana.setCentralWidget(estudio)
-        ventana.setMinimumSize(1100, 720)
-        if ventana.width() < 1280 or ventana.height() < 800:
-            ventana.resize(1440, 900)
+        from app.drako.pantalla import disponible_de, encajar
+
+        hueco = disponible_de(ventana)
+        ventana.setMinimumSize(min(960, max(320, hueco.width() - 16)), min(640, max(240, hueco.height() - 16)))
+        encajar(ventana, min(1440, hueco.width() - 16), min(900, hueco.height() - 16), ventana.minimumWidth(), ventana.minimumHeight())
         ventana._estudio = estudio
         ventana._motor_estudio = motor
         _refrescar(estudio, motor)

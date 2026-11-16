@@ -85,9 +85,10 @@ def normalizar_codigo(bruto: str) -> str | None:
     if not limpio.startswith("DRAKO"):
         return None
     cuerpo = limpio[5:]
-    if len(cuerpo) != 16 or any(caracter not in alfabeto for caracter in cuerpo):
+    if len(cuerpo) not in (8, 16) or any(caracter not in alfabeto for caracter in cuerpo):
         return None
-    return f"DRAKO-{cuerpo[0:4]}-{cuerpo[4:8]}-{cuerpo[8:12]}-{cuerpo[12:16]}"
+    grupos = [cuerpo[i : i + 4] for i in range(0, len(cuerpo), 4)]
+    return "DRAKO-" + "-".join(grupos)
 
 
 def hash_codigo(codigo: str) -> str:
