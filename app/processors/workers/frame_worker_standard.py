@@ -46,12 +46,10 @@ class StandardProcessor:
         - Overlays (BBox, Landmarks, Comparison)
         """
         # FW-RACE-02: read button state from snapshotted feeder dict, not live Qt buttons
-        swap_button_is_checked_global = (
-            self.worker.main_window.swapfacesButton.isChecked()
-        )
-        edit_button_is_checked_global = (
-            self.worker.main_window.editFacesButton.isChecked()
-        )
+        from app.ui.qt_vivo import cambio_activo, edicion_activa
+
+        swap_button_is_checked_global = cambio_activo(self.worker.main_window)
+        edit_button_is_checked_global = edicion_activa(self.worker.main_window)
 
         # FW-RACE-01: snapshot target_faces under lock so the worker thread never
         # iterates the live dict while the UI thread may be modifying it.

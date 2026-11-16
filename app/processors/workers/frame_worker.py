@@ -458,8 +458,10 @@ class FrameWorker(threading.Thread):
 
                 # FW-RACE-04: use local variables instead of instance-level assignments
                 # to prevent cross-frame data races in the pool worker.
-                is_view_face_compare = self.main_window.faceCompareCheckBox.isChecked()
-                is_view_face_mask = self.main_window.faceMaskCheckBox.isChecked()
+                from app.ui.qt_vivo import casilla, cambio_activo, edicion_activa
+
+                is_view_face_compare = casilla(self.main_window, "faceCompareCheckBox")
+                is_view_face_mask = casilla(self.main_window, "faceMaskCheckBox")
                 # Keep instance attrs consistent so downstream helpers that still reference
                 # them (e.g. swap_core) see the same values.
                 self.is_view_face_compare = is_view_face_compare
@@ -467,12 +469,8 @@ class FrameWorker(threading.Thread):
 
                 # FW-RACE-02: snapshot Qt button states into the feeder dict so worker
                 # threads never call .isChecked() concurrently on the same Qt object.
-                local_control_state["swap_enabled"] = (
-                    self.main_window.swapfacesButton.isChecked()
-                )
-                local_control_state["edit_enabled"] = (
-                    self.main_window.editFacesButton.isChecked()
-                )
+                local_control_state["swap_enabled"] = cambio_activo(self.main_window)
+                local_control_state["edit_enabled"] = edicion_activa(self.main_window)
 
                 # Determine if processing is needed
                 needs_processing = (

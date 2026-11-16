@@ -17,7 +17,9 @@ def update_graphics_view(
     # print('(update_graphics_view) current_frame_number', current_frame_number)
 
     # Update the video seek slider and line edit safely to avoid recursive signal firing
-    if main_window.videoSeekSlider.value() != current_frame_number:
+    from app.ui.qt_vivo import slider_responde, valor_slider
+
+    if slider_responde(main_window) and valor_slider(main_window) != current_frame_number:
         main_window.videoSeekSlider.blockSignals(True)
         main_window.videoSeekSlider.setValue(current_frame_number)
         main_window.videoSeekSlider.blockSignals(False)

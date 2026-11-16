@@ -185,7 +185,7 @@ class MotorEnVivo:
         control = getattr(self.ventana, "control", None)
         if isinstance(control, dict):
             control["WebcamDeviceSelection"] = indice
-        from app.drako.camaras import aviso_si_no_abre
+        from app.drako.camaras import mensaje_de_fallo, ultimo_fallo
         from app.ui.qt_vivo import tocar
 
         try:
@@ -197,7 +197,7 @@ class MotorEnVivo:
         except Exception as exc:
             print(f"[AVISO] Al abrir la cámara: {exc}")
         if not self._camara_abierta():
-            self.mensaje = aviso_si_no_abre(True)
+            self.mensaje = mensaje_de_fallo(ultimo_fallo(), True)
             return self.mensaje
         self.mensaje = ""
         if self.en_vivo:
@@ -716,22 +716,9 @@ class MotorEnVivo:
             self._aplicar_cara(redetectar=True)
 
     def _preparar_camaras(self) -> None:
-        from app.ui.widgets.actions import list_view_actions
-
-        caja = self.ventana.targetVideosFilterWebcamsCheckBox
-        if not caja.isChecked():
-            caja.setChecked(True)
-        else:
-            list_view_actions.load_target_webcams(self.ventana)
-        worker = getattr(self.ventana, "video_loader_worker", None)
-        if worker is not None:
-            try:
-                worker.finished.connect(self._camara_inicial, QtCore.Qt.ConnectionType.UniqueConnection)
-            except Exception:
-                try:
-                    worker.finished.connect(self._camara_inicial)
-                except Exception:
-                    pass
+        # Una sola apertura, cuando el usuario entra. Las miniaturas del editor
+        # abrían el índice 0 y lo soltaban, y Windows lo daba por ocupado.
+        QtCore.QTimer.singleShot(0, self._camara_inicial)
 
     def refrescar_camaras(self) -> str:
         from app.drako.camaras import olvidar_cache
@@ -1031,15 +1018,14 @@ class MotorEnVivo:
                 print(f"[AVISO] No se pintaron los ajustes: {exc}")
 
     def _fijar_cambio(self, activo: bool) -> None:
-        from app.ui.qt_vivo import qt_sigue
-
+        self.ventana._cambio_activo = bool(activo)
         boton = getattr(self.ventana, "swapfacesButton", None)
-        if not qt_sigue(boton):
+        if boton is None:
             return
         try:
-            if boton.isChecked() == activo:
+            if bool(boton.isChecked()) == bool(activo):
                 return
-            boton.click()
+            boton.setChecked(bool(activo))
         except RuntimeError:
             return
 

@@ -698,7 +698,9 @@ def _check_and_manage_face_editor_models(main_window: "MainWindow") -> None:
     function_worker = main_window.function_worker
 
     # 1. Check if the main 'Edit Face' button (outside the tab) is checked
-    is_edit_face_active = main_window.editFacesButton.isChecked()
+    from app.ui.qt_vivo import edicion_activa
+
+    is_edit_face_active = edicion_activa(main_window)
 
     # 2. Check if the 'Enable Face Pose/Expression Editor' parameter toggle (inside the tab) is active
     # We read from 'current_widget_parameters' to get the most up-to-date UI state
@@ -827,7 +829,9 @@ def apply_face_reaging(main_window: "MainWindow", *_args) -> None:
     frame_worker can use them when FaceReagingEnableToggle is active.
     """
     # Guard: do nothing if Swap Faces is not active
-    if not main_window.swapfacesButton.isChecked():
+    from app.ui.qt_vivo import cambio_activo
+
+    if not cambio_activo(main_window):
         return
 
     target_face = main_window.cur_selected_target_face_button

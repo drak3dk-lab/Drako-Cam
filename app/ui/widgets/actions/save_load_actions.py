@@ -1112,11 +1112,23 @@ def load_saved_workspace(
                 )
 
             swap_faces_state = data.get("swap_faces_enabled", False)
-            main_window.swapfacesButton.setChecked(swap_faces_state)
-
+            main_window._cambio_activo = bool(swap_faces_state)
             edit_faces_state = data.get("edit_faces_enabled", False)
-            main_window.editFacesButton.setChecked(edit_faces_state)
-            control_actions.handle_face_editor_button_click(main_window)
+            main_window._edicion_activa = bool(edit_faces_state)
+            from app.ui.qt_vivo import tocar
+
+            tocar(
+                getattr(main_window, "swapfacesButton", None),
+                lambda boton: boton.setChecked(swap_faces_state),
+            )
+            tocar(
+                getattr(main_window, "editFacesButton", None),
+                lambda boton: boton.setChecked(edit_faces_state),
+            )
+            try:
+                control_actions.handle_face_editor_button_click(main_window)
+            except RuntimeError:
+                pass
 
             # Restore Window State
             needs_post_restore_frame_clamp = _apply_workspace_window_state(
@@ -1220,6 +1232,18 @@ def load_saved_workspace(
                 main_window, "Error", f"Failed to load workspace: {e}"
             )
             return
+
+
+def _cambio_guardado(main_window) -> bool:
+    from app.ui.qt_vivo import cambio_activo
+
+    return cambio_activo(main_window)
+
+
+def _edicion_guardada(main_window) -> bool:
+    from app.ui.qt_vivo import edicion_activa
+
+    return edicion_activa(main_window)
 
 
 def save_current_workspace(
@@ -1467,8 +1491,8 @@ def save_current_workspace(
         "selected_target_face_id": getattr(
             main_window, "selected_target_face_id", None
         ),
-        "swap_faces_enabled": main_window.swapfacesButton.isChecked(),
-        "edit_faces_enabled": main_window.editFacesButton.isChecked(),
+        "swap_faces_enabled": _cambio_guardado(main_window),
+        "edit_faces_enabled": _edicion_guardada(main_window),
         "input_faces_data": input_faces_data,
         "target_faces_data": target_faces_data,
         "embeddings_data": embeddings_data,
@@ -1660,8 +1684,8 @@ def save_current_job(main_window: "MainWindow"):
         )
         else None,
         # --- Explicitly save button states for jobs ---
-        "swap_faces_enabled": main_window.swapfacesButton.isChecked(),
-        "edit_faces_enabled": main_window.editFacesButton.isChecked(),
+        "swap_faces_enabled": _cambio_guardado(main_window),
+        "edit_faces_enabled": _edicion_guardada(main_window),
         "input_faces_data": input_faces_data,
         "target_faces_data": {},
         "embeddings_data": embeddings_data,

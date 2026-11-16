@@ -45,6 +45,10 @@ def instalar(ventana) -> bool:
 
         ventana.setWindowIcon(icono())
         ventana.setWindowTitle("Drako Cam")
+        # A partir de aquí el editor viejo desaparece. Cualquier acceso a sus
+        # widgets pasa por un puente que no toca objetos de Qt ya borrados.
+        ventana._editor_protegido = True
+        ventana._cambio_activo = False
         ventana.setCentralWidget(estudio)
         from app.drako.pantalla import disponible_de, encajar
 
