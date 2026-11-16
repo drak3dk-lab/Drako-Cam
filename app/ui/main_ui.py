@@ -35,6 +35,8 @@ from app.ui.widgets.event_filters import (
 )
 from app.ui.widgets import ui_workers
 from app.ui.widgets.common_layout_data import COMMON_LAYOUT_DATA
+from app.ui.qt_vivo import qt_sigue as _qt_sigue
+from app.ui.qt_vivo import sincronizar_espaciado
 from app.ui.widgets import sortable_widgets
 from app.ui.widgets.denoiser_layout_data import DENOISER_LAYOUT_DATA
 from app.ui.widgets.swapper_layout_data import (
@@ -1036,18 +1038,28 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def resizeEvent(self, event: QtGui.QResizeEvent):
         # print("[INFO] Called resizeEvent()")
         super().resizeEvent(event)
+        if getattr(self, "_cerrando", False):
+            return
         self._queue_media_controls_balance()
         # Call the method to fit the image to the view whenever the window resizes
-        items = self.scene.items()
+        scene = getattr(self, "scene", None)
+        if not _qt_sigue(scene):
+            return
+        try:
+            items = scene.items()
+        except RuntimeError:
+            return
         pixmap_item = next(
             (item for item in items if isinstance(item, QtWidgets.QGraphicsPixmapItem)),
             None,
         )
-        if pixmap_item:
-            # Set the scene rectangle to the bounding rectangle of the pixmap
-            scene_rect = pixmap_item.boundingRect()
-            self.graphicsViewFrame.setSceneRect(scene_rect)
-            graphics_view_actions.fit_image_to_view(self, pixmap_item, scene_rect)
+        if pixmap_item and _qt_sigue(getattr(self, "graphicsViewFrame", None)):
+            try:
+                scene_rect = pixmap_item.boundingRect()
+                self.graphicsViewFrame.setSceneRect(scene_rect)
+                graphics_view_actions.fit_image_to_view(self, pixmap_item, scene_rect)
+            except RuntimeError:
+                return
         self._sync_theatre_base_window_snapshot()
 
     def moveEvent(self, event: QtGui.QMoveEvent):
@@ -1061,6 +1073,14 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self._sync_theatre_base_window_snapshot()
 
     def _sync_theatre_base_window_snapshot(self):
+        if getattr(self, "_cerrando", False) or not getattr(self, "is_theatre_mode", False):
+            return
+        try:
+            self._sync_theatre_base_window_snapshot_cuerpo()
+        except RuntimeError:
+            return
+
+    def _sync_theatre_base_window_snapshot_cuerpo(self):
         if not getattr(self, "is_theatre_mode", False):
             return
 
@@ -1086,9 +1106,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self._was_normal_geometry = self.geometry()
 
     def eventFilter(self, watched, event):
+        if getattr(self, "_cerrando", False) or not getattr(
+            self, "_controles_media_activos", True
+        ):
+            return super().eventFilter(watched, event)
         viewport_widget = getattr(self, "mediaControlsViewportWidget", None)
         if (
-            viewport_widget is not None
+            _qt_sigue(viewport_widget)
             and watched is viewport_widget
             and event.type() == QtCore.QEvent.Type.Resize
         ):
@@ -1096,15 +1120,40 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         return super().eventFilter(watched, event)
 
     def _queue_media_controls_balance(self):
-        if getattr(self, "_media_controls_balance_queued", False):
+        if getattr(self, "_cerrando", False) or not getattr(
+            self, "_controles_media_activos", True
+        ):
             return
-        self._media_controls_balance_queued = True
+        if not _qt_sigue(getattr(self, "mediaControlsMainLayout", None)):
+            return
+        timer = getattr(self, "_media_controls_balance_timer", None)
+        if timer is None or not _qt_sigue(timer):
+            timer = QtCore.QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._run_media_controls_balance)
+            self._media_controls_balance_timer = timer
+        if not timer.isActive():
+            timer.start(0)
 
-        def _run_balance():
-            self._media_controls_balance_queued = False
-            self._sync_media_controls_balance()
+    def _run_media_controls_balance(self):
+        if getattr(self, "_cerrando", False) or not getattr(
+            self, "_controles_media_activos", True
+        ):
+            return
+        self._sync_media_controls_balance()
 
-        QtCore.QTimer.singleShot(0, _run_balance)
+    def _detener_controles_de_medio(self):
+        """Para el temporizador de balance antes de borrar o sustituir el layout."""
+        self._controles_media_activos = False
+        timer = getattr(self, "_media_controls_balance_timer", None)
+        if _qt_sigue(timer):
+            timer.stop()
+        viewport = getattr(self, "mediaControlsViewportWidget", None)
+        if _qt_sigue(viewport):
+            try:
+                viewport.removeEventFilter(self)
+            except RuntimeError:
+                pass
 
     def _apply_runtime_window_title(self):
         self.app_display_metadata = get_app_display_metadata(
@@ -1154,6 +1203,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.swapfacesButton.click()
 
     def closeEvent(self, event):
+        self._cerrando = True
+        self._detener_controles_de_medio()
         print("[INFO] MainWindow: closeEvent called.")
 
         self.video_processor.stop_processing()
@@ -1280,7 +1331,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def _normalize_media_control_button_sizes(self):
         """Apply a consistent preferred size to the centered media controls."""
-        play_size = self.buttonMediaPlay.sizeHint()
+        if not _qt_sigue(getattr(self, "buttonMediaPlay", None)):
+            return
+        try:
+            play_size = self.buttonMediaPlay.sizeHint()
+        except RuntimeError:
+            return
         if not play_size.isValid():
             return
 
@@ -1374,8 +1430,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             size_policy.setVerticalPolicy(QtWidgets.QSizePolicy.Fixed)
             button.setSizePolicy(size_policy)
 
-        if hasattr(self, "mediaControlsMainLayout"):
-            self.mediaControlsMainLayout.setSpacing(12)
+        layout_controles = getattr(self, "mediaControlsMainLayout", None)
+        if _qt_sigue(layout_controles):
+            try:
+                layout_controles.setSpacing(12)
+            except RuntimeError:
+                return
         self._sync_media_controls_balance()
 
     def _install_media_controls_layout(self):
@@ -1445,6 +1505,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         top_layout.addWidget(self.mediaControlsViewportWidget, 1)
 
+        self._controles_media_activos = True
         self.mediaControlsMainLayout = self.mediaControlsCenterLayout
         self.mediaControlsTransportLayout = self.mediaControlsMainLayout
         self.mediaControlsUtilityLayout = self.mediaControlsMainLayout
@@ -1646,10 +1707,14 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def _sync_panel_visibility_action(self, panel_key: str, checked: bool):
         self.panel_visibility_state[panel_key] = checked
         action = getattr(self, f"actionViewToggle_{panel_key}", None)
-        if action is not None and action.isChecked() != checked:
+        if not _qt_sigue(action) or action.isChecked() == checked:
+            return
+        try:
             action.blockSignals(True)
             action.setChecked(checked)
             action.blockSignals(False)
+        except RuntimeError:
+            return
 
     def _refresh_panel_visibility_state_from_widgets(self):
         for panel_key in self.panel_visibility_state:
@@ -1786,41 +1851,53 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self._mask_show_selection_sync_installed = True
 
     def _sync_viewer_menu_actions(self):
-        fullscreen_action = getattr(self, "actionView_Fullscreen_F11", None)
-        if fullscreen_action is not None:
-            fullscreen_action.blockSignals(True)
-            fullscreen_action.setCheckable(True)
-            fullscreen_action.setChecked(self._is_fullscreen_menu_active())
-            fullscreen_action.setEnabled(True)
-            fullscreen_action.blockSignals(False)
+        def _tocar(action, aplicar) -> None:
+            if not _qt_sigue(action):
+                return
+            try:
+                aplicar(action)
+            except RuntimeError:
+                return
 
-        theatre_action = getattr(self, "actionView_TheatreMode", None)
-        if theatre_action is not None:
-            theatre_action.blockSignals(True)
-            theatre_action.setCheckable(True)
-            theatre_action.setChecked(bool(getattr(self, "is_theatre_mode", False)))
-            theatre_action.blockSignals(False)
+        def _marcar(action, marcado: bool, habilitado: bool | None = None) -> None:
+            def aplicar(accion) -> None:
+                accion.blockSignals(True)
+                accion.setCheckable(True)
+                accion.setChecked(marcado)
+                if habilitado is not None:
+                    accion.setEnabled(habilitado)
+                accion.blockSignals(False)
 
-        compare_action = getattr(self, "actionView_FaceCompare", None)
-        if compare_action is not None:
-            compare_action.blockSignals(True)
-            compare_action.setChecked(bool(self.view_face_compare_enabled))
-            compare_action.setEnabled(
-                bool(getattr(self, "viewer_mode_actions_enabled", True))
-            )
-            compare_action.blockSignals(False)
+            _tocar(action, aplicar)
 
-        current_mask_value = self._get_current_mask_show_value()
+        _marcar(
+            getattr(self, "actionView_Fullscreen_F11", None),
+            self._is_fullscreen_menu_active(),
+            True,
+        )
+        _marcar(
+            getattr(self, "actionView_TheatreMode", None),
+            bool(getattr(self, "is_theatre_mode", False)),
+        )
+        _marcar(
+            getattr(self, "actionView_FaceCompare", None),
+            bool(self.view_face_compare_enabled),
+            bool(getattr(self, "viewer_mode_actions_enabled", True)),
+        )
+
+        try:
+            current_mask_value = self._get_current_mask_show_value()
+        except RuntimeError:
+            return
         viewer_mode_actions_enabled = bool(
             getattr(self, "viewer_mode_actions_enabled", True)
         )
         for option, action in getattr(self, "_view_mask_actions", {}).items():
-            action.blockSignals(True)
-            action.setChecked(
-                bool(self.view_face_mask_enabled) and option == current_mask_value
+            _marcar(
+                action,
+                bool(self.view_face_mask_enabled) and option == current_mask_value,
+                viewer_mode_actions_enabled,
             )
-            action.setEnabled(viewer_mode_actions_enabled)
-            action.blockSignals(False)
 
     def _install_media_controls_separator(self):
         """Insert visual dividers between control groups in the media button row."""
@@ -1864,37 +1941,34 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def _sync_media_controls_balance(self):
         """Keep the centered media controls minimum width in sync with their content."""
+        if getattr(self, "_cerrando", False) or not getattr(
+            self, "_controles_media_activos", True
+        ):
+            return
+        try:
+            self._sync_media_controls_balance_cuerpo()
+        except RuntimeError:
+            return
+
+    def _sync_media_controls_balance_cuerpo(self):
         viewport_widget = getattr(self, "mediaControlsViewportWidget", None)
         center_widget = getattr(self, "mediaControlsCenterWidget", None)
-        if viewport_widget is None or center_widget is None:
-            return
-
         main_layout = getattr(self, "mediaControlsMainLayout", None)
-        if main_layout is None:
-            return
-
-        main_spacing = 12
-        separator_margin = 12
-
-        main_layout.setSpacing(main_spacing)
-        for separator_name in (
-            "_media_controls_separator",
-            "_media_controls_view_separator",
-        ):
-            separator_container = getattr(self, separator_name, None)
-            if separator_container is None or separator_container.layout() is None:
-                continue
-            separator_container.layout().setContentsMargins(
-                separator_margin, 0, separator_margin, 0
+        separadores = [
+            getattr(self, nombre, None)
+            for nombre in (
+                "_media_controls_separator",
+                "_media_controls_view_separator",
             )
-
-        center_width = max(
-            center_widget.sizeHint().width(), center_widget.minimumSizeHint().width()
-        )
-        viewport_widget.setMinimumWidth(center_width)
+        ]
+        sincronizar_espaciado(main_layout, viewport_widget, center_widget, separadores)
 
     def _configure_faces_panel_button_column(self):
         """Keep the left-side face buttons matched to the visible target-faces box height."""
+        if not _qt_sigue(getattr(self, "gridLayout_2", None)):
+            return
+        if not _qt_sigue(getattr(self, "controlButtonsLayout", None)):
+            return
         buttons = [
             self.findTargetFacesButton,
             self.clearTargetFacesButton,

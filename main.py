@@ -22,6 +22,10 @@ if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 os.chdir(RAIZ)
 
+from app.drako.sin_consola import ocultar_consolas
+
+ocultar_consolas()
+
 # Hay que fijarlo antes de importar torch, que ocurre dentro de _run_app.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "garbage_collection_threshold:0.8")
 # La GPU discreta, si el equipo es híbrido, se numera por el bus PCI.

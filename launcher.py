@@ -28,6 +28,10 @@ _repo_root = Path(__file__).resolve().parent
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+from app.drako.sin_consola import ocultar_consolas  # noqa: E402
+
+ocultar_consolas()
+
 from app.ui.launcher.main import main  # noqa: E402
 
 if __name__ == "__main__":
