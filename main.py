@@ -295,14 +295,18 @@ def _mensaje_fatal(exc: BaseException) -> None:
 
 
 if __name__ == "__main__":
+    codigo = 1
     try:
-        sys.exit(_run_app())
+        codigo = _run_app()
     except KeyboardInterrupt:
-        sys.exit(0)
+        codigo = 0
     except Exception as exc:
         try:
             _mensaje_fatal(exc)
         except Exception:
             print(f"[ERROR] Drako Cam se detuvo: {exc}", file=sys.stderr)
             traceback.print_exc()
-        sys.exit(1)
+        codigo = 1
+    # sys.exit espera a los hilos que no son daemon. Si uno se queda
+    # colgado, pythonw sigue vivo y bloquea la carpeta.
+    os._exit(int(codigo or 0))
