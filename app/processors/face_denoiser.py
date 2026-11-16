@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 from app.processors.utils import faceutil
 from app.processors.utils import platform_support
 from app.helpers.miscellaneous import is_file_exists
-from app.helpers.downloader import download_file
 from app.processors.utils.ref_ldm_kv_embedding import KVExtractor
 
 
@@ -283,13 +282,14 @@ class FaceDenoiser:
             "ckpts/vqgan.ckpt": "https://github.com/ChiWeiHsiao/ref-ldm/releases/download/1.0.0/vqgan.ckpt",
         }
 
-        for rel_path, url in ref_ldm_files.items():
+        for rel_path in ref_ldm_files:
             full_path = os.path.join(base_path, rel_path)
             if not is_file_exists(full_path):
                 print(
-                    f"[INFO] Downloading ReF-LDM file: {os.path.basename(full_path)}..."
+                    "[AVISO] Falta un archivo del reductor de ruido. "
+                    "Drako Cam no lo usa en el cambio de cara en vivo y no lo descarga."
                 )
-                download_file(os.path.basename(full_path), full_path, None, url)
+                return
 
         config_path = os.path.join(configs_path, "refldm.yaml")
         model_path = os.path.join(ckpts_path, "refldm.ckpt")

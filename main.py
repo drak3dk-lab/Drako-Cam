@@ -107,15 +107,52 @@ def comprobar_importaciones() -> int:
 
 
 def _avisar_modelos() -> bool:
-    print("[INFO] Comprobando modelos. Si faltan, se descargan y se verifica el hash.")
-    print("[INFO] La primera vez puede tardar: hace falta red y varios gigabytes.")
+    print("[INFO] Comprobando los modelos del cambio de cara. Si faltan, se descargan.")
+    print("[INFO] Si se corta internet, se reanuda. No hace falta volver a empezar.")
+    dialogo = None
+    aplicacion = None
+    try:
+        from PySide6 import QtWidgets
+
+        aplicacion = QtWidgets.QApplication.instance()
+        if aplicacion is not None:
+            dialogo = QtWidgets.QProgressDialog(
+                "Comprobando los modelos del cambio de cara...",
+                "",
+                0,
+                100,
+            )
+            dialogo.setWindowTitle("Drako Cam")
+            dialogo.setCancelButton(None)
+            dialogo.setMinimumDuration(0)
+            dialogo.setValue(0)
+            dialogo.setMinimumWidth(420)
+            dialogo.show()
+            aplicacion.processEvents()
+    except Exception as exc:
+        print(f"[AVISO] No pude mostrar el progreso de los modelos: {exc}")
+        dialogo = None
+
+    def al_estado(texto: str) -> None:
+        if dialogo is not None and aplicacion is not None:
+            dialogo.setLabelText(texto)
+            aplicacion.processEvents()
+
+    def al_porcentaje(valor: int) -> None:
+        if dialogo is not None and aplicacion is not None:
+            dialogo.setValue(int(valor))
+            aplicacion.processEvents()
+
     try:
         from download_models import descargar_modelos
 
-        return descargar_modelos()
+        return descargar_modelos(al_estado=al_estado, al_porcentaje=al_porcentaje)
     except Exception as exc:
         print(f"[ERROR] No se pudieron comprobar los modelos: {exc}")
         return False
+    finally:
+        if dialogo is not None:
+            dialogo.close()
 
 
 def _run_app(argv: list[str] | None = None) -> int:
@@ -228,8 +265,10 @@ def _run_app(argv: list[str] | None = None) -> int:
         QtWidgets.QMessageBox.warning(
             None,
             "Drako Cam — modelos",
-            "Algunos modelos no se descargaron o no pasaron la verificación de hash. "
-            "Revisa la consola. Puedes volver a abrir el programa cuando haya red.",
+            "No se pudieron dejar listos los modelos del cambio de cara "
+            "después de reintentarlo. Revisa el registro. "
+            "Cuando haya red y espacio en el disco, vuelve a abrir Drako Cam: "
+            "sigue desde lo ya descargado.",
         )
 
     ventana = main_ui.MainWindow(gpu_id=args.gpu_id)

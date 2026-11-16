@@ -71,12 +71,26 @@ def test_instalar_cubre_lo_que_drako_necesita():
         "GpuPreference=2",
         "Fijar-GpuDedicada",
         "NvOptimusEnablement",
+        "Instalar-Modelos",
+        "download_models.py",
+        "no quedaron completos",
+        "6/8",
+        "Descargando los modelos del cambio de cara",
     ):
         assert fragmento in texto
+    assert "Paso \"7/7\"" not in texto
     assert 'Join-Path $env:APPDATA "DrakoCam"' not in texto
     assert "Scripts\\activate" not in texto
     assert "Activate.ps1" not in texto
     assert "Set-ExecutionPolicy" not in texto
+
+
+def test_la_ventana_muestra_el_modelo_y_el_reintento():
+    texto = _texto("scripts/instalador_ventana.ps1")
+    assert "Bajando los modelos de la cara" in texto
+    assert "DRAKO_ESTADO " in texto
+    assert "/ 8.0" in texto
+    assert "Si se corta internet, se reanuda." in texto
 
 
 def test_desinstalar_no_borra_appdata_sin_confirmacion():
