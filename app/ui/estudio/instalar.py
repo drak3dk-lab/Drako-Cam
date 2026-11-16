@@ -21,6 +21,9 @@ def instalar(ventana) -> bool:
         biblioteca.asegurar()
         motor = MotorEnVivo(ventana, biblioteca)
         _conectar(estudio, motor)
+        detener = getattr(ventana, "_detener_controles_de_medio", None)
+        if callable(detener):
+            detener()
         vista = ventana.graphicsViewFrame
         vista.setParent(None)
         estudio.adoptar_vista(vista)
