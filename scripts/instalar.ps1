@@ -824,6 +824,144 @@ function Test-PaquetesMinimos {
     return ((Test-Path -LiteralPath $torch) -and (Test-Path -LiteralPath $pyside))
 }
 
+function Entorno-Uv {
+    # Solo para el proceso de uv. Si la persona ya fijó el valor, se respeta.
+    $extra = @{
+        UV_LINK_MODE = "copy"
+        UV_NO_CONFIG = "1"
+    }
+    $deseado = @{
+        UV_HTTP_TIMEOUT = "1800"
+        UV_HTTP_RETRIES = "20"
+        UV_CONCURRENT_DOWNLOADS = "2"
+    }
+    foreach ($clave in @($deseado.Keys)) {
+        $actual = [Environment]::GetEnvironmentVariable($clave)
+        if ($actual) {
+            Write-Log ("{0} ya está definido ({1}). No lo cambio." -f $clave, $actual)
+        } else {
+            $extra[$clave] = [string]$deseado[$clave]
+            Write-Log ("{0}={1} solo para esta descarga." -f $clave, $deseado[$clave])
+        }
+    }
+    return $extra
+}
+
+function Es-FalloDeRed([string]$Texto, [int]$Codigo) {
+    if ($Codigo -eq 0) { return $false }
+    if (-not $Texto) { return $true }
+    $t = $Texto.ToLowerInvariant()
+    foreach ($pista in @(
+        "timed out", "timeout", "operation timed out",
+        "failed to download", "request failed",
+        "connection", "reset by peer", "broken pipe",
+        "temporary failure", "could not connect",
+        "network", "dns", "name or service not known"
+    )) {
+        if ($t.Contains($pista)) { return $true }
+    }
+    return $false
+}
+
+function Iniciar-LectorUv($lector, $lista) {
+    $espacio = [runspacefactory]::CreateRunspace()
+    $espacio.Open()
+    $shell = [powershell]::Create()
+    $shell.Runspace = $espacio
+    [void]$shell.AddScript({
+        param($entrada, $destino)
+        try {
+            while ($true) {
+                $linea = $entrada.ReadLine()
+                if ($null -eq $linea) { break }
+                [void]$destino.Add($linea)
+            }
+        } catch { }
+    })
+    [void]$shell.AddArgument($lector)
+    [void]$shell.AddArgument($lista)
+    return @{ Shell = $shell; Espacio = $espacio; Async = $shell.BeginInvoke() }
+}
+
+function Invocar-UvConSalida {
+    param(
+        [Parameter(Mandatory = $true)][string]$Archivo,
+        [string[]]$Argumentos = @(),
+        [hashtable]$EntornoExtra = $null
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Archivo
+    $psi.Arguments = (Formatear-Argumentos $Argumentos)
+    $psi.WorkingDirectory = $script:Raiz
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = $script:Utf8
+    $psi.StandardErrorEncoding = $script:Utf8
+    if ($EntornoExtra) {
+        foreach ($clave in @($EntornoExtra.Keys)) {
+            $psi.EnvironmentVariables[$clave] = [string]$EntornoExtra[$clave]
+        }
+    }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $lista = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList))
+    Write-Log ("Ejecuto: {0} {1}" -f (Split-Path -Leaf $Archivo), ($Argumentos -join " "))
+    try {
+        [void]$proc.Start()
+    } catch {
+        throw ("No se pudo iniciar {0}: {1}" -f $Archivo, $_.Exception.Message)
+    }
+    $lectorOut = Iniciar-LectorUv $proc.StandardOutput $lista
+    $lectorErr = Iniciar-LectorUv $proc.StandardError $lista
+    $vistos = 0
+    while (-not $proc.HasExited) {
+        while ($vistos -lt $lista.Count) {
+            $linea = [string]$lista[$vistos]
+            $vistos = $vistos + 1
+            if ($linea -ne "") {
+                Write-Host $linea
+                Write-Log $linea
+            }
+        }
+        Start-Sleep -Milliseconds 80
+    }
+    try { $proc.WaitForExit() } catch { }
+    Start-Sleep -Milliseconds 200
+    while ($vistos -lt $lista.Count) {
+        $linea = [string]$lista[$vistos]
+        $vistos = $vistos + 1
+        if ($linea -ne "") {
+            Write-Host $linea
+            Write-Log $linea
+        }
+    }
+    foreach ($lector in @($lectorOut, $lectorErr)) {
+        try { $lector.Shell.EndInvoke($lector.Async) } catch { }
+        try { $lector.Shell.Dispose() } catch { }
+        try { $lector.Espacio.Close() } catch { }
+    }
+    while ($vistos -lt $lista.Count) {
+        $linea = [string]$lista[$vistos]
+        $vistos = $vistos + 1
+        if ($linea -ne "") {
+            Write-Host $linea
+            Write-Log $linea
+        }
+    }
+    $codigo = -1
+    try { $codigo = $proc.ExitCode } catch { $codigo = -1 }
+    try { $proc.Dispose() } catch { }
+    $texto = ""
+    foreach ($linea in @($lista.ToArray())) {
+        if ($null -ne $linea -and $linea -ne "") {
+            $texto = $texto + $linea + "`n"
+        }
+    }
+    return @{ Codigo = $codigo; Texto = $texto }
+}
+
 function Instalar-Componentes {
     $req = Join-Path $script:Raiz "requirements_cu13.txt"
     if (-not (Test-Path -LiteralPath $req)) {
@@ -865,11 +1003,34 @@ function Instalar-Componentes {
     foreach ($url in @($cfg.Urls)) {
         $argumentos += @("--extra-index-url", [string]$url)
     }
-    $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos $argumentos -EntornoExtra @{
-        UV_LINK_MODE = "copy"
-        UV_NO_CONFIG = "1"
+    $entorno = Entorno-Uv
+    $esperas = @(5, 15, 30, 60)
+    $codigo = 1
+    $texto = ""
+    $maxIntentos = 5
+    for ($intento = 1; $intento -le $maxIntentos; $intento++) {
+        if ($intento -gt 1) {
+            $espera = $esperas[$intento - 2]
+            $aviso = "La conexión va lenta, reintento…"
+            Write-Host ""
+            Write-Host $aviso -ForegroundColor Yellow
+            Write-Host ("Intento {0} de {1}. Espero {2} s. Lo ya bajado se conserva." -f $intento, $maxIntentos, $espera) -ForegroundColor Yellow
+            Write-Log ("{0} Intento {1} de {2}, espera {3} s." -f $aviso, $intento, $maxIntentos, $espera)
+            Emitir-Ventana "DRAKO_ESTADO La conexión va lenta, reintento…"
+            Start-Sleep -Seconds $espera
+        }
+        $resultado = Invocar-UvConSalida -Archivo $script:UvExe -Argumentos $argumentos -EntornoExtra $entorno
+        $codigo = [int]$resultado.Codigo
+        $texto = [string]$resultado.Texto
+        if ($codigo -eq 0) { break }
+        if (-not (Es-FalloDeRed $texto $codigo)) { break }
+        if ($intento -ge $maxIntentos) { break }
+        Write-Log "La descarga de componentes se cortó. Vuelvo a lanzar uv: usa su caché."
     }
     if ($codigo -ne 0) {
+        if (Es-FalloDeRed $texto $codigo) {
+            throw "La conexión va lenta y los componentes no se terminaron de bajar (código $codigo). Vuelve a ejecutar Instalar.bat: continúa con lo que ya está en la caché."
+        }
         throw "No se pudieron instalar los componentes (código $codigo). Si fue un corte de red, vuelve a ejecutar Instalar.bat: continúa donde lo dejó."
     }
     if (-not (Test-PaquetesMinimos)) {
