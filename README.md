@@ -15,9 +15,11 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Anota en local, cifrado (AES-GCM) y firmado (HMAC-SHA256), cada apertura, cierre, duración, intento fallido y cara usada. De la cara solo guarda el nombre del archivo y un hash, nunca la imagen ni el embedding.
 - Puede avisar a un bot de Telegram. Si no hay red, encola y reintenta. Si Telegram no está configurado, el programa funciona igual.
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
-- El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
+- El directo (webcam → cambio de cara → cámara virtual «Drako Cam») usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. No hace falta OBS: el instalador registra Unity Capture una vez, como administrador. OBS Virtual Camera queda solo como respaldo. El detalle está en [docs/rendimiento.md](docs/rendimiento.md).
 
-La interfaz heredada de VisoMaster (paneles, controles y manual) sigue en inglés. Los cuadros nuevos de Drako Cam están en español.
+La pantalla principal está en español. Al abrir se ve la cámara. El uso es: elegir una foto o un perfil y pulsar **EN VIVO**. La cara de enfrente se cambia sola y la imagen sale a OBS. No se abre un vídeo, no hay prueba sin cámara y no se elige otra persona. Si falta la foto, EN VIVO lo dice. Cómo añadir la fuente está en [OBS](#obs).
+
+El símbolo de Drako Cam es la D plateada con el ojo rojo hecho lente, el archivo que aprobó Drako: `assets/drakocam/isotipo.png`. No se redibuja: el icono de 48 px en adelante sale de ese PNG. En 16 y 32 px se usa una reducción del mismo archivo. El logo de la marca, sin tocar, está en `assets/marca/`. Para usarlo en la app en vez de la variante de producto, cambia `app/ui/core/media/logo.usar` a `marca`. El rojo `#F20A1C` solo marca EN VIVO y el foco. `python scripts/generar_icono.py` escribe `installer/logo.ico` de 16 a 256.
 
 ## Requisitos
 
@@ -34,16 +36,17 @@ Sin CUDA el programa avisa y puede abrirse, pero el directo no irá a velocidad 
 
 Para Windows 10 u 11, de 64 bits, con internet. No hace falta instalar Python, FFmpeg ni nada más antes. La carpeta puede tener espacios, por ejemplo `C:\Users\SEXTO PISO\Downloads\Drako-Cam`.
 
-### Doble clic en Instalar.bat
+### Doble clic en Instalar.vbs
 
 1. Copia la carpeta de Drako Cam a tu equipo.
-2. Doble clic en `Instalar.bat`.
-3. Espera. Instala uv y Python 3.12 solo, sin el alias de la Microsoft Store y sin activar nada. Luego descarga varios gigabytes (PyTorch y TensorRT) y puede tardar más de media hora. Hacen falta unos 25 GB libres, mejor 30. No cierres la ventana.
-4. Si algo falla, la ventana se queda abierta con el motivo. El detalle queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
-5. Al terminar hay un acceso directo **Drako Cam** en el escritorio y en el menú Inicio. Ábrelo: no sale una ventana de consola.
-6. Si no hay una GPU NVIDIA con CUDA, la instalación termina igual y lo dice con claridad. El programa puede abrirse, pero el directo no irá a velocidad de cámara.
+2. Doble clic en `Instalar.vbs`. Se abre una ventana con el logo. Pulsa **Instalar**.
+3. Espera. La ventana muestra los pasos: primero el programa, luego los modelos del cambio de cara (si se corta internet, se reanuda) y al final la cámara virtual. Puede tardar más de media hora y hacen falta unos 25 GB libres, mejor 30. No la cierres.
+4. Si quieres el texto técnico, pulsa **Ver detalles**. El registro también queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
+5. Al terminar, pulsa **Abrir Drako Cam**. También queda un acceso directo en el escritorio y en el menú Inicio.
+6. Si no hay una GPU NVIDIA, la ventana lo dice en una frase. El programa se abre igual; el directo puede ir más lento.
+7. Al final Windows pide permiso de administrador **una vez** para registrar la cámara virtual «Drako Cam» (Unity Capture, incluido en `vendor/unitycapture/`). Si ya está registrada, no la duplica. Si no hay permiso, la instalación del programa sigue y la ventana explica cómo ejecutar `Instalar.bat` como administrador. Sin ese registro, Meet, Zoom y Teams no ven la cámara. OBS no es obligatorio.
 
-Volver a ejecutar `Instalar.bat` repara o actualiza lo que falte (componentes y accesos directos).
+`Instalar.bat` sigue ahí como respaldo, por si la ventana no arranca. Hace lo mismo. Volver a ejecutar cualquiera de los dos repara lo que falte.
 
 ### Con el instalador .exe
 
@@ -53,7 +56,7 @@ Para quitarlo: Configuración de Windows → Aplicaciones → Drako Cam → Desi
 
 ### Quitar lo instalado con Instalar.bat
 
-Doble clic en `Desinstalar.bat`. Borra el entorno de Python y los accesos directos. No borra `%APPDATA%\DrakoCam` (contraseña, registros y avisos) salvo que escribas `SI` cuando lo pregunte. La carpeta del programa no se borra: puedes eliminarla a mano si ya no la quieres.
+Doble clic en `Desinstalar.bat`. Borra el entorno de Python, los accesos directos y, si esta copia la registró, la cámara «Drako Cam». No borra `%APPDATA%\DrakoCam` (contraseña, registros y avisos) salvo que escribas `SI` cuando lo pregunte. La carpeta del programa no se borra: puedes eliminarla a mano si ya no la quieres. Si Windows pide administrador, es solo para quitar esa cámara.
 
 ## Instalación manual
 
@@ -99,11 +102,11 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 1. La primera vez el programa pide **crear** la contraseña de administrador (8 caracteres como mínimo) y repetirla. Esa contraseña es de este PC. No está escrita en el programa.
 2. Después, cada apertura pide esa contraseña.
 3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
-4. Comprueba los modelos del directo (1,14 GB) y, si no han cambiado, no vuelve a verificar el hash. Drako Cam solo cambia caras de la cámara hacia OBS. El detalle está en [docs/modelos.md](docs/modelos.md).
+4. Comprueba los modelos del directo (960 MB) y no termina hasta que el SHA-256 coincide. Si se corta la red, sigue desde lo ya bajado. El detalle está en [docs/modelos.md](docs/modelos.md).
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
-6. Elige webcam como medio de destino y activa la cámara virtual (`pyvirtualcam`) para Zoom, Discord u OBS.
+6. Elige una foto (o arrástrala) o un perfil, elige la webcam y pulsa **EN VIVO**. La cara con el filtro sale por la cámara «Drako Cam», sin letreros, recuadros ni puntos. Esos adornos solo se ven en la ventana del programa. En Meet, Zoom o Teams elige esa cámara. No hace falta abrir OBS.
 
-El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra.
+El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra. El código queda atado al PC. Copiar la carpeta a otro equipo pide una aprobación nueva en el bot de Telegram. Cómo poner el repo en privado, compilar el .exe y descargar un release sin guardar tokens está en [docs/privado.md](docs/privado.md).
 
 Para saltarte la descarga en una prueba de importación:
 
@@ -159,13 +162,32 @@ npm install
 npm test
 ```
 
+## Pantalla principal
+
+1. Elige una foto en la galería, o pulsa **Añadir foto**. También vale un perfil guardado, o soltar un JPG, PNG, WEBP o BMP.
+2. La cámara ya está elegida (la última, o la primera). Si hay varias, el selector está junto a **EN VIVO**.
+3. Pulsa **EN VIVO**. La persona de enfrente se cambia sola y la imagen sale a la cámara virtual, sin otro botón. El preset de arranque mantiene la calidad visible: cambio a 256, restaurador, bordes, color y boca. **Máximo FPS** es opcional y es el único que baja ese detalle. En 6 GB la webcam va a 1280×720, que es lo que Meet envía. **PARAR** quita el cambio de cara; la salida hacia OBS sigue, al mismo tamaño. **Original / Cambiada** compara sin cerrar la cámara.
+
+## OBS
+
+La primera vez se abre un asistente. También está en **Cómo añadirlo**.
+
+1. Instala [OBS Studio](https://obsproject.com). Si puedes, instala también [Unity Capture](https://github.com/schellingb/UnityCapture): es la cámara que OBS lista como fuente y no se mezcla con la salida del propio OBS.
+2. Pulsa **EN VIVO** en Drako Cam. La salida se abre sola, a un tamaño y unos FPS fijos. No los cambies en mitad del directo: OBS perdería la fuente.
+3. En OBS, en Fuentes, pulsa **+** → **Dispositivo de captura de vídeo** → elige **Unity Video Capture**. Si no está, elige **OBS Virtual Camera**. La cámara virtual se enciende sola al pulsar **EN VIVO**.
+4. Si prefieres no usar cámara virtual, pulsa **Ventana OBS** (o Ctrl+O). Se abre una ventana aparte, sin botones ni marco, titulada exactamente **Drako Cam - Salida OBS**. En OBS: **+** → **Captura de ventana** → elige ese título. El vídeo ocupa toda la ventana, con la relación de aspecto correcta y negro si sobra espacio, así que no hace falta recortar. Puedes cambiarle el tamaño; Drako Cam recuerda el tamaño y el sitio. Déjala detrás de otras ventanas: sigue pintando. Si la minimizas, Windows a veces deja de componerla y OBS se queda con el último fotograma; en ese caso déjala detrás, no en la barra de tareas. Ctrl+O o **Cerrar ventana** la cierra sin apagar la cámara virtual.
+5. **Probar salida** manda un recuadro claro para comprobar que OBS la ve.
+
+Si se pierde la cara, la salida no se corta. Cerrar el panel de ajustes tampoco. El indicador dice **OBS recibiendo** cuando OBS está abierto y la salida va, o **Salida activa** si la salida va y OBS todavía no.
+
+Favoritos con estrella, y F1–F8 para saltar entre ellos. **Modo compacto** deja la ventana pequeña al lado de OBS. Si la cara se pierde, el programa lo dice y la transición suave sigue siendo la del motor.
+
+A la derecha, **Ajustar cara** tiene la boca, los ojos, los bordes, la nitidez, el color y los objetos que tapan la cara. Cada grupo se enciende con un interruptor. **Ver antes** (mantener pulsado) enseña la cara sin cambio. Esos ajustes se guardan con la foto. Auto, Máxima calidad, Equilibrado y Máximo FPS los dejan en valores concretos.
+
 ## Qué queda para la siguiente fase
 
-- Face Fader
-- Favoritos
-- Biblioteca
-- Face Picker
-- Traducción al español del resto de paneles heredados de VisoMaster
+- Medir FPS de inferencia en una RTX 50 real
+- Afinar el parecido con más de una foto de la misma persona a la vez
 
 ## Aviso de uso
 

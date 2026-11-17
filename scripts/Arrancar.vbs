@@ -5,7 +5,7 @@
 
 Option Explicit
 
-Dim shell, fso, carpeta, pythonw, ffmpegBin, codigo, entorno
+Dim shell, fso, carpeta, compilado, pythonw, ffmpegBin, codigo, entorno
 
 If WScript.Arguments.Count > 0 Then
   If WScript.Arguments(0) = "--comprobar" Then
@@ -17,7 +17,22 @@ End If
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 carpeta = fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))
+compilado = carpeta & "\DrakoCam.exe"
 pythonw = carpeta & "\.venv\Scripts\pythonw.exe"
+
+If fso.FileExists(compilado) Then
+  shell.CurrentDirectory = carpeta
+  ffmpegBin = carpeta & "\dependencies\ffmpeg\ffmpeg-7.1.1-essentials_build\bin"
+  If fso.FileExists(ffmpegBin & "\ffmpeg.exe") Then
+    Set entorno = shell.Environment("PROCESS")
+    entorno("PATH") = ffmpegBin & ";" & entorno("PATH")
+  End If
+  codigo = shell.Run("""" & compilado & """", 1, True)
+  If codigo <> 0 Then
+    MsgBox "Drako Cam se ha cerrado con un error (c" & ChrW(243) & "digo " & codigo & ")." & vbCrLf & vbCrLf & "El registro est" & ChrW(225) & " en:" & vbCrLf & shell.ExpandEnvironmentStrings("%APPDATA%") & "\DrakoCam\logs", vbExclamation, "Drako Cam"
+  End If
+  WScript.Quit codigo
+End If
 
 If Not fso.FileExists(pythonw) Then
   MsgBox "No se encuentra Drako Cam en esta carpeta:" & vbCrLf & vbCrLf & carpeta & vbCrLf & vbCrLf & "Vuelve a ejecutar Instalar.bat.", vbCritical, "Drako Cam"

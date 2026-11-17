@@ -851,7 +851,9 @@ def set_all_parameters_and_control_widgets_enabled(
     main_window.saveEmbeddingAsButton.setDisabled(disabled)
 
     # Video control buttons
-    main_window.videoSeekSlider.setDisabled(disabled)
+    from app.ui.qt_vivo import tocar
+
+    tocar(getattr(main_window, "videoSeekSlider", None), lambda barra: barra.setDisabled(disabled))
     main_window.addMarkerButton.setDisabled(disabled)
     main_window.removeMarkerButton.setDisabled(disabled)
     main_window.nextMarkerButton.setDisabled(disabled)
@@ -878,14 +880,18 @@ def set_all_parameters_and_control_widgets_enabled(
         main_window.faceMaskToggleButton.setDisabled(disabled)
 
     # List items
-    for _, embed_button in main_window.merged_embeddings.items():
-        embed_button.setDisabled(disabled)
-    for _, target_media_button in main_window.target_videos.items():
-        target_media_button.setDisabled(disabled)
-    for _, input_face_button in main_window.input_faces.items():
-        input_face_button.setDisabled(disabled)
-    for _, target_face_button in main_window.target_faces.items():
-        target_face_button.setDisabled(disabled)
+    from app.ui.estudio.caras import es_widget
+    from app.ui.qt_vivo import tocar
+
+    for coleccion in (
+        main_window.merged_embeddings,
+        main_window.target_videos,
+        main_window.input_faces,
+        main_window.target_faces,
+    ):
+        for boton in list(coleccion.values()):
+            if es_widget(boton):
+                tocar(boton, lambda widget, apagado=disabled: widget.setDisabled(apagado))
 
     # Parameters and controls dict widgets - SECURED
     for _, widget in main_window.parameter_widgets.items():

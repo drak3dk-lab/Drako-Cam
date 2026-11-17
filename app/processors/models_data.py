@@ -858,19 +858,43 @@ models_list = [
     },
 ]
 
-# Drako Cam es solo el cambio de cara en directo. El registro que ve el
-# programa, el descargador y el procesador es esta lista. El resto de
-# entradas de arriba no se descarga ni se ofrece.
-MODELOS_DEL_DIRECTO = frozenset(
-    {
-        "Inswapper128",
-        "Inswapper128ArcFace",
-        "SCRFD2.5g",
-        "FaceLandmark203",
-        "Occluder",
-        "FaceParser",
-        "GFPGANv1.4",
-        "GPENBFR256",
-    }
+# Conjunto mínimo del cambio de cara en vivo con Inswapper128.
+# El instalador y el arranque bajan y verifican solo esto.
+# El registro completo se conserva para que el procesador resuelva rutas;
+# lo que no está aquí no se descarga, ni al instalar, ni al arrancar, ni bajo demanda.
+# Orden: primero lo que hace falta para leer la foto, luego el swap,
+# el realce y las máscaras que el perfil en vivo deja encendidas.
+ORDEN_REQUERIDO = (
+    "RetinaFace",
+    "Inswapper128ArcFace",
+    "Inswapper128",
+    "GFPGANv1.4",
+    "FaceParser",
+    "Occluder",
 )
-models_list = [item for item in models_list if item["model_name"] in MODELOS_DEL_DIRECTO]
+
+for _modelo in models_list:
+    _modelo["requerido"] = _modelo["model_name"] in ORDEN_REQUERIDO
+
+
+def modelos_requeridos() -> list[dict]:
+    """Modelos que el directo con Inswapper128 carga de verdad.
+
+    RetinaFace (det_10g.onnx): detector por defecto. Sus 5 puntos salen
+    del propio detector; no hace falta otro modelo de landmarks.
+    Inswapper128ArcFace (w600k_r50.onnx): reconocimiento al leer la foto
+    y al calcular el embedding del swap.
+    Inswapper128 (inswapper_128.fp16.onnx): el modelo de cambio.
+    GFPGANv1.4: el realce está encendido en Auto, Equilibrado y Máxima.
+    FaceParser: máscara por zonas, boca y «al hablar» del perfil en vivo.
+    Occluder: la oclusión (manos, micro) está encendida en ese perfil.
+
+    No entran landmarks sueltos (106, 68, 203, ORFormer, TUFA): el
+    interruptor está apagado y el 203 solo lo piden el editor, el
+    maquillaje o el restaurador de expresión, que el directo no usa.
+    Tampoco SimSwap, Ghost, InStyle, CSCS, LivePortrait, YOLO VR,
+    GPEN ni el resto de restauradores. SCRFD tampoco: el detector del
+    directo es RetinaFace.
+    """
+    por_nombre = {modelo["model_name"]: modelo for modelo in models_list}
+    return [por_nombre[nombre] for nombre in ORDEN_REQUERIDO]

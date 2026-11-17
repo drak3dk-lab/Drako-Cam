@@ -683,6 +683,7 @@ class FaceDetectors:
                             "cum_score": cum_score,
                             "last_seen": current_frame_num,
                             "kps": kpss_5[match_idx],
+                            "bbox": np.array(t_bbox, dtype=np.float32),
                         }
 
                     tracked_det.append(t_bbox)
@@ -696,7 +697,19 @@ class FaceDetectors:
                         hist = self.track_history.get(tid)
                     if hist is not None and hist.get("kps") is not None:
                         last_kps = hist["kps"]
-                        tracked_det.append(t_bbox)
+                        caja = t_bbox
+                        if control.get(
+                            "SeguirCajaOclusionEnableToggle", True
+                        ) and hist.get("bbox") is not None:
+                            from app.drako.rendimiento.suavizado import interpolar_caja
+
+                            caja = interpolar_caja(hist["bbox"], t_bbox, 0.45)
+                            with self._track_history_lock:
+                                if tid in self.track_history:
+                                    self.track_history[tid]["bbox"] = np.array(
+                                        caja, dtype=np.float32
+                                    )
+                        tracked_det.append(caja)
                         tracked_kpss_5.append(last_kps)
                         # No dense landmarks available for coasted tracks; reuse 5-pt kps
                         tracked_kpss_all.append(last_kps)

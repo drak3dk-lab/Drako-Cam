@@ -39,7 +39,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $archivos = @("scripts\instalar.ps1", "scripts\desinstalar.ps1")
+          $archivos = @("scripts\instalar.ps1", "scripts\desinstalar.ps1", "scripts\camara_virtual.ps1")
           foreach ($rel in $archivos) {
             $ruta = Join-Path (Get-Location) $rel
             $tokens = $null

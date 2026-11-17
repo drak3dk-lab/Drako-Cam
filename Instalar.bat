@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
+@echo off
 cd /d "%~dp0"
 title Drako Cam - instalacion
 

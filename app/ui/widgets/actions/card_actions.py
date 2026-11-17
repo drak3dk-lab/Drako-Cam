@@ -168,6 +168,31 @@ def uncheck_all_merged_embeddings(main_window: "MainWindow"):
         torch.cuda.empty_cache()
 
 
+def _recordar_caja(main_window, face_id: str, puntos, imagen) -> None:
+    """Guarda el tamaño y el sitio de la cara para elegir la principal."""
+    try:
+        import numpy
+
+        plano = numpy.asarray(puntos, dtype=numpy.float32).reshape(-1, 2)
+        caja = (
+            float(plano[:, 0].min()),
+            float(plano[:, 1].min()),
+            float(plano[:, 0].max()),
+            float(plano[:, 1].max()),
+        )
+    except Exception:
+        return
+    cajas = getattr(main_window, "_cajas_destino", None)
+    if cajas is None:
+        main_window._cajas_destino = {}
+        cajas = main_window._cajas_destino
+    cajas[face_id] = caja
+    try:
+        main_window._marco_destino = (int(imagen.shape[1]), int(imagen.shape[0]))
+    except Exception:
+        pass
+
+
 def find_target_faces(main_window: "MainWindow"):
     from app.ui.widgets.actions import video_control_actions
 
@@ -204,12 +229,13 @@ def find_target_faces(main_window: "MainWindow"):
                     print(
                         "[WARN] Webcam is initializing. Frame not ready for extraction."
                     )
-                    common_widget_actions.create_and_show_messagebox(
-                        main_window,
-                        "Webcam Starting",
-                        "The webcam feed is currently initializing. Please wait a moment before finding faces.",
-                        main_window,
-                    )
+                    if not getattr(main_window, "_estudio_activo", False):
+                        common_widget_actions.create_and_show_messagebox(
+                            main_window,
+                            "Webcam Starting",
+                            "The webcam feed is currently initializing. Please wait a moment before finding faces.",
+                            main_window,
+                        )
                     return
             else:
                 # Pass 0 for webcam rotation (Only executes if the stream is paused/idle)
@@ -266,9 +292,15 @@ def find_target_faces(main_window: "MainWindow"):
                 # Loop through all faces in video frame
                 for face in faces_list:
                     found = False
-                    # Check if this face has already been found
-                    for face_id, target_face in main_window.target_faces.items():
-                        parameters = main_window.parameters[target_face.face_id]
+                    from app.ui.estudio.caras import es_widget, quitar_muertos
+                    from app.ui.qt_vivo import qt_sigue
+
+                    quitar_muertos(main_window.target_faces)
+                    quitar_muertos(main_window.input_faces)
+                    for face_id, target_face in list(main_window.target_faces.items()):
+                        if es_widget(target_face) and not qt_sigue(target_face):
+                            continue
+                        parameters = main_window.parameters.get(target_face.face_id, {})
                         threshhold = parameters.get("SimilarityThresholdSlider", 0.6)
                         if main_window.function_worker.findCosineDistance(
                             target_face.get_embedding(
@@ -281,6 +313,7 @@ def find_target_faces(main_window: "MainWindow"):
                             face[1],
                         ) >= float(threshhold):
                             found = True
+                            _recordar_caja(main_window, face_id, face[0], img)
                             break
 
                     if not found:
@@ -311,6 +344,7 @@ def find_target_faces(main_window: "MainWindow"):
                         embedding_store[str(selected_recognition_model)] = face[1]
 
                         face_id = str(uuid.uuid1())
+                        _recordar_caja(main_window, face_id, face[0], img)
 
                         # Pass QImage instead of Pixmap
                         list_view_actions.add_media_thumbnail_to_target_faces_list(
@@ -327,7 +361,9 @@ def find_target_faces(main_window: "MainWindow"):
                                     input_face_id,
                                     input_face_button,
                                 ) in main_window.input_faces.items():
-                                    if input_face_button.isChecked():
+                                    from app.ui.qt_vivo import marcado
+
+                                    if marcado(input_face_button):
                                         new_target_face.assigned_input_faces[
                                             input_face_id
                                         ] = input_face_button.embedding_store
@@ -337,7 +373,9 @@ def find_target_faces(main_window: "MainWindow"):
                                     embed_id,
                                     embed_button,
                                 ) in main_window.merged_embeddings.items():
-                                    if embed_button.isChecked():
+                                    from app.ui.qt_vivo import marcado as _marcado
+
+                                    if _marcado(embed_button):
                                         new_target_face.assigned_merged_embeddings[
                                             embed_id
                                         ] = embed_button.embedding_store
@@ -347,7 +385,13 @@ def find_target_faces(main_window: "MainWindow"):
 
             # Select the first target face if no target face is already selected
             if main_window.target_faces and not main_window.selected_target_face_id:
-                list(main_window.target_faces.values())[0].click()
+                from app.ui.qt_vivo import tocar
+
+                primero = next(iter(main_window.target_faces.values()))
+                if not tocar(primero, lambda boton: boton.click()):
+                    main_window.selected_target_face_id = getattr(
+                        primero, "face_id", None
+                    )
 
     # --- WEBCAM GUARD ---
     if main_window.video_processor.processing:

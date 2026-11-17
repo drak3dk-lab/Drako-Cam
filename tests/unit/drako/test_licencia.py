@@ -19,6 +19,7 @@ from app.drako.licencia import (
     TransporteUrllib,
     agente_http,
     canonico,
+    corte_del_directo,
     evaluar,
     hash_codigo,
     normalizar_codigo,
@@ -58,8 +59,30 @@ def test_el_vector_firmado_por_el_servidor_verifica_y_un_cambio_no():
 
 def test_normaliza_el_codigo_y_no_acepta_letras_ambiguas():
     assert normalizar_codigo("  drako-aaaa-bbbb-cccc-dddd ") == CODIGO
-    assert normalizar_codigo("DRAKO-AAA1-BBBB-CCCC-DDDD") is None
+    assert normalizar_codigo("drako-abcd-efgh") == "DRAKO-ABCD-EFGH"
+    assert normalizar_codigo("DRAKO-AAA1-BBBB") is None
     assert normalizar_codigo("DRAKO-AAAA-BBBB-CCCC") is None
+    assert normalizar_codigo("DRAKO-AAAA-BBBO") is None
+
+
+def test_la_huella_no_cambia_si_solo_cambia_el_nombre_visible():
+    una, nombre = huella_equipo({}, lector_id=lambda: "win:GUID-SECRETO")
+    otra, _ = huella_equipo(
+        {"DRAKO_CAM_EQUIPO": "Casa de alguien"},
+        lector_id=lambda: "win:GUID-SECRETO",
+    )
+    assert una == otra
+    assert nombre == "PC-" + una[:8]
+    assert "GUID-SECRETO" not in una
+    assert "alguien" not in una
+
+
+def test_el_directo_se_corta_al_momento_si_revocan_y_espera_si_no_hay_red():
+    assert corte_del_directo("revocado", None, 1_000)
+    assert corte_del_directo("otro_equipo", None, 1_000)
+    assert not corte_del_directo("gracia", 1_000, 1_100)
+    assert corte_del_directo("gracia", 1_000, 1_180)
+    assert not corte_del_directo("ok", None, 1_000)
 
 
 def test_la_huella_es_estable_y_no_revela_el_identificador():

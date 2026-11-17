@@ -1,12 +1,18 @@
-"""Descarga resumible, con reintentos, hash y varias a la vez.
+"""Descarga reanudable de un modelo, con hash y reintentos.
 
-El archivo a medias se guarda como ``<destino>.parcial`` y se continúa con
-HTTP Range. Si ya existe el archivo final y el SHA-256 coincide, no se vuelve
-a bajar.
+El archivo crece en ``.part``. Si se corta la red, el siguiente intento
+pide ``Range: bytes=<ya_bajado>-`` y sigue. Si el servidor ignora el
+rango, ese archivo se empieza de nuevo. Al terminar se comprueba el
+SHA-256: si coincide, ``.part`` pasa al nombre final; si no, se borra
+y se vuelve a bajar.
+
+Los cortes de red no tienen tope: la espera crece (3, 5, 10, 30 y
+luego 60 segundos) y, cuando vuelve internet, continúa.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -16,10 +22,353 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
+import urllib3
 
 from app.helpers.integrity_checker import check_file_integrity
 
-CHUNK = 1024 * 1024
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+ESPERAS_SEGUNDOS = (3, 5, 10, 30, 60)
+REQUEST_TIMEOUT = (15, 60)
+CODIGOS_PERMANENTES = frozenset({400, 401, 403, 404, 410})
+# Un 404 no se arregla esperando. Tres respuestas iguales sí son un fallo real.
+TOPE_PERMANENTE = 3
+
+_log = logging.getLogger("drako.descarga")
+if not _log.handlers:
+    _log.addHandler(logging.NullHandler())
+
+
+def espera_del_intento(fallo: int) -> int:
+    """Segundos a esperar tras el fallo ``fallo`` (1 = el primero)."""
+    indice = min(max(int(fallo), 1), len(ESPERAS_SEGUNDOS)) - 1
+    return ESPERAS_SEGUNDOS[indice]
+
+
+def _decir(mensaje: str, nivel: str = "info") -> None:
+    print(mensaje, flush=True)
+    if nivel == "error":
+        _log.error(mensaje)
+    elif nivel == "aviso":
+        _log.warning(mensaje)
+    else:
+        _log.info(mensaje)
+
+
+def _mb(cantidad: int) -> str:
+    return f"{cantidad / (1024 * 1024):.1f} MB"
+
+
+def _borrar(ruta: str) -> None:
+    try:
+        if ruta and os.path.isfile(ruta):
+            os.remove(ruta)
+    except OSError as exc:
+        _decir(f"[AVISO] No pude borrar {ruta}: {exc}", "aviso")
+
+
+def _rango_util(cabecera: str | None, ya: int) -> int | None:
+    """Inicio que confirma el servidor, o None si el rango no sirve."""
+    if not cabecera:
+        return None
+    texto = cabecera.strip().lower()
+    if not texto.startswith("bytes"):
+        return None
+    try:
+        espec, _, total = texto.split(" ", 1)[1].partition("/")
+        inicio_texto, _, _fin = espec.partition("-")
+        inicio = int(inicio_texto)
+    except (ValueError, IndexError):
+        return None
+    if inicio != ya:
+        return None
+    try:
+        return int(total)
+    except ValueError:
+        return None
+
+
+def _abrir_respuesta(url: str, ya: int):
+    cabeceras = {
+        "User-Agent": "DrakoCam",
+        "Accept-Encoding": "identity",
+    }
+    if ya > 0:
+        cabeceras["Range"] = f"bytes={ya}-"
+    return requests.get(
+        url,
+        headers=cabeceras,
+        stream=True,
+        timeout=REQUEST_TIMEOUT,
+    )
+
+
+def download_file(
+    model_name: str,
+    file_path: str,
+    correct_hash: str,
+    url: str,
+    skip_hash_check: bool = False,
+    al_progreso=None,
+    al_estado=None,
+    esperar=time.sleep,
+    max_intentos: int | None = None,
+) -> bool:
+    """Baja ``url`` a ``file_path`` y solo devuelve True si el hash cuadra.
+
+    ``max_intentos`` queda en None: se reintenta sin tope. Los tests pueden
+    poner un tope. Un HTTP 400/401/403/404/410 se rinde a la tercera,
+    porque no es un corte de red.
+    """
+    parent_dir = os.path.dirname(file_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
+    destino = Path(file_path)
+    parcial = str(destino) + ".part"
+
+    if destino.is_file():
+        if skip_hash_check:
+            _decir(
+                f"[INFO] «{model_name}» ya está. No compruebo el hash "
+                "(modelos optimizados)."
+            )
+            _borrar(parcial)
+            return True
+        if correct_hash and check_file_integrity(str(destino), correct_hash):
+            _decir(f"[INFO] «{model_name}» ya está y el hash coincide.")
+            _borrar(parcial)
+            return True
+        _decir(
+            f"[AVISO] «{model_name}» está en disco pero el hash no coincide. "
+            "Lo bajo de nuevo.",
+            "aviso",
+        )
+        _borrar(str(destino))
+        _borrar(parcial)
+
+    fallo = 0
+    permanentes = 0
+    while True:
+        if max_intentos is not None and fallo >= max_intentos:
+            _decir(
+                f"[ERROR] «{model_name}» no quedó verificado tras {fallo} intentos.",
+                "error",
+            )
+            return False
+        try:
+            if _bajar_una_vez(
+                model_name,
+                str(destino),
+                parcial,
+                correct_hash,
+                url,
+                al_progreso,
+                al_estado,
+            ):
+                return True
+            fallo += 1
+            _borrar(parcial)
+            _borrar(str(destino))
+            _pausa(model_name, fallo, "el hash no coincidió", al_estado, esperar)
+        except requests.HTTPError as exc:
+            codigo = exc.response.status_code if exc.response is not None else 0
+            fallo += 1
+            if codigo in CODIGOS_PERMANENTES:
+                permanentes += 1
+                _decir(
+                    f"[ERROR] El servidor respondió {codigo} al pedir «{model_name}».",
+                    "error",
+                )
+                if permanentes >= TOPE_PERMANENTE:
+                    _decir(
+                        f"[ERROR] «{model_name}» no está en el servidor "
+                        f"({codigo}). No sigo esperando.",
+                        "error",
+                    )
+                    return False
+            else:
+                _decir(
+                    f"[AVISO] Error HTTP al bajar «{model_name}»: {exc}",
+                    "aviso",
+                )
+            _pausa(model_name, fallo, "falló la descarga", al_estado, esperar)
+        except requests.RequestException as exc:
+            fallo += 1
+            ya = _tamano(parcial)
+            _decir(
+                f"[AVISO] Se cortó la red al bajar «{model_name}» "
+                f"({_mb(ya)} guardados): {exc}",
+                "aviso",
+            )
+            _pausa(model_name, fallo, "se cortó la red", al_estado, esperar)
+        except OSError as exc:
+            fallo += 1
+            _decir(
+                f"[AVISO] No pude escribir «{model_name}»: {exc}",
+                "aviso",
+            )
+            _pausa(model_name, fallo, "no pude escribir el archivo", al_estado, esperar)
+
+
+def _pausa(model_name: str, fallo: int, motivo: str, al_estado, esperar) -> None:
+    segundos = espera_del_intento(fallo)
+    texto = f"Reintentando... {model_name}"
+    _decir(
+        f"[AVISO] {texto} ({motivo}). Intento {fallo}. "
+        f"Espero {segundos} s y sigo desde lo ya bajado.",
+        "aviso",
+    )
+    if al_estado is not None:
+        al_estado(texto)
+    esperar(segundos)
+
+
+def _tamano(ruta: str) -> int:
+    try:
+        return os.path.getsize(ruta) if os.path.isfile(ruta) else 0
+    except OSError:
+        return 0
+
+
+def _bajar_una_vez(
+    model_name: str,
+    destino: str,
+    parcial: str,
+    correct_hash: str,
+    url: str,
+    al_progreso,
+    al_estado,
+) -> bool:
+    ya = _tamano(parcial)
+    if ya > 0:
+        _decir(
+            f"[INFO] «{model_name}» sigue desde {_mb(ya)}. "
+            f"Pido el resto con Range bytes={ya}-."
+        )
+    else:
+        _decir(f"[INFO] Bajando «{model_name}».")
+    if al_estado is not None and ya <= 0:
+        al_estado(f"Bajando {model_name}")
+
+    respuesta = _abrir_respuesta(url, ya)
+    try:
+        codigo = respuesta.status_code
+        if codigo == 416:
+            _decir(
+                f"[AVISO] El servidor dice que «{model_name}» ya no tiene más bytes. "
+                "Compruebo lo guardado.",
+                "aviso",
+            )
+        elif ya > 0 and codigo == 206:
+            total = _rango_util(respuesta.headers.get("Content-Range"), ya)
+            if total is None:
+                _decir(
+                    f"[AVISO] La respuesta de rango de «{model_name}» no cuadra. "
+                    "Empiezo ese archivo de nuevo.",
+                    "aviso",
+                )
+                ya = 0
+                _borrar(parcial)
+                respuesta.close()
+                respuesta = _abrir_respuesta(url, 0)
+                respuesta.raise_for_status()
+                codigo = respuesta.status_code
+                total = int(respuesta.headers.get("Content-Length", 0) or 0)
+            else:
+                _decir(f"[INFO] El servidor continúa «{model_name}» desde {_mb(ya)}.")
+        elif ya > 0 and codigo == 200:
+            _decir(
+                f"[AVISO] El servidor no acepta continuar «{model_name}». "
+                "Empiezo ese archivo de nuevo.",
+                "aviso",
+            )
+            ya = 0
+            _borrar(parcial)
+            total = int(respuesta.headers.get("Content-Length", 0) or 0)
+        else:
+            respuesta.raise_for_status()
+            total = int(respuesta.headers.get("Content-Length", 0) or 0)
+            if ya > 0:
+                ya = 0
+                _borrar(parcial)
+
+        if codigo != 416:
+            modo = "ab" if ya > 0 and codigo == 206 else "wb"
+            if modo == "wb":
+                ya = 0
+            ultimo_aviso = time.monotonic()
+            with open(parcial, modo) as salida:
+                try:
+                    # raw.stream entrega los bytes ya leídos antes de avisar
+                    # de que la conexión se cortó. iter_content se los traga.
+                    for trozo in respuesta.raw.stream(
+                        DOWNLOAD_CHUNK_SIZE, decode_content=False
+                    ):
+                        if not trozo:
+                            continue
+                        salida.write(trozo)
+                        ya += len(trozo)
+                        ahora = time.monotonic()
+                        if al_progreso is not None and (ahora - ultimo_aviso) >= 0.4:
+                            ultimo_aviso = ahora
+                            al_progreso(ya, total)
+                except (
+                    requests.RequestException,
+                    urllib3.exceptions.HTTPError,
+                    urllib3.exceptions.ProtocolError,
+                ) as exc:
+                    salida.flush()
+                    if isinstance(exc, requests.RequestException):
+                        raise
+                    raise requests.RequestException(str(exc)) from exc
+                salida.flush()
+                try:
+                    os.fsync(salida.fileno())
+                except OSError:
+                    pass
+            if al_progreso is not None:
+                al_progreso(ya, total if total else ya)
+            if total and ya < total:
+                raise requests.RequestException(
+                    f"«{model_name}» se cortó en {_mb(ya)} de {_mb(total)}."
+                )
+    finally:
+        respuesta.close()
+
+    if not os.path.isfile(parcial) or os.path.getsize(parcial) == 0:
+        raise requests.RequestException(
+            f"«{model_name}» no dejó datos en el archivo temporal."
+        )
+
+    if not correct_hash:
+        _decir(
+            f"[AVISO] «{model_name}» no tiene hash de referencia. Lo dejo igualmente.",
+            "aviso",
+        )
+        os.replace(parcial, destino)
+        return True
+
+    if al_estado is not None:
+        al_estado(f"Comprobando el hash de {model_name}")
+    _decir(f"[INFO] Comprobando el hash de «{model_name}».")
+    if not check_file_integrity(parcial, correct_hash):
+        _decir(
+            f"[AVISO] El hash de «{model_name}» no coincide. Lo borro y lo bajo otra vez.",
+            "aviso",
+        )
+        return False
+
+    os.replace(parcial, destino)
+    _decir(f"[INFO] «{model_name}» quedó completo y el hash coincide.")
+    _decir(f"[INFO] Guardado en {destino}.")
+    return True
+
+
+# Lote en segundo plano. Lo usa el panel de modelos. El arranque y el
+# instalador usan download_file (reintento sin tope, archivo .part).
+# Este lote solo debe recibir los modelos de ORDEN_REQUERIDO.
+
+CHUNK = DOWNLOAD_CHUNK_SIZE
 INTENTOS = 4
 TIMEOUT = (10, 60)
 TRABAJADORES = 3
@@ -278,27 +627,3 @@ def descargar_lote(
     resultados.sort(key=lambda item: orden.get(item.nombre, 0))
     return ResultadoLote(resultados)
 
-
-def download_file(
-    model_name: str,
-    file_path: str,
-    correct_hash: str | None,
-    url: str,
-    skip_hash_check: bool = False,
-) -> bool:
-    """Compatibilidad con el descargador anterior. True si el archivo queda bien."""
-    resultado = descargar_lote(
-        [
-            Trabajo(
-                nombre=model_name,
-                url=url,
-                destino=file_path,
-                hash_esperado=correct_hash,
-            )
-        ],
-        trabajadores=1,
-        omitir_hash=skip_hash_check,
-    )
-    if not resultado.archivos:
-        return False
-    return resultado.archivos[0].estado in ("ok", "omitido")

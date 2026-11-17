@@ -1,3 +1,4 @@
+import logging
 import threading
 import os
 import subprocess as sp
@@ -624,6 +625,10 @@ class ModelsProcessor(QtCore.QObject):
 
                     # If no engine config file or cache file exists run the probe
                     if not cache_is_valid:
+                        _inicio_motor = time.perf_counter()
+                        logging.getLogger("drako").info(
+                            "TensorRT: inicio del motor %s", model_name
+                        )
                         print(
                             f"[INFO] TensorRT load detected for {model_name}. Running isolated probe..."
                         )
@@ -707,6 +712,11 @@ class ModelsProcessor(QtCore.QObject):
                                     print(
                                         f"[INFO] Probe successful for {model_name}. Cache should be built."
                                     )
+                                    logging.getLogger("drako").info(
+                                        "TensorRT: fin del motor %s en %.1f s",
+                                        model_name,
+                                        time.perf_counter() - _inicio_motor,
+                                    )
                                     probe_successful = True
                                     break  # Exit the retry loop on success
                                 else:
@@ -736,6 +746,11 @@ class ModelsProcessor(QtCore.QObject):
                             if build_was_triggered:
                                 self.hide_build_dialog.emit()
 
+                            logging.getLogger("drako").exception(
+                                "TensorRT: el motor %s no se compiló (%.1f s). Sigo con CUDA.",
+                                model_name,
+                                time.perf_counter() - _inicio_motor,
+                            )
                             print(
                                 f"[AVISO] TensorRT no pudo compilar {model_name}. "
                                 "Se carga con CUDA para no detener Drako Cam."

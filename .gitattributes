@@ -1,1 +1,15 @@
 * text=auto
+
+# cmd.exe cuenta los saltos de línea como CRLF. Con solo LF, el goto cae a mitad de línea.
+# Estas reglas hacen que el checkout y el ZIP de GitHub (git archive) lleven CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.vbs text eol=crlf
+
+# El código y los scripts de shell se quedan en LF.
+*.py text eol=lf
+*.sh text eol=lf
+
+# El filtro DirectShow no es texto.
+vendor/unitycapture/*.dll binary

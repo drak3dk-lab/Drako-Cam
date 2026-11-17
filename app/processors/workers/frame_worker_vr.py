@@ -545,12 +545,10 @@ class VRProcessor:
         - Stitching back
         """
         # FW-RACE-02: read from snapshotted feeder state instead of live Qt button
-        swap_button_is_checked_global = (
-            self.worker.main_window.swapfacesButton.isChecked()
-        )
-        edit_button_is_checked_global = (
-            self.worker.main_window.editFacesButton.isChecked()
-        )
+        from app.ui.qt_vivo import cambio_activo, edicion_activa
+
+        swap_button_is_checked_global = cambio_activo(self.worker.main_window)
+        edit_button_is_checked_global = edicion_activa(self.worker.main_window)
 
         # How this frame's pixels map to directions: eye layout, storage projection
         # and per-eye coverage.  Everything downstream asks the geometry rather than
@@ -1247,8 +1245,17 @@ class VRProcessor:
 
         processed_tensor_rgb_uint8 = final_equirect_torch_cxhxw_rgb_uint8
 
-        # --- Bounding box overlays on the stitched equirectangular image ---
+        # Los recuadros se clonan aparte. El tensor limpio es la salida virtual.
         _det_faces_eq = [{"bbox": row[:4]} for row in bboxes_eq_np]
+        va_cajas = bool(_det_faces_eq) and (
+            control.get("ShowAllDetectedFacesBBoxToggle", False)
+            or control.get("ShowByteTrackBBoxToggle", False)
+        )
+        va_comparar = bool(compare_mode_active_vr and vr_compare_crops)
+        if va_cajas or va_comparar:
+            self.worker._tensor_vr_limpio = processed_tensor_rgb_uint8.clone()
+        else:
+            self.worker._tensor_vr_limpio = None
         if control.get("ShowAllDetectedFacesBBoxToggle", False) and _det_faces_eq:
             processed_tensor_rgb_uint8 = draw_bounding_boxes_on_detected_faces(
                 processed_tensor_rgb_uint8, _det_faces_eq

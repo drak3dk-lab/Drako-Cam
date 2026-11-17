@@ -30,7 +30,11 @@ def test_bats_llaman_a_powershell_solo_para_ese_proceso():
 
 
 def test_powershell_es_utf8_con_bom_y_sin_sintaxis_de_la_version_7():
-    for nombre in ("scripts/instalar.ps1", "scripts/desinstalar.ps1"):
+    for nombre in (
+        "scripts/instalar.ps1",
+        "scripts/desinstalar.ps1",
+        "scripts/camara_virtual.ps1",
+    ):
         datos = _bytes(nombre)
         assert datos.startswith(b"\xef\xbb\xbf"), nombre
         texto = datos.decode("utf-8-sig")
@@ -71,12 +75,44 @@ def test_instalar_cubre_lo_que_drako_necesita():
         "GpuPreference=2",
         "Fijar-GpuDedicada",
         "NvOptimusEnablement",
+        "UV_HTTP_TIMEOUT",
+        "1800",
+        "UV_HTTP_RETRIES",
+        "20",
+        "UV_CONCURRENT_DOWNLOADS",
+        "ya está definido",
+        "Es-FalloDeRed",
+        "La conexión va lenta, reintento",
+        "DRAKO_ESTADO La conexión va lenta, reintento",
+        "$maxIntentos = 5",
+        "Instalar-Modelos",
+        "download_models.py",
+        "no quedaron completos",
+        "6/9",
+        "Descargando los modelos del cambio de cara",
+        "9/9",
+        "Registrando la cámara virtual Drako Cam",
+        "camara_virtual.ps1",
+        "SoloCamara",
+        "AvisoCamara",
+        "No hace falta abrir OBS",
+        "ModoVentana",
     ):
         assert fragmento in texto
+    assert "Paso \"7/7\"" not in texto
     assert 'Join-Path $env:APPDATA "DrakoCam"' not in texto
     assert "Scripts\\activate" not in texto
     assert "Activate.ps1" not in texto
     assert "Set-ExecutionPolicy" not in texto
+
+
+def test_la_ventana_muestra_el_modelo_y_el_reintento():
+    texto = _texto("scripts/instalador_ventana.ps1")
+    assert "Bajando los modelos de la cara" in texto
+    assert "DRAKO_ESTADO " in texto
+    assert "/ 9.0" in texto
+    assert "Registrando la cámara Drako Cam" in texto
+    assert "Si se corta internet, se reanuda." in texto
 
 
 def test_desinstalar_no_borra_appdata_sin_confirmacion():
@@ -89,6 +125,9 @@ def test_desinstalar_no_borra_appdata_sin_confirmacion():
     assert "No se ha borrado nada." in texto
     assert "Quitar-PreferenciaGpu" in texto
     assert "GpuPreference" in texto
+    assert "Quitar-CamaraDrako" in texto
+    assert "SoloCamara" in texto
+    assert "Drako Cam" in texto
 
 
 def test_arrancar_vbs_es_ascii_y_no_abre_consola():
@@ -131,6 +170,7 @@ def test_inno_copia_la_app_y_reutiliza_instalar_bat():
         "version.json",
         "scripts\\*",
         "app\\*",
+        "vendor\\unitycapture\\*",
     ):
         assert requerido in texto
 
@@ -143,6 +183,7 @@ def test_workflow_compila_en_windows_y_solo_publica_con_etiqueta():
     assert "startsWith(github.ref, 'refs/tags/v')" in texto
     assert "gh release create" in texto
     assert "SoloComprobar" in texto
+    assert "camara_virtual.ps1" in texto
     assert "ExecutionPolicy Bypass" in texto
     assert "secrets." not in texto
 

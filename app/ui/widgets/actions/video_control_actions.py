@@ -14,6 +14,7 @@ from PIL import Image
 from PySide6 import QtGui, QtWidgets, QtCore
 
 from app.helpers.typing_helper import ControlTypes, FacesParametersTypes, MarkerData
+from app.ui.qt_vivo import valor_slider
 from app.helpers.miscellaneous import get_video_rotation
 
 if TYPE_CHECKING:
@@ -258,7 +259,7 @@ def set_up_timeline_zoom(main_window: "MainWindow"):
             zoom_label.setText(f"Zoom - x{multiplier:.1f}")
 
         # 1. Store the relative mathematical position of the current frame
-        current_val = main_window.videoSeekSlider.value()
+        current_val = valor_slider(main_window)
         max_val = main_window.videoSeekSlider.maximum()
         relative_pos = current_val / max(1, max_val)
 
@@ -304,7 +305,7 @@ def add_video_slider_marker(main_window: "MainWindow"):
         )
         return
 
-    current_position = int(main_window.videoSeekSlider.value())
+    current_position = int(valor_slider(main_window))
 
     if not main_window.target_faces:
         common_widget_actions.create_and_show_messagebox(
@@ -401,7 +402,7 @@ def set_job_start_frame(main_window: "MainWindow"):
     if block_if_issue_scan_active(main_window, "add a record start marker"):
         return
 
-    current_pos = int(main_window.videoSeekSlider.value())
+    current_pos = int(valor_slider(main_window))
 
     # Basic validation: Ensure we are not adding a start if the last pair is incomplete
     if main_window.job_marker_pairs and main_window.job_marker_pairs[-1][1] is None:
@@ -425,7 +426,7 @@ def set_job_end_frame(main_window: "MainWindow"):
     if block_if_issue_scan_active(main_window, "add a record end marker"):
         return
 
-    current_pos = int(main_window.videoSeekSlider.value())
+    current_pos = int(valor_slider(main_window))
 
     # Validation: Check if there's an incomplete pair to add an end to
     if (
@@ -483,7 +484,7 @@ def remove_video_slider_marker(main_window: "MainWindow"):
         )
         return
 
-    current_position = int(main_window.videoSeekSlider.value())
+    current_position = int(valor_slider(main_window))
     pair_removed = False
 
     removed_pair_indices = []
@@ -543,7 +544,7 @@ def move_slider_to_nearest_marker(main_window: "MainWindow", direction: str):
     :param direction: 'next' to move to the next marker, 'previous' to move to the previous marker.
     """
     new_position = None
-    current_position = int(main_window.videoSeekSlider.value())
+    current_position = int(valor_slider(main_window))
 
     # Combine standard markers with all job start/end markers from pairs
     all_markers = set(main_window.markers.keys())
@@ -779,7 +780,7 @@ def update_drop_frame_button_label(main_window: "MainWindow"):
     button = getattr(main_window, "dropFrameButton", None)
     if button is None:
         return
-    current_frame = int(main_window.videoSeekSlider.value())
+    current_frame = int(valor_slider(main_window))
     if current_frame in main_window.dropped_frames:
         button.setText("Restore Frame")
         button.setToolTip("Restore this frame so it is included in render output.")
@@ -906,7 +907,7 @@ def clear_dropped_frames(main_window: "MainWindow"):
 
 
 def toggle_drop_frame(main_window: "MainWindow"):
-    current_position = int(main_window.videoSeekSlider.value())
+    current_position = int(valor_slider(main_window))
     if current_position in main_window.dropped_frames:
         main_window.dropped_frames.remove(current_position)
         main_window.videoSeekSlider.remove_dropped_marker_and_paint(current_position)
@@ -936,7 +937,7 @@ def drop_all_issue_frames(main_window: "MainWindow"):
 
 # --- Issue scan execution / progress helpers ---
 def _move_slider_to_nearest_issue(main_window: "MainWindow", direction: str):
-    current_position = int(main_window.videoSeekSlider.value())
+    current_position = int(valor_slider(main_window))
     review_frames = sorted(
         get_selected_face_issue_frames(main_window) | set(main_window.dropped_frames)
     )
@@ -1152,7 +1153,7 @@ def _start_issue_scan_ui(
     state.update(
         {
             "active": True,
-            "start_frame": int(main_window.videoSeekSlider.value()),
+            "start_frame": int(valor_slider(main_window)),
             "scope_text": scope_text,
             "keep_controls": bool(main_window.control.get("KeepControlsToggle", False)),
             "frames_scanned": 0,
@@ -1196,7 +1197,7 @@ def _restore_issue_scan_ui(main_window: "MainWindow") -> None:
     if not state.get("keep_controls", False):
         layout_actions.enable_all_parameters_and_control_widget(main_window)
 
-    start_frame = int(state.get("start_frame", main_window.videoSeekSlider.value()))
+    start_frame = int(state.get("start_frame", valor_slider(main_window)))
     _set_slider_frame_without_side_effects(main_window, start_frame)
     main_window.video_processor.current_frame_number = start_frame
 
@@ -1485,7 +1486,7 @@ def advance_video_slider_by_n_frames(main_window: "MainWindow", n=None):
         if n is None:
             n = int(main_window.control.get("FrameSkipStepSlider", 30))
 
-        current_position = int(main_window.videoSeekSlider.value())
+        current_position = int(valor_slider(main_window))
         new_position = current_position + n
         if new_position > video_processor.max_frame_number:
             new_position = video_processor.max_frame_number
@@ -1530,7 +1531,7 @@ def rewind_video_slider_by_n_frames(main_window: "MainWindow", n=None):
         if n is None:
             n = int(main_window.control.get("FrameSkipStepSlider", 30))
 
-        current_position = int(main_window.videoSeekSlider.value())
+        current_position = int(valor_slider(main_window))
         new_position = current_position - n
         if new_position < 0:
             new_position = 0
@@ -2052,7 +2053,7 @@ def record_video(main_window: "MainWindow", checked: bool):
             # If Batch processing, use frame position 0
             current_frame = 0
             if not is_batch_processing:
-                current_frame = main_window.videoSeekSlider.value()
+                current_frame = valor_slider(main_window)
 
             max_frame = video_processor.max_frame_number
             if max_frame is None or max_frame <= 0:
@@ -2280,16 +2281,53 @@ def initialize_media_button_icons(main_window: "MainWindow"):
     set_record_button_icon(main_window)
 
 
+def _boton_vivo(main_window: "MainWindow", nombre: str):
+    from app.ui.qt_vivo import qt_sigue
+
+    boton = getattr(main_window, nombre, None)
+    return boton if qt_sigue(boton) else None
+
+
+def _es_directo_webcam(main_window: "MainWindow") -> bool:
+    procesador = getattr(main_window, "video_processor", None)
+    return getattr(procesador, "file_type", "") == "webcam"
+
+
+def _rotular_boton_reproducir(main_window: "MainWindow", en_marcha: bool) -> None:
+    """En la webcam el botón es EN VIVO. En un archivo sigue siendo reproducir."""
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    if _es_directo_webcam(main_window):
+        if hasattr(boton, "setText"):
+            boton.setText("EN VIVO")
+        boton.setToolTip(
+            "Detener el directo"
+            if en_marcha
+            else "EN VIVO: envía la cara a la cámara virtual Drako Cam, sin abrir OBS"
+        )
+        return
+    if hasattr(boton, "setText"):
+        boton.setText("")
+    boton.setToolTip("Stop" if en_marcha else "Play")
+
+
 def set_play_button_icon_to_play(main_window: "MainWindow"):
     """Sets the Play button icon and tooltip to the 'ready-to-play' (stopped) state."""
-    main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
-    main_window.buttonMediaPlay.setToolTip("Play")
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    boton.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
+    _rotular_boton_reproducir(main_window, False)
 
 
 def set_play_button_icon_to_stop(main_window: "MainWindow"):
     """Sets the Play button icon and tooltip to the 'playing active' (stop) state."""
-    main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
-    main_window.buttonMediaPlay.setToolTip("Stop")
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    boton.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
+    _rotular_boton_reproducir(main_window, True)
 
 
 def reset_media_buttons(main_window: "MainWindow"):
@@ -2297,38 +2335,51 @@ def reset_media_buttons(main_window: "MainWindow"):
     Resets the Play and Record buttons to their unchecked, enabled state without
     triggering their toggled/clicked signals.  Updates icons to match the new state.
     """
-    # Rest the state and icons of the buttons without triggering Onchange methods
-    main_window.buttonMediaPlay.blockSignals(True)
-    main_window.buttonMediaPlay.setChecked(False)
-    main_window.buttonMediaPlay.setEnabled(True)  # Re-enable the button
-    main_window.buttonMediaPlay.blockSignals(False)
-    main_window.buttonMediaRecord.blockSignals(True)
-    main_window.buttonMediaRecord.setChecked(False)
-    main_window.buttonMediaRecord.blockSignals(False)
-    set_play_button_icon(main_window)
-    set_record_button_icon(main_window)
+    # La pantalla sencilla borra estos botones. Seguir usándolos cierra el programa.
+    play = _boton_vivo(main_window, "buttonMediaPlay")
+    record = _boton_vivo(main_window, "buttonMediaRecord")
+    if play is None and record is None:
+        return
+    try:
+        if play is not None:
+            play.blockSignals(True)
+            play.setChecked(False)
+            play.setEnabled(True)
+            play.blockSignals(False)
+        if record is not None:
+            record.blockSignals(True)
+            record.setChecked(False)
+            record.blockSignals(False)
+        set_play_button_icon(main_window)
+        set_record_button_icon(main_window)
+    except RuntimeError:
+        return
 
 
 def set_play_button_icon(main_window: "MainWindow"):
     """Updates the Play button icon and tooltip to reflect its current checked state."""
-    if main_window.buttonMediaPlay.isChecked():
-        main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
-        main_window.buttonMediaPlay.setToolTip("Stop")
+    boton = _boton_vivo(main_window, "buttonMediaPlay")
+    if boton is None:
+        return
+    if boton.isChecked():
+        boton.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
+        _rotular_boton_reproducir(main_window, True)
     else:
-        main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
-        main_window.buttonMediaPlay.setToolTip("Play")
+        boton.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
+        _rotular_boton_reproducir(main_window, False)
 
 
 def set_record_button_icon(main_window: "MainWindow"):
     """Updates the Record button icon and tooltip to reflect its current checked state."""
-    if main_window.buttonMediaRecord.isChecked():
-        main_window.buttonMediaRecord.setIcon(QtGui.QIcon(":/media/media/rec_on.png"))
-        main_window.buttonMediaRecord.setToolTip("Stop Recording")
+    boton = _boton_vivo(main_window, "buttonMediaRecord")
+    if boton is None:
+        return
+    if boton.isChecked():
+        boton.setIcon(QtGui.QIcon(":/media/media/rec_on.png"))
+        boton.setToolTip("Stop Recording")
     else:
-        main_window.buttonMediaRecord.setIcon(
-            QtGui.QIcon(":/media/media/rec_hover.png")
-        )
-        main_window.buttonMediaRecord.setToolTip("Start Recording")
+        boton.setIcon(QtGui.QIcon(":/media/media/rec_hover.png"))
+        boton.setToolTip("Start Recording")
 
 
 # @misc_helpers.benchmark
@@ -2521,13 +2572,13 @@ def update_widget_values_from_markers(main_window: "MainWindow", new_position: i
 def on_slider_moved(main_window: "MainWindow"):
     """Slot connected to sliderMoved; currently a no-op placeholder for future drag-time logic."""
     # print("Called on_slider_moved()")
-    main_window.videoSeekSlider.value()
+    valor_slider(main_window)
     # print(f"\nSlider Moved. position: {position}\n")
 
 
 def on_slider_pressed(main_window: "MainWindow"):
     """Slot connected to sliderPressed; currently a no-op placeholder for future press-time logic."""
-    main_window.videoSeekSlider.value()
+    valor_slider(main_window)
     # print(f"\nSlider Pressed. position: {position}\n")
 
 
@@ -2572,7 +2623,7 @@ def on_slider_released(main_window: "MainWindow"):
     """
     # print("Called on_slider_released()")
 
-    new_position = main_window.videoSeekSlider.value()  # Get the final position
+    new_position = valor_slider(main_window)  # Get the final position
     # print(f"\nSlider released. New position: {new_position}\n")
 
     video_processor = main_window.video_processor

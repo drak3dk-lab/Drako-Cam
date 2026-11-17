@@ -112,6 +112,12 @@ class GestorDescarga:
         self._cancelar.set()
 
     def pedir(self, nombres: list[str]) -> None:
+        from app.processors.models_data import ORDEN_REQUERIDO
+
+        permitidos = set(ORDEN_REQUERIDO)
+        nombres = [nombre for nombre in nombres if nombre in permitidos]
+        if not nombres:
+            return
         pendientes = [nombre for nombre in nombres if not archivo_presente(nombre)]
         if not pendientes:
             return

@@ -17,7 +17,9 @@ def update_graphics_view(
     # print('(update_graphics_view) current_frame_number', current_frame_number)
 
     # Update the video seek slider and line edit safely to avoid recursive signal firing
-    if main_window.videoSeekSlider.value() != current_frame_number:
+    from app.ui.qt_vivo import slider_responde, valor_slider
+
+    if slider_responde(main_window) and valor_slider(main_window) != current_frame_number:
         main_window.videoSeekSlider.blockSignals(True)
         main_window.videoSeekSlider.setValue(current_frame_number)
         main_window.videoSeekSlider.blockSignals(False)
@@ -66,8 +68,9 @@ def update_graphics_view(
     scene_rect = pixmap_item.boundingRect()
     main_window.graphicsViewFrame.setSceneRect(scene_rect)
 
-    # Reset the view or restore the previous transform
-    if reset_fit:
+    # En el estudio la vista siempre llena el marco. El editor viejo solo
+    # reencaja cuando se pide, para no pisar el zoom del usuario.
+    if reset_fit or getattr(main_window, "_estudio", None) is not None:
         fit_image_to_view(main_window, pixmap_item, scene_rect)
 
 
@@ -82,7 +85,6 @@ def fit_image_to_view(
     """Reset the view and fit the image to the view, keeping the aspect ratio."""
     graphicsViewFrame = main_window.graphicsViewFrame
     # Reset the transform and set the scene rectangle
-    graphicsViewFrame.resetTransform()
-    graphicsViewFrame.setSceneRect(scene_rect)
-    # Fit the image to the view, keeping the aspect ratio
-    graphicsViewFrame.fitInView(pixmap_item, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+    from app.ui.estudio.vista import encajar_pixmap
+
+    encajar_pixmap(graphicsViewFrame, pixmap_item, scene_rect)

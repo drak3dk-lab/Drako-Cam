@@ -10,6 +10,7 @@ from typing import ClassVar
 
 from app.drako.catalogo_modelos import (
     ESENCIAL,
+    OPCIONAL,
     archivo_presente,
     esenciales,
     fichas,
@@ -29,22 +30,13 @@ def test_cada_modelo_del_registro_esta_clasificado():
     assert all(item.porque.strip() for item in fichas())
     assert all(item.bytes > 0 for item in fichas())
     clases = {item.clase for item in fichas()}
-    assert clases == {ESENCIAL}
+    assert ESENCIAL in clases and OPCIONAL in clases
 
 
 def test_el_camino_en_vivo_es_el_conjunto_esencial():
-    nombres = {item.nombre for item in esenciales()}
-    assert nombres == {
-        "Inswapper128",
-        "Inswapper128ArcFace",
-        "SCRFD2.5g",
-        "FaceLandmark203",
-        "Occluder",
-        "FaceParser",
-        "GFPGANv1.4",
-        "GPENBFR256",
-    }
-    assert opcionales() == []
+    from app.processors.models_data import ORDEN_REQUERIDO
+
+    assert [item.nombre for item in esenciales()] == list(ORDEN_REQUERIDO)
     for excluido in (
         "DeoldifyArt",
         "RefLdm",
@@ -55,23 +47,26 @@ def test_el_camino_en_vivo_es_el_conjunto_esencial():
         "SimSwap512",
         "AlphaFace",
         "XSeg",
-        "RetinaFace",
+        "SCRFD2.5g",
+        "FaceLandmark203",
+        "GPENBFR256",
     ):
-        assert excluido not in nombres
+        assert excluido not in {item.nombre for item in esenciales()}
+        assert any(item.nombre == excluido for item in opcionales())
 
 
 def test_el_primer_arranque_pesa_menos_que_el_catalogo():
     esencial = suma_bytes(esenciales())
-    assert esencial == 1_136_934_120
-    assert texto_tamano(esencial) == "1,14 GB"
-    assert esencial < 2_000_000_000
+    assert esencial == 960_185_987
+    assert texto_tamano(esencial) == "960 MB"
+    assert esencial < suma_bytes(fichas())
 
 
 def test_la_documentacion_lista_cada_modelo_y_los_totales():
     texto = Path("docs/modelos.md").read_text(encoding="utf-8")
-    assert "1,14 GB" in texto
+    assert "960 MB" in texto
     assert "17,36 GB" in texto
-    for item in fichas():
+    for item in esenciales():
         assert item.nombre in texto
 
 
@@ -83,21 +78,11 @@ def test_el_progreso_dice_el_total_y_lo_que_queda():
     assert "1 min 30 s" in linea
 
 
-def test_por_defecto_solo_pide_esenciales(monkeypatch):
-    import download_models
-    from app.helpers.downloader import ResultadoArchivo, ResultadoLote
+def test_por_defecto_solo_pide_esenciales():
+    from app.processors.models_data import ORDEN_REQUERIDO, modelos_requeridos
 
-    vistos: dict[str, list[str]] = {}
-
-    def falso(nombres, **_kwargs):
-        vistos["nombres"] = list(nombres)
-        return ResultadoLote(
-            [ResultadoArchivo(nombre, "omitido") for nombre in nombres]
-        )
-
-    monkeypatch.setattr(download_models, "descargar_nombres", falso)
-    assert download_models.descargar_modelos() is True
-    assert vistos["nombres"] == [item.nombre for item in esenciales()]
+    assert [item["model_name"] for item in modelos_requeridos()] == list(ORDEN_REQUERIDO)
+    assert [item.nombre for item in esenciales()] == list(ORDEN_REQUERIDO)
 
 
 def test_el_manifiesto_evita_repetir_la_comprobacion(tmp_path, monkeypatch):

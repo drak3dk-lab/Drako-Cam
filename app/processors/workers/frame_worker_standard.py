@@ -43,15 +43,14 @@ class StandardProcessor:
         - Rotation
         - Detection
         - Swapping/Editing
-        - Overlays (BBox, Landmarks, Comparison)
+        - El fotograma devuelto va limpio. Los adornos de la interfaz
+          se aplican después, solo en la vista.
         """
         # FW-RACE-02: read button state from snapshotted feeder dict, not live Qt buttons
-        swap_button_is_checked_global = (
-            self.worker.main_window.swapfacesButton.isChecked()
-        )
-        edit_button_is_checked_global = (
-            self.worker.main_window.editFacesButton.isChecked()
-        )
+        from app.ui.qt_vivo import cambio_activo, edicion_activa
+
+        swap_button_is_checked_global = cambio_activo(self.worker.main_window)
+        edit_button_is_checked_global = edicion_activa(self.worker.main_window)
 
         # FW-RACE-01: snapshot target_faces under lock so the worker thread never
         # iterates the live dict while the UI thread may be modifying it.
@@ -515,6 +514,11 @@ class StandardProcessor:
                             target_face,
                             face_bbox=best_fface["bbox"],
                         )
+                        _params_for_swap_a = dict(_params_for_swap_a)
+                        _params_for_swap_a["_cara_id"] = str(
+                            getattr(target_face, "face_id", "principal")
+                        )
+                        _params_for_swap_a["_caja"] = best_fface.get("bbox")
                         try:
                             (
                                 img,
@@ -532,6 +536,11 @@ class StandardProcessor:
                                 dfm_model_name=params["DFMModelSelection"],
                                 kv_map=_reaging_kv,
                             )
+                            from app.drako.rendimiento.diagnostico import (
+                                anotar_swap_en_directo,
+                            )
+
+                            anotar_swap_en_directo(self.worker, target_face)
                             if edit_button_is_checked_global and any(
                                 params[f]
                                 for f in (
@@ -662,6 +671,11 @@ class StandardProcessor:
                             best_target,
                             face_bbox=fface["bbox"],
                         )
+                        _params_for_swap_b = dict(_params_for_swap_b)
+                        _params_for_swap_b["_cara_id"] = str(
+                            getattr(best_target, "face_id", "principal")
+                        )
+                        _params_for_swap_b["_caja"] = fface.get("bbox")
                         try:
                             img, fface["original_face"], fface["swap_mask"] = (
                                 self.worker.swap_core(
@@ -677,6 +691,11 @@ class StandardProcessor:
                                     kv_map=_reaging_kv,
                                 )
                             )
+                            from app.drako.rendimiento.diagnostico import (
+                                anotar_swap_en_directo,
+                            )
+
+                            anotar_swap_en_directo(self.worker, best_target)
                             if edit_button_is_checked_global and any(
                                 params[f]
                                 for f in (
@@ -809,38 +828,40 @@ class StandardProcessor:
                 fface["_displayspace_rescaled"] = True
 
         processed_tensor_rgb_uint8 = img
+        self._caras_para_vista = det_faces_data_for_display
+        return processed_tensor_rgb_uint8
 
-        # --- Overlays ---
-        if control["ShowAllDetectedFacesBBoxToggle"] and det_faces_data_for_display:
-            processed_tensor_rgb_uint8 = draw_bounding_boxes_on_detected_faces(
-                processed_tensor_rgb_uint8, det_faces_data_for_display
-            )
+    def adornar_para_vista(self, tensor: torch.Tensor, control: dict) -> torch.Tensor:
+        """Copia el fotograma y dibuja solo lo que ve la interfaz.
 
-        if control.get("ShowByteTrackBBoxToggle", False) and det_faces_data_for_display:
-            processed_tensor_rgb_uint8 = draw_bounding_boxes_on_detected_faces(
-                processed_tensor_rgb_uint8,
-                det_faces_data_for_display,
-                color_rgb=[255, 165, 0],
-            )
+        El tensor de origen no se modifica: es el que sale a la cámara virtual,
+        sin «EN VIVO», sin recuadros, sin puntos y sin la vista de comparación.
+        """
+        from app.drako.rendimiento.camara_virtual import hay_adornos_de_interfaz
 
-        if control["ShowLandmarksEnableToggle"] and det_faces_data_for_display:
-            landmarks_data = self._resolve_landmarks_to_draw(
-                det_faces_data_for_display, control
-            )
-            if landmarks_data:
-                temp_permuted = processed_tensor_rgb_uint8.permute(1, 2, 0)
-                temp_permuted = paint_landmarks_on_image(temp_permuted, landmarks_data)
-                processed_tensor_rgb_uint8 = temp_permuted.permute(2, 0, 1)
-
-        compare_mode_active = (
+        caras = list(getattr(self, "_caras_para_vista", None) or [])
+        comparar = bool(
             self.worker.is_view_face_mask or self.worker.is_view_face_compare
         )
-        if compare_mode_active and det_faces_data_for_display:
-            processed_tensor_rgb_uint8 = self.get_compare_faces_image(
-                processed_tensor_rgb_uint8, det_faces_data_for_display, control
+        dibujar = bool(caras) and hay_adornos_de_interfaz(control, comparar=False)
+        if not dibujar and not (comparar and caras):
+            return tensor
+        vista = tensor.clone()
+        if control.get("ShowAllDetectedFacesBBoxToggle") and caras:
+            vista = draw_bounding_boxes_on_detected_faces(vista, caras)
+        if control.get("ShowByteTrackBBoxToggle", False) and caras:
+            vista = draw_bounding_boxes_on_detected_faces(
+                vista, caras, color_rgb=[255, 165, 0]
             )
-
-        return processed_tensor_rgb_uint8
+        if control.get("ShowLandmarksEnableToggle") and caras:
+            landmarks_data = self._resolve_landmarks_to_draw(caras, control)
+            if landmarks_data:
+                temp_permuted = vista.permute(1, 2, 0)
+                temp_permuted = paint_landmarks_on_image(temp_permuted, landmarks_data)
+                vista = temp_permuted.permute(2, 0, 1)
+        if comparar and caras:
+            vista = self.get_compare_faces_image(vista, caras, control)
+        return vista
 
     def _resolve_landmarks_to_draw(self, det_faces_data: list, control: dict) -> list:
         """

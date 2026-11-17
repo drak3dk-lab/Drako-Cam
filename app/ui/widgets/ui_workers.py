@@ -16,7 +16,6 @@ from app.helpers import miscellaneous as misc_helpers
 from app.ui.widgets.actions import common_actions as common_widget_actions
 from app.ui.widgets.actions import filter_actions
 from app.ui.widgets.actions import target_videos_list_actions
-from app.ui.widgets.settings_layout_data import CAMERA_BACKENDS
 from app.processors.video_utils.issue_scanner import IssueScanner
 
 if TYPE_CHECKING:
@@ -212,33 +211,8 @@ class TargetMediaLoaderWorker(qtc.QThread):
                     self.thumbnail_ready.emit(*result)
 
     def load_webcams(self):
-        self.main_window.placeholder_update_signal.emit(
-            self.main_window.targetVideosList, True
-        )
-        camera_backend = CAMERA_BACKENDS[
-            self.control_snapshot.get("WebcamBackendSelection", "DirectShow")
-        ]
-        max_no = int(self.control_snapshot.get("WebcamMaxNoSelection", 1))
-
-        for i in range(max_no):
-            try:
-                q_image = common_widget_actions.extract_frame_as_image(
-                    self.main_window,
-                    media_file_path=f"Webcam {i}",
-                    file_type="webcam",
-                    webcam_index=i,
-                    webcam_backend=camera_backend,
-                )
-                media_id = str(uuid.uuid1().int)
-
-                if q_image:
-                    # Emit the signal to update GUI
-                    self.webcam_thumbnail_ready.emit(
-                        f"Webcam {i}", q_image, "webcam", media_id, i, camera_backend
-                    )
-            except Exception:
-                traceback.print_exc()
-
+        # No se abre la webcam para una miniatura. Abrirla y soltarla, y luego
+        # volver a abrirla para el directo, hace que Windows la dé por ocupada.
         self.main_window.placeholder_update_signal.emit(
             self.main_window.targetVideosList, False
         )
@@ -292,7 +266,9 @@ class IssueScanWorker(qtc.QThread):
                 self._control_defaults_snapshot,
             )
         )
-        self._reset_frame_number = int(main_window.videoSeekSlider.value())
+        from app.ui.qt_vivo import valor_slider
+
+        self._reset_frame_number = valor_slider(main_window, 0)
 
     def cancel(self):
         self._cancel_event.set()
@@ -368,6 +344,7 @@ class InputFacesLoaderWorker(qtc.QThread):
         self.files_list = files_list or []
         self.face_ids = face_ids or []
         self._running = True  # Flag to control the running state
+        self.error_lectura = None
 
         # SNAPSHOT : get parameters in main thread before run()
         self.control_snapshot = (
@@ -449,6 +426,12 @@ class InputFacesLoaderWorker(qtc.QThread):
                 # WORKER SAFETY: Wrap the entire GPU image processing in a try/except block.
                 # All CUDA tensor operations MUST execute here synchronously to prevent
                 # Context errors or GPU race conditions.
+                import logging
+                import time
+
+                _log_foto = logging.getLogger("drako")
+                _t_foto = time.perf_counter()
+                _log_foto.info("Embedding de la foto: inicio %s", image_file_path)
                 try:
                     img = torch.from_numpy(frame.astype("uint8")).to(
                         self.main_window.models_processor.device
@@ -478,6 +461,11 @@ class InputFacesLoaderWorker(qtc.QThread):
                     )
 
                     if kpss_5 is None or len(kpss_5) == 0:
+                        _log_foto.info(
+                            "Embedding de la foto: fin %s en %.1f s, sin cara",
+                            image_file_path,
+                            time.perf_counter() - _t_foto,
+                        )
                         continue
 
                     face_kps = kpss_5[0]
@@ -524,8 +512,17 @@ class InputFacesLoaderWorker(qtc.QThread):
                         self.thumbnail_ready.emit(
                             image_file_path, face_img, embedding_store, q_image, face_id
                         )
+                        _log_foto.info(
+                            "Embedding de la foto: fin %s en %.1f s",
+                            image_file_path,
+                            time.perf_counter() - _t_foto,
+                        )
 
                 except Exception as e:
+                    self.error_lectura = e
+                    _log_foto.exception(
+                        "Embedding de la foto: excepción en %s", image_file_path
+                    )
                     print(
                         f"[ERROR] InputFacesLoaderWorker: Failed to process {image_file_path}. Reason: {e}"
                     )

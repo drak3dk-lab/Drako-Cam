@@ -1,0 +1,1491 @@
+"""Pantalla Halo: la cámara al centro, la foto a un clic y EN VIVO.
+
+No conoce el motor de caras. Emite lo que la persona hace y pinta
+el estado que le pasan.
+"""
+
+from __future__ import annotations
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from app.ui.estudio.ajuste_panel import PanelAjustes
+from app.ui.estudio.ojo import BotonIris, MarcaOjo
+from app.ui.estudio.estilo import ESTILO
+from app.ui.estudio.logica import (
+    CALIDADES,
+    FONDOS,
+    CaraVista,
+    extension_admitida,
+)
+
+_FILTRO_FOTO = "Fotos (*.jpg *.jpeg *.png *.webp *.bmp)"
+
+
+def _propiedad(widget: QtWidgets.QWidget, nombre: str, valor: object) -> None:
+    widget.setProperty(nombre, valor)
+    estilo = widget.style()
+    estilo.unpolish(widget)
+    estilo.polish(widget)
+    widget.update()
+
+
+class BotonPildora(QtWidgets.QPushButton):
+    """El 95 % al pulsar: se nota, y vuelve en el mismo gesto."""
+
+    def __init__(self, texto: str, parent: QtWidgets.QWidget | None = None):
+        super().__init__(texto, parent)
+        self._pulsado = False
+        self._pintando = False
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+
+    def mousePressEvent(self, evento: QtGui.QMouseEvent) -> None:
+        self._pulsado = True
+        self.update()
+        super().mousePressEvent(evento)
+
+    def mouseReleaseEvent(self, evento: QtGui.QMouseEvent) -> None:
+        self._pulsado = False
+        self.update()
+        super().mouseReleaseEvent(evento)
+
+    def paintEvent(self, evento: QtGui.QPaintEvent) -> None:
+        if not self._pulsado or self._pintando:
+            super().paintEvent(evento)
+            return
+        self._pintando = True
+        base = QtGui.QPixmap(self.size())
+        base.fill(QtCore.Qt.GlobalColor.transparent)
+        self.render(base)
+        self._pintando = False
+        pintor = QtGui.QPainter(self)
+        pintor.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        margen_x = self.width() * 0.025
+        margen_y = self.height() * 0.025
+        pintor.drawPixmap(
+            QtCore.QRectF(margen_x, margen_y, self.width() * 0.95, self.height() * 0.95),
+            base,
+            QtCore.QRectF(0, 0, base.width(), base.height()),
+        )
+        pintor.end()
+
+
+class _FiltroEncaje(QtCore.QObject):
+    """Al cambiar el marco, el vídeo vuelve a llenarlo sin estirarse."""
+
+    def __init__(self, vista: QtWidgets.QWidget, estudio: QtWidgets.QWidget):
+        super().__init__(vista)
+        self._vista = vista
+        self._estudio = estudio
+
+    def eventFilter(self, obj, evento) -> bool:
+        if obj is self._vista and evento.type() == QtCore.QEvent.Type.Resize:
+            self.encajar()
+        return False
+
+    def encajar(self) -> None:
+        from app.ui.estudio.vista import encajar_si_hay_imagen
+
+        encajar_si_hay_imagen(self._vista)
+
+
+class MarcoVista(QtWidgets.QWidget):
+    """La luz azul respira solo mientras el directo está encendido."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self._aliento = 0.0
+        self._vivo = False
+        self._animacion = QtCore.QVariantAnimation(self)
+        self._animacion.setStartValue(0.18)
+        self._animacion.setEndValue(0.46)
+        self._animacion.setDuration(1700)
+        self._animacion.setEasingCurve(QtCore.QEasingCurve.Type.InOutSine)
+        self._animacion.setLoopCount(-1)
+        self._animacion.valueChanged.connect(self._respirar)
+        self.setMinimumSize(240, 135)
+
+    def encender(self, activo: bool) -> None:
+        self._vivo = activo
+        if activo:
+            if self._animacion.state() != QtCore.QAbstractAnimation.State.Running:
+                self._animacion.start()
+        else:
+            self._animacion.stop()
+            self._aliento = 0.0
+            self.update()
+
+    def _respirar(self, valor: object) -> None:
+        self._aliento = float(valor)
+        self.update()
+
+    def paintEvent(self, evento: QtGui.QPaintEvent) -> None:
+        pintor = QtGui.QPainter(self)
+        pintor.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        rect = QtCore.QRectF(self.rect()).adjusted(8, 8, -8, -8)
+        if self._vivo:
+            color = QtGui.QColor(242, 10, 28, int(50 + 70 * self._aliento))
+            pintor.setPen(QtGui.QPen(color, 1.5))
+            pintor.setBrush(QtGui.QColor("#050608"))
+        else:
+            pintor.setPen(QtGui.QPen(QtGui.QColor(160, 190, 255, 28), 1))
+            pintor.setBrush(QtGui.QColor("#050608"))
+        pintor.drawRoundedRect(rect, 16, 16)
+        pintor.end()
+
+
+def texto_recortado(nombre: str, fuente: QtGui.QFont, ancho: int) -> str:
+    if ancho <= 8:
+        return nombre
+    return QtGui.QFontMetrics(fuente).elidedText(nombre, QtCore.Qt.TextElideMode.ElideRight, ancho)
+
+
+class FichaCara(QtWidgets.QFrame):
+    elegida = QtCore.Signal(str)
+    favorita = QtCore.Signal(str, bool)
+    borrar = QtCore.Signal(str)
+    renombrar = QtCore.Signal(str)
+
+    def __init__(self, cara: CaraVista, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self.cara_id = cara.id
+        self.setFixedSize(96, 128)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        caja = QtWidgets.QVBoxLayout(self)
+        caja.setContentsMargins(4, 4, 4, 4)
+        caja.setSpacing(4)
+        self.foto = QtWidgets.QLabel()
+        self.foto.setFixedSize(88, 88)
+        self.foto.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._pintar(cara.ruta, False)
+        self._nombre_completo = cara.nombre
+        self.nombre = QtWidgets.QLabel()
+        self.nombre.setObjectName("pista")
+        self.nombre.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        fuente = self.nombre.font()
+        fuente.setPixelSize(12)
+        self.nombre.setFont(fuente)
+        self.nombre.setMinimumWidth(0)
+        self.nombre.setToolTip(cara.nombre)
+        fila = QtWidgets.QHBoxLayout()
+        fila.addWidget(self.nombre, 1)
+        self._poner_nombre(cara.nombre)
+        self.estrella = QtWidgets.QToolButton()
+        self.estrella.setText("★" if cara.favorita else "☆")
+        self.estrella.setFixedSize(28, 28)
+        self.estrella.setAutoRaise(True)
+        self.estrella.clicked.connect(self._alternar)
+        self._favorita = cara.favorita
+        fila.addWidget(self.estrella)
+        caja.addWidget(self.foto)
+        caja.addLayout(fila)
+        self.atajo = QtWidgets.QLabel(cara.atajo, self.foto)
+        self.atajo.setVisible(bool(cara.atajo))
+        self.atajo.setStyleSheet(
+            "background: rgba(0,0,0,0.66); color: #F1F4F9; border-radius: 6px; padding: 1px 5px;"
+        )
+        self.atajo.move(6, 6)
+        self.quitar = QtWidgets.QToolButton(self.foto)
+        self.quitar.setText("×")
+        self.quitar.setToolTip("Quitar esta foto")
+        self.quitar.setAccessibleName("Quitar foto")
+        self.quitar.setFixedSize(22, 22)
+        self.quitar.setVisible(False)
+        self.quitar.setStyleSheet(
+            "QToolButton { background: rgba(4,6,10,0.82); color: #F1F4F9; border: none; border-radius: 11px; }"
+            "QToolButton:hover { background: #F20A1C; color: #FFF6F6; }"
+        )
+        self.quitar.clicked.connect(lambda: self.borrar.emit(self.cara_id))
+        self.quitar.move(60, 4)
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._menu)
+
+    def _pintar(self, ruta: str, seleccionada: bool) -> None:
+        imagen = QtGui.QImage(ruta)
+        if imagen.isNull():
+            self.foto.setText(self.cara_id[:1].upper())
+        else:
+            pixmap = QtGui.QPixmap.fromImage(imagen).scaled(
+                88,
+                88,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            self.foto.setPixmap(pixmap)
+        borde = "#F20A1C" if seleccionada else "rgba(160,190,255,0.16)"
+        grosor = "2px" if seleccionada else "1px"
+        self.foto.setStyleSheet(
+            f"border: {grosor} solid {borde}; border-radius: 12px; background: #121620;"
+        )
+
+    def marcar(self, seleccionada: bool, cara: CaraVista) -> None:
+        self._pintar(cara.ruta, seleccionada)
+        self._favorita = cara.favorita
+        self.estrella.setText("★" if cara.favorita else "☆")
+        self.atajo.setText(cara.atajo)
+        self.atajo.setVisible(bool(cara.atajo))
+        self._poner_nombre(cara.nombre)
+
+    def _poner_nombre(self, nombre: str) -> None:
+        self._nombre_completo = nombre
+        self.nombre.setToolTip(nombre)
+        self.nombre.setText(texto_recortado(nombre, self.nombre.font(), 58))
+
+    def enterEvent(self, evento) -> None:
+        self.quitar.setVisible(True)
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento) -> None:
+        self.quitar.setVisible(False)
+        super().leaveEvent(evento)
+
+    def mouseDoubleClickEvent(self, evento: QtGui.QMouseEvent) -> None:
+        self.renombrar.emit(self.cara_id)
+        super().mouseDoubleClickEvent(evento)
+
+    def _menu(self, punto: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Renombrar", lambda: self.renombrar.emit(self.cara_id))
+        menu.addAction("Borrar", lambda: self.borrar.emit(self.cara_id))
+        menu.exec(self.mapToGlobal(punto))
+
+    def mousePressEvent(self, evento: QtGui.QMouseEvent) -> None:
+        self.elegida.emit(self.cara_id)
+        super().mousePressEvent(evento)
+
+    def _alternar(self) -> None:
+        self.favorita.emit(self.cara_id, not self._favorita)
+
+
+class _ColumnaLateral(QtWidgets.QWidget):
+    """Prefiere 400 px y puede bajar a 300 si la ventana se estrecha."""
+
+    def sizeHint(self) -> QtCore.QSize:
+        base = super().sizeHint()
+        return QtCore.QSize(400, max(base.height(), 480))
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        alto = super().minimumSizeHint().height()
+        return QtCore.QSize(300, alto)
+
+
+class _BarraQueCabe(QtWidgets.QWidget):
+    """La fila de EN VIVO puede partirse. Su mínimo es el de una sola línea, no la suma."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self._ancho_util = 320
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        base = super().minimumSizeHint()
+        return QtCore.QSize(min(base.width(), self._ancho_util), base.height())
+
+    def sizeHint(self) -> QtCore.QSize:
+        base = super().sizeHint()
+        return QtCore.QSize(max(base.width(), self._ancho_util), base.height())
+
+
+class Segmento(QtWidgets.QWidget):
+    """Varias opciones en una sola pastilla. Una está elegida."""
+
+    def __init__(self, textos: list[str], parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self.grupo = QtWidgets.QButtonGroup(self)
+        self.grupo.setExclusive(True)
+        caja = QtWidgets.QHBoxLayout(self)
+        caja.setContentsMargins(3, 3, 3, 3)
+        caja.setSpacing(2)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            "Segmento { background: #0B0E14; border-radius: 18px; "
+            "border: 1px solid rgba(160,190,255,0.08); }"
+        )
+        for texto in textos:
+            boton = QtWidgets.QPushButton(texto)
+            boton.setObjectName("segmento")
+            boton.setCheckable(True)
+            boton.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            self.grupo.addButton(boton)
+            caja.addWidget(boton, 1)
+
+    def button(self, indice: int) -> QtWidgets.QAbstractButton:
+        botones = self.grupo.buttons()
+        return botones[indice]
+
+
+class Estudio(QtWidgets.QWidget):
+    pedir_en_vivo = QtCore.Signal(bool)
+    pedir_cara = QtCore.Signal(str)
+    pedir_camara = QtCore.Signal(int)
+    pedir_refrescar_camaras = QtCore.Signal()
+    pedir_favorita = QtCore.Signal(str, bool)
+    pedir_borrar_cara = QtCore.Signal(str)
+    pedir_renombrar_cara = QtCore.Signal(str, str)
+    pedir_fotos = QtCore.Signal(list)
+    pedir_original = QtCore.Signal(bool)
+    pedir_virtual = QtCore.Signal(bool)
+    pedir_probar_salida = QtCore.Signal()
+    pedir_ventana_salida = QtCore.Signal()
+    pedir_asistente_obs = QtCore.Signal()
+    pedir_calidad = QtCore.Signal(str)
+    pedir_aspecto = QtCore.Signal(str)
+    pedir_perfil = QtCore.Signal(str)
+    pedir_guardar_perfil = QtCore.Signal(str)
+    pedir_accion_perfil = QtCore.Signal(str, str, str)
+    pedir_fuerza = QtCore.Signal(int)
+    pedir_nitidez = QtCore.Signal(int)
+    pedir_frente = QtCore.Signal(int)
+    pedir_fps = QtCore.Signal(int)
+    pedir_fondo = QtCore.Signal(str)
+    pedir_toggle = QtCore.Signal(str, bool)
+    pedir_ajuste = QtCore.Signal(str, object)
+    pedir_control = QtCore.Signal(str, object)
+    pedir_compacto = QtCore.Signal(bool)
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("Estudio")
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(ESTILO)
+        self.setAcceptDrops(True)
+        self._caras: dict[str, FichaCara] = {}
+        self._cara_id = ""
+        self._compacto = False
+        self._animaciones: list[QtCore.QPropertyAnimation] = []
+        self._entradas_hechas = False
+        self._construir()
+        self._atajos()
+
+    def _construir(self) -> None:
+        raiz = QtWidgets.QVBoxLayout(self)
+        raiz.setContentsMargins(0, 0, 0, 0)
+        raiz.setSpacing(0)
+        raiz.addWidget(self._cabecera())
+        self.cuerpo = QtWidgets.QWidget()
+        cuerpo = QtWidgets.QHBoxLayout(self.cuerpo)
+        cuerpo.setContentsMargins(0, 0, 0, 0)
+        cuerpo.setSpacing(0)
+        self.rail = self._rail()
+        cuerpo.addWidget(self.rail)
+        self.scroll_pagina = QtWidgets.QScrollArea()
+        self.scroll_pagina.setObjectName("scrollPagina")
+        self.scroll_pagina.setWidgetResizable(True)
+        self.scroll_pagina.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll_pagina.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_pagina.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_pagina.setWidget(self._centro())
+        cuerpo.addWidget(self.scroll_pagina, 1)
+        self.columna = self._columna_obs()
+        cuerpo.addWidget(self.columna)
+        raiz.addWidget(self.cuerpo, 1)
+        raiz.addWidget(self._estado())
+        for area in self.findChildren(QtWidgets.QScrollArea):
+            area.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+            area.viewport().setAutoFillBackground(False)
+        self._entradas = [
+            self.marco,
+            self.galeria,
+            self.boton_vivo,
+            self.columna,
+        ]
+
+    def _cabecera(self) -> QtWidgets.QWidget:
+        barra = QtWidgets.QWidget()
+        barra.setFixedHeight(52)
+        fila = QtWidgets.QHBoxLayout(barra)
+        fila.setContentsMargins(16, 0, 16, 0)
+        fila.addWidget(MarcaOjo(28))
+        fila.addSpacing(8)
+        marca = QtWidgets.QLabel("DRAKO")
+        marca.setObjectName("marca")
+        sub = QtWidgets.QLabel("CAM")
+        sub.setObjectName("marcaSub")
+        fila.addWidget(marca)
+        fila.addWidget(sub)
+        fila.addSpacing(18)
+        self.paso = QtWidgets.QLabel("Elige una foto o un perfil")
+        self.paso.setObjectName("secundario")
+        self.paso.setMinimumWidth(0)
+        self.paso.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        fila.addWidget(self.paso, 1)
+        self.licencia = QtWidgets.QLabel("Licencia activa")
+        self.licencia.setObjectName("pista")
+        self.licencia.setMinimumWidth(0)
+        self.licencia.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        fila.addWidget(self.licencia)
+        fila.addSpacing(12)
+        self.boton_compacto = BotonPildora("Modo compacto")
+        self.boton_compacto.setObjectName("compacto")
+        self.boton_compacto.clicked.connect(self._alternar_compacto)
+        fila.addWidget(self.boton_compacto)
+        return barra
+
+    def _rail(self) -> QtWidgets.QWidget:
+        rail = QtWidgets.QWidget()
+        rail.setObjectName("railFavoritos")
+        rail.setFixedWidth(112)
+        caja = QtWidgets.QVBoxLayout(rail)
+        caja.setContentsMargins(12, 14, 12, 14)
+        caja.setSpacing(8)
+        titulo = QtWidgets.QLabel("★  Favoritos")
+        titulo.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        titulo.setObjectName("pista")
+        caja.addWidget(titulo)
+        self.favoritos = QtWidgets.QVBoxLayout()
+        self.favoritos.setSpacing(8)
+        caja.addLayout(self.favoritos)
+        caja.addStretch(1)
+        self.cuenta = QtWidgets.QLabel("Biblioteca\n0 caras")
+        self.cuenta.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.cuenta.setObjectName("pista")
+        caja.addWidget(self.cuenta)
+        return rail
+
+    def _centro(self) -> QtWidgets.QWidget:
+        centro = QtWidgets.QWidget()
+        caja = QtWidgets.QVBoxLayout(centro)
+        self._caja_centro = caja
+        caja.setContentsMargins(22, 8, 22, 16)
+        caja.setSpacing(14)
+        self.marco = MarcoVista()
+        self.marco.setMinimumHeight(260)
+        marco_caja = QtWidgets.QVBoxLayout(self.marco)
+        marco_caja.setContentsMargins(16, 16, 16, 16)
+        self.hueco_vista = QtWidgets.QWidget()
+        self.vista_caja = QtWidgets.QVBoxLayout(self.hueco_vista)
+        self.vista_caja.setContentsMargins(0, 0, 0, 0)
+        self.aviso_vacio = QtWidgets.QLabel("La cámara se verá aquí")
+        self.aviso_vacio.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.aviso_vacio.setObjectName("secundario")
+        self.vista_caja.addWidget(self.aviso_vacio)
+        marco_caja.addWidget(self.hueco_vista, 1)
+        self.banner = QtWidgets.QLabel(self.marco)
+        self.banner.setWordWrap(True)
+        self.banner.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.banner.setStyleSheet(
+            "background: #F1F4F9; color: #04060A; border-radius: 12px; "
+            "padding: 12px 16px; font-size: 16px; font-weight: 650;"
+        )
+        self.banner.hide()
+        self.chip_vivo = QtWidgets.QLabel("EN VIVO", self.marco)
+        self.chip_vivo.setStyleSheet(
+            "background: rgba(4,6,10,0.72); color: #F20A1C; border-radius: 13px; "
+            "padding: 4px 10px; font-weight: 700;"
+        )
+        self.chip_vivo.hide()
+        self.chip_fps = QtWidgets.QLabel("", self.marco)
+        self.chip_fps.setObjectName("numero")
+        self.chip_fps.setStyleSheet(
+            "background: rgba(4,6,10,0.72); color: #6FD9A3; border-radius: 13px; padding: 4px 10px;"
+        )
+        self.chip_fps.hide()
+        caja.addWidget(self.marco, 1)
+        self.galeria = self._galeria()
+        caja.addWidget(self.galeria)
+        self._controles_vivos = _BarraQueCabe()
+        self._vivos_caja = QtWidgets.QVBoxLayout(self._controles_vivos)
+        self._vivos_caja.setContentsMargins(0, 0, 0, 0)
+        self._vivos_caja.setSpacing(0)
+        self._vivos_filas = [QtWidgets.QHBoxLayout() for _ in range(3)]
+        for fila_vivos in self._vivos_filas:
+            fila_vivos.setContentsMargins(0, 0, 0, 0)
+            fila_vivos.setSpacing(8)
+            self._vivos_caja.addLayout(fila_vivos)
+        self._vivos_estrecho = None
+        self.boton_vivo = BotonIris("EN VIVO")
+        self.boton_vivo.setObjectName("enVivo")
+        self.boton_vivo.setMinimumWidth(148)
+        self.boton_vivo.clicked.connect(self._pulsar_en_vivo)
+        self.antes = BotonPildora("Ver antes")
+        self.antes.setToolTip("Mantén pulsado para ver tu cara, sin el cambio.")
+        self.antes.pressed.connect(lambda: self.pedir_original.emit(True))
+        self.antes.released.connect(self._soltar_antes)
+        self.segmento_vista = Segmento(["Original", "Cambiada"])
+        self.segmento_vista.grupo.buttonClicked.connect(
+            lambda boton: self._pulsar_original(boton.text())
+        )
+        self.segmento_vista.button(1).setChecked(True)
+        self.camara = QtWidgets.QComboBox()
+        self.camara.setMinimumWidth(0)
+        self.camara.setMaximumWidth(360)
+        self.camara.setMinimumHeight(44)
+        from app.ui.estudio.ajuste_panel import FiltroRueda, preparar_rueda
+
+        self._filtro_rueda = FiltroRueda(self)
+        preparar_rueda(self.camara, self._filtro_rueda)
+        self.camara.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.camara.setMinimumContentsLength(8)
+        self.camara.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self.camara.currentIndexChanged.connect(self._cambiar_camara)
+        self.refrescar_camara = QtWidgets.QPushButton("↻")
+        self.refrescar_camara.setObjectName("refrescar")
+        self.refrescar_camara.setFixedSize(44, 44)
+        self.refrescar_camara.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.refrescar_camara.setToolTip("Actualizar la lista de cámaras")
+        self.refrescar_camara.setAccessibleName("Actualizar cámaras")
+        self.refrescar_camara.clicked.connect(self.pedir_refrescar_camaras.emit)
+        self.virtual_compacto = QtWidgets.QCheckBox("Cámara virtual")
+        self.virtual_compacto.setToolTip("Envía la imagen a la cámara virtual.")
+        self.virtual_compacto.setMinimumHeight(44)
+        self.virtual_compacto.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Minimum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self.virtual_compacto.hide()
+        self.virtual_compacto.toggled.connect(self.pedir_virtual.emit)
+        caja.addWidget(self._controles_vivos)
+        self._encajar_controles()
+        return centro
+
+    def _galeria(self) -> QtWidgets.QWidget:
+        bloque = QtWidgets.QWidget()
+        caja = QtWidgets.QVBoxLayout(bloque)
+        caja.setContentsMargins(0, 0, 0, 0)
+        caja.setSpacing(8)
+        titulo = QtWidgets.QLabel("Elige la cara")
+        titulo.setObjectName("tituloPanel")
+        caja.addWidget(titulo)
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll.setFixedHeight(168)
+        self.scroll.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tira = QtWidgets.QWidget()
+        self.tira_caja = QtWidgets.QHBoxLayout(self.tira)
+        self.tira_caja.setContentsMargins(12, 8, 12, 8)
+        self.tira_caja.setSpacing(10)
+        self.boton_anadir = BotonPildora("Añadir foto")
+        self.boton_anadir.setObjectName("anadirFoto")
+        self.boton_anadir.setFixedSize(120, 128)
+        self.boton_anadir.clicked.connect(self._pedir_archivos)
+        self.tira_caja.addWidget(self.boton_anadir)
+        self.vacio = QtWidgets.QLabel("O suelta aquí una foto JPG, PNG, WEBP o BMP")
+        self.vacio.setObjectName("pista")
+        self.tira_caja.addWidget(self.vacio)
+        self.tira_caja.addStretch(1)
+        self.scroll.setWidget(self.tira)
+        caja.addWidget(self.scroll)
+        return bloque
+
+    def _columna_obs(self) -> QtWidgets.QWidget:
+        columna = _ColumnaLateral()
+        columna.setObjectName("columnaObs")
+        columna.setMinimumWidth(300)
+        columna.setMaximumWidth(440)
+        columna.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        interior = QtWidgets.QWidget()
+        interior.setMinimumWidth(0)
+        caja = QtWidgets.QVBoxLayout(interior)
+        self._caja_columna = caja
+        caja.setContentsMargins(18, 18, 18, 18)
+        caja.setSpacing(14)
+        fila = QtWidgets.QHBoxLayout()
+        etiqueta = QtWidgets.QLabel("Salida a OBS")
+        etiqueta.setObjectName("pista")
+        fila.addWidget(etiqueta)
+        fila.addStretch(1)
+        self.pill_obs = QtWidgets.QLabel("APAGADA")
+        self.pill_obs.setStyleSheet(
+            "background: #121620; color: #B7C0CE; border-radius: 11px; padding: 3px 8px; font-weight: 700;"
+        )
+        fila.addWidget(self.pill_obs)
+        caja.addLayout(fila)
+        titulo = QtWidgets.QLabel("Sale sola al pulsar EN VIVO")
+        titulo.setObjectName("tituloPanel")
+        caja.addWidget(titulo)
+        self.pista_obs = QtWidgets.QLabel(
+            "En OBS: Dispositivo de captura de vídeo, y elige la cámara que indica aquí."
+        )
+        self.pista_obs.setWordWrap(True)
+        self.pista_obs.setObjectName("pista")
+        caja.addWidget(self.pista_obs)
+        self.virtual = QtWidgets.QCheckBox("Enviar a la cámara virtual")
+        self.virtual.hide()
+        self.detalle_obs = QtWidgets.QLabel("1280×720 · 30 FPS")
+        self.detalle_obs.setObjectName("pista")
+        caja.addWidget(self.detalle_obs)
+        como = BotonPildora("Cómo añadirlo")
+        como.setMinimumHeight(44)
+        como.setToolTip("Abre los pasos para añadir Drako Cam en OBS.")
+        como.clicked.connect(self.pedir_asistente_obs.emit)
+        probar = BotonPildora("Probar salida")
+        probar.setMinimumHeight(44)
+        probar.setToolTip("Comprueba que la salida de vídeo llega bien.")
+        probar.clicked.connect(self.pedir_probar_salida.emit)
+        self.boton_ventana = BotonPildora("Ventana OBS")
+        self.boton_ventana.setMinimumHeight(44)
+        self.boton_ventana.setToolTip("Abre o cierra la ventana para OBS. También Ctrl+O.")
+        self.boton_ventana.clicked.connect(self.pedir_ventana_salida.emit)
+        caja.addWidget(self._rejilla_botones([como, probar, self.boton_ventana]))
+        self.copiar = BotonPildora("Copiar ajustes para OBS")
+        self.copiar.setObjectName("copiarObs")
+        self.copiar.setMinimumWidth(0)
+        self.copiar.setToolTip("Copia la resolución, los FPS y el nombre de la cámara para pegarlos en OBS.")
+        self.copiar.clicked.connect(self._copiar_obs)
+        caja.addWidget(self.copiar)
+        self.nota_obs = QtWidgets.QLabel("")
+        self.nota_obs.setWordWrap(True)
+        self.nota_obs.setObjectName("pista")
+        caja.addWidget(self.nota_obs)
+        caja.addWidget(self._linea())
+        caja.addWidget(QtWidgets.QLabel("Calidad"))
+        self.calidad = QtWidgets.QComboBox()
+        self.calidad.addItems(list(CALIDADES))
+        self.calidad.setMinimumHeight(44)
+        self.calidad.setMinimumWidth(0)
+        self.calidad.setMinimumContentsLength(10)
+        self.calidad.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.calidad.currentTextChanged.connect(self._pulsar_calidad)
+        caja.addWidget(self.calidad)
+        caja.addWidget(QtWidgets.QLabel("Aspecto"))
+        self.aspecto = QtWidgets.QComboBox()
+        self.aspecto.setMinimumHeight(44)
+        self.aspecto.setMinimumWidth(0)
+        self.aspecto.setMinimumContentsLength(10)
+        self.aspecto.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        from app.drako.perfiles.aspecto import ETIQUETAS
+
+        for ident, texto in ETIQUETAS:
+            self.aspecto.addItem(texto, ident)
+        self.aspecto.currentIndexChanged.connect(self._pulsar_aspecto)
+        caja.addWidget(self.aspecto)
+        self.nota_aspecto = QtWidgets.QLabel("Independiente de la velocidad. Auto mira el tono y la barba.")
+        self.nota_aspecto.setWordWrap(True)
+        self.nota_aspecto.setObjectName("pista")
+        caja.addWidget(self.nota_aspecto)
+        caja.addWidget(QtWidgets.QLabel("Perfiles"))
+        self.lista_perfiles = QtWidgets.QListWidget()
+        self.lista_perfiles.setIconSize(QtCore.QSize(48, 48))
+        self.lista_perfiles.setFixedHeight(132)
+        self.lista_perfiles.itemClicked.connect(self._pulsar_perfil)
+        caja.addWidget(self.lista_perfiles)
+        guardar = BotonPildora("Guardar")
+        guardar.setToolTip("Guarda la cara y los ajustes en un perfil.")
+        guardar.clicked.connect(self._guardar_perfil)
+        duplicar = BotonPildora("Duplicar")
+        duplicar.setToolTip("Crea una copia del perfil seleccionado.")
+        duplicar.clicked.connect(lambda: self._accion_perfil("duplicar"))
+        borrar = BotonPildora("Borrar")
+        borrar.setToolTip("Borra el perfil seleccionado de este PC.")
+        borrar.clicked.connect(self._borrar_perfil)
+        caja.addWidget(self._rejilla_botones([guardar, duplicar, borrar]))
+        exportar = BotonPildora("Exportar")
+        exportar.setToolTip("Guarda el perfil en un archivo zip.")
+        exportar.clicked.connect(self._exportar_perfil)
+        importar = BotonPildora("Importar")
+        importar.setToolTip("Trae un perfil desde un archivo zip.")
+        importar.clicked.connect(self._importar_perfil)
+        favorito = BotonPildora("Favorito")
+        favorito.setToolTip("Marca o quita el perfil de favoritos.")
+        favorito.clicked.connect(lambda: self._accion_perfil("favorito"))
+        renombrar = BotonPildora("Renombrar")
+        renombrar.setToolTip("Cambia el nombre del perfil seleccionado.")
+        renombrar.clicked.connect(self._renombrar_perfil)
+        caja.addWidget(self._rejilla_botones([renombrar, favorito, exportar, importar]))
+        self.nota_calidad = QtWidgets.QLabel("Según la tarjeta que haya en el equipo.")
+        self.nota_calidad.setWordWrap(True)
+        self.nota_calidad.setObjectName("pista")
+        caja.addWidget(self.nota_calidad)
+        caja.addWidget(self._linea())
+        self.plegar_ajustes = QtWidgets.QToolButton()
+        self.plegar_ajustes.setObjectName("plegar")
+        self.plegar_ajustes.setText("Ajustar cara")
+        self.plegar_ajustes.setToolTip("Muestra u oculta los ajustes de la cara: boca, ojos, bordes y el resto.")
+        self.plegar_ajustes.setAccessibleName("Ajustar cara")
+        self.plegar_ajustes.setCheckable(True)
+        self.plegar_ajustes.setChecked(False)
+        self.plegar_ajustes.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.plegar_ajustes.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+        self.plegar_ajustes.setMinimumHeight(44)
+        self.plegar_ajustes.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self.plegar_ajustes.toggled.connect(self._abrir_ajustes)
+        caja.addWidget(self.plegar_ajustes)
+        self.scroll_ajustes = QtWidgets.QScrollArea()
+        self.scroll_ajustes.setObjectName("scrollAjustes")
+        self.scroll_ajustes.setWidgetResizable(True)
+        self.scroll_ajustes.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll_ajustes.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_ajustes.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_ajustes.setMinimumWidth(220)
+        self.scroll_ajustes.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        self.ajustes = PanelAjustes()
+        self.scroll_ajustes.setWidget(self.ajustes)
+        self.ajustes.cambiado.connect(self.pedir_control.emit)
+        self.ajustes.hide()
+        self.scroll_ajustes.hide()
+        self.scroll_ajustes.setMinimumHeight(0)
+        self.scroll_ajustes.setMaximumHeight(0)
+        caja.addWidget(self.scroll_ajustes)
+        self.toggles: dict[str, QtWidgets.QCheckBox] = {}
+        self.avanzado = QtWidgets.QToolButton()
+        self.avanzado.setObjectName("plegar")
+        self.avanzado.setText("Avanzado")
+        self.avanzado.setToolTip("Resolución, proveedor, detector y otros ajustes de la salida.")
+        self.avanzado.setCheckable(True)
+        self.avanzado.setChecked(False)
+        self.avanzado.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.avanzado.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+        self.avanzado.toggled.connect(self._abrir_avanzado)
+        self.avanzado.setMinimumHeight(44)
+        caja.addWidget(self.avanzado)
+        self.panel_avanzado = QtWidgets.QWidget()
+        self.panel_avanzado.hide()
+        avanzado = QtWidgets.QVBoxLayout(self.panel_avanzado)
+        avanzado.setContentsMargins(0, 0, 0, 0)
+        avanzado.setSpacing(8)
+        nota = QtWidgets.QLabel(
+            "Resolución, proveedor y detector. La cara de enfrente se elige sola."
+        )
+        nota.setWordWrap(True)
+        nota.setObjectName("pista")
+        avanzado.addWidget(nota)
+        avanzado.addWidget(self._rotulo_valor("Fuerza", "fuerzaValor"))
+        self.fuerza = self._slider(50, self.pedir_fuerza.emit)
+        self.fuerza.valueChanged.connect(self.fijar_fuerza_texto)
+        avanzado.addWidget(self.fuerza)
+        avanzado.addWidget(QtWidgets.QLabel("FPS de salida"))
+        self.fps_salida = Segmento(["30", "60"])
+        self.fps_salida.grupo.buttonClicked.connect(
+            lambda boton: self._pulsar_fps(boton.text())
+        )
+        self.fps_salida.button(0).setChecked(True)
+        avanzado.addWidget(self.fps_salida)
+        avanzado.addWidget(QtWidgets.QLabel("Fondo"))
+        self.fondo = Segmento(list(FONDOS))
+        self.fondo.grupo.buttonClicked.connect(
+            lambda boton: self._pulsar_fondo(boton.text())
+        )
+        self.fondo.button(0).setChecked(True)
+        avanzado.addWidget(self.fondo)
+        mostrar = QtWidgets.QCheckBox("Mostrar FPS")
+        mostrar.toggled.connect(lambda activo: self.pedir_toggle.emit("fps", activo))
+        mostrar.setChecked(True)
+        self.toggles["fps"] = mostrar
+        avanzado.addWidget(mostrar)
+        self.resolucion = self._combo(
+            "Resolución",
+            ["1280x720", "1920x1080", "2560x1440"],
+            "resolucion",
+        )
+        self.proveedor = self._combo("Proveedor TensorRT", ["FP16", "FP32"], "proveedor")
+        self.detector = self._combo(
+            "Detector",
+            ["RetinaFace", "SCRFD", "Yolov8"],
+            "detector",
+        )
+        for combo in (self.resolucion, self.proveedor, self.detector):
+            avanzado.addWidget(combo)
+        caja.addWidget(self.panel_avanzado)
+        caja.addStretch(1)
+        scroll.setWidget(interior)
+        exterior = QtWidgets.QVBoxLayout(columna)
+        exterior.setContentsMargins(0, 0, 0, 0)
+        exterior.addWidget(scroll)
+        return columna
+
+    def _estado(self) -> QtWidgets.QWidget:
+        barra = QtWidgets.QWidget()
+        barra.setObjectName("barraEstado")
+        barra.setFixedHeight(36)
+        fila = QtWidgets.QHBoxLayout(barra)
+        fila.setContentsMargins(16, 0, 16, 0)
+        fila.setSpacing(18)
+        self.txt_fps = self._medida("FPS")
+        self.txt_latencia = self._medida("Latencia")
+        self.txt_vram = self._medida("VRAM")
+        self.txt_proveedor = self._medida("Proveedor")
+        self.txt_vigilante = self._medida("Vigilante")
+        self.txt_sesion = self._medida("Sesión")
+        for pieza in (
+            self.txt_fps,
+            self.txt_latencia,
+            self.txt_vram,
+            self.txt_proveedor,
+            self.txt_vigilante,
+        ):
+            fila.addWidget(pieza)
+        fila.addStretch(1)
+        fila.addWidget(self.txt_sesion)
+        self._reloj = QtCore.QElapsedTimer()
+        self._reloj.start()
+        self._pulso = QtCore.QTimer(self)
+        self._pulso.setInterval(500)
+        self._pulso.timeout.connect(self._pintar_sesion)
+        self._pulso.start()
+        return barra
+
+    def _medida(self, titulo: str) -> QtWidgets.QLabel:
+        etiqueta = QtWidgets.QLabel(f"{titulo}  —")
+        etiqueta.setObjectName("numero")
+        etiqueta.setMinimumWidth(0)
+        etiqueta.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        return etiqueta
+
+    def _slider(self, valor: int, slot) -> QtWidgets.QSlider:
+        slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        slider.setRange(0, 100)
+        slider.setValue(valor)
+        slider.setMinimumHeight(44)
+        slider.valueChanged.connect(slot)
+        return slider
+
+    def _slider_rotulado(self, titulo: str, valor: int, slot) -> QtWidgets.QWidget:
+        bloque = QtWidgets.QWidget()
+        caja = QtWidgets.QVBoxLayout(bloque)
+        caja.setContentsMargins(0, 0, 0, 0)
+        caja.addWidget(QtWidgets.QLabel(titulo))
+        caja.addWidget(self._slider(valor, slot))
+        return bloque
+
+    def _rotulo_valor(self, titulo: str, nombre: str) -> QtWidgets.QWidget:
+        fila = QtWidgets.QWidget()
+        caja = QtWidgets.QHBoxLayout(fila)
+        caja.setContentsMargins(0, 0, 0, 0)
+        caja.addWidget(QtWidgets.QLabel(titulo))
+        caja.addStretch(1)
+        valor = QtWidgets.QLabel("50")
+        valor.setObjectName(nombre)
+        caja.addWidget(valor)
+        self.fuerza_valor = valor
+        return fila
+
+    def _combo(self, titulo: str, opciones: list[str], clave: str) -> QtWidgets.QWidget:
+        bloque = QtWidgets.QWidget()
+        caja = QtWidgets.QVBoxLayout(bloque)
+        caja.setContentsMargins(0, 0, 0, 0)
+        etiqueta = QtWidgets.QLabel(titulo)
+        etiqueta.setObjectName("pista")
+        combo = QtWidgets.QComboBox()
+        combo.addItems(opciones)
+        combo.setMinimumHeight(44)
+        combo.setMinimumWidth(0)
+        combo.setMinimumContentsLength(8)
+        combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        combo.currentTextChanged.connect(lambda texto, nombre=clave: self.pedir_ajuste.emit(nombre, texto))
+        caja.addWidget(etiqueta)
+        caja.addWidget(combo)
+        bloque.combo = combo  # type: ignore[attr-defined]
+        return bloque
+
+    def _rejilla_botones(self, botones: list[QtWidgets.QWidget]) -> QtWidgets.QWidget:
+        """Dos columnas: las etiquetas se leen enteras dentro de la columna estrecha."""
+        bloque = QtWidgets.QWidget()
+        bloque.setMinimumWidth(0)
+        rejilla = QtWidgets.QGridLayout(bloque)
+        rejilla.setContentsMargins(0, 0, 0, 0)
+        rejilla.setHorizontalSpacing(8)
+        rejilla.setVerticalSpacing(8)
+        for indice, boton in enumerate(botones):
+            boton.setMinimumWidth(0)
+            boton.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            rejilla.addWidget(boton, indice // 2, indice % 2)
+        if len(botones) % 2 == 1:
+            rejilla.setColumnStretch(0, 1)
+            rejilla.setColumnStretch(1, 1)
+        return bloque
+
+    def _linea(self) -> QtWidgets.QFrame:
+        linea = QtWidgets.QFrame()
+        linea.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        linea.setStyleSheet("color: rgba(160,190,255,0.08);")
+        return linea
+
+    def _atajos(self) -> None:
+        for indice in range(1, 9):
+            atajo = QtGui.QShortcut(QtGui.QKeySequence(f"F{indice}"), self)
+            atajo.activated.connect(lambda i=indice: self._favorito_por_tecla(i))
+        espacio = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Space"), self)
+        espacio.activated.connect(self._invertir_original)
+        salida = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+O"), self)
+        salida.activated.connect(self.pedir_ventana_salida.emit)
+
+    def mostrar_caras(self, caras: list[CaraVista], seleccion: str) -> None:
+        firma = tuple((cara.id, cara.favorita, cara.atajo, cara.id == seleccion) for cara in caras)
+        if firma == getattr(self, "_firma_caras", None):
+            return
+        self._firma_caras = firma
+        self._cara_id = seleccion
+        for indice in reversed(range(self.tira_caja.count())):
+            pieza = self.tira_caja.itemAt(indice)
+            widget = pieza.widget() if pieza is not None else None
+            if isinstance(widget, FichaCara):
+                self.tira_caja.takeAt(indice)
+                widget.deleteLater()
+        self._caras.clear()
+        self._vaciar(self.favoritos)
+        self.vacio.setVisible(not caras)
+        favoritas = 0
+        for cara in caras:
+            ficha = FichaCara(cara)
+            ficha.elegida.connect(self.pedir_cara.emit)
+            ficha.favorita.connect(self.pedir_favorita.emit)
+            ficha.borrar.connect(self._confirmar_borrado)
+            ficha.renombrar.connect(self._pedir_nombre)
+            ficha.marcar(cara.id == seleccion, cara)
+            self._caras[cara.id] = ficha
+            self.tira_caja.insertWidget(self.tira_caja.count() - 1, ficha)
+            if cara.favorita:
+                favoritas += 1
+                boton = BotonPildora(cara.atajo or cara.nombre[:1])
+                boton.setFixedSize(56, 56)
+                boton.setToolTip(cara.nombre)
+                boton.clicked.connect(lambda _=False, ident=cara.id: self.pedir_cara.emit(ident))
+                if cara.id == seleccion:
+                    _propiedad(boton, "vivo", True)
+                    boton.setStyleSheet("background: #F20A1C; color: #FFF6F6; border: none;")
+                self.favoritos.addWidget(boton, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        self.cuenta.setText(f"Biblioteca\n{len(caras)} caras")
+        if not favoritas:
+            nota = QtWidgets.QLabel("Marca una\ncon la estrella")
+            nota.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            nota.setObjectName("pista")
+            nota.setWordWrap(True)
+            self.favoritos.addWidget(nota)
+        self.scroll.horizontalScrollBar().setValue(0)
+
+    def _confirmar_borrado(self, ident: str) -> None:
+        respuesta = QtWidgets.QMessageBox.question(
+            self,
+            "Quitar foto",
+            "¿Quitar esta foto de la galería?",
+        )
+        if respuesta != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self.pedir_borrar_cara.emit(ident)
+
+    def _pedir_nombre(self, ident: str) -> None:
+        actual = ""
+        ficha = self._caras.get(ident)
+        if ficha is not None:
+            actual = ficha._nombre_completo
+        nombre, ok = QtWidgets.QInputDialog.getText(self, "Renombrar foto", "Nombre", text=actual)
+        if ok and nombre.strip():
+            self.pedir_renombrar_cara.emit(ident, nombre.strip())
+
+    def mostrar_camaras(self, nombres: list[str], indice: int) -> None:
+        firma = (tuple(nombres), indice)
+        if firma == getattr(self, "_firma_camaras", None):
+            return
+        self._firma_camaras = firma
+        self.camara.blockSignals(True)
+        actual = self.camara.currentText()
+        self.camara.clear()
+        if not nombres:
+            self.camara.addItem("No hay cámara")
+            self.camara.setCurrentIndex(0)
+        else:
+            self.camara.addItems(nombres)
+            if 0 <= indice < len(nombres):
+                self.camara.setCurrentIndex(indice)
+            elif actual in nombres:
+                self.camara.setCurrentText(actual)
+        self.camara.blockSignals(False)
+
+    def mostrar_estado(
+        self,
+        *,
+        sesion: bool,
+        en_vivo: bool,
+        original: bool,
+        tiene_foto: bool,
+        tiene_camara: bool,
+        fps: float | None,
+        latencia_ms: float | None,
+        vram: str,
+        proveedor: str,
+        vigilante: str,
+        mensaje: str,
+        calidad_nota: str,
+        virtual: bool,
+        salida_texto: str = "",
+        salida_detalle: str = "",
+        ventana_abierta: bool = False,
+        resolucion: str,
+        fps_salida: str,
+        fondo: str,
+    ) -> None:
+        self.marco.encender(sesion)
+        _propiedad(self.boton_vivo, "vivo", en_vivo)
+        self.boton_vivo.setText("PARAR" if sesion else "EN VIVO")
+        self.boton_vivo.respirar(en_vivo)
+        self._marcar_original(original)
+        self.chip_vivo.setVisible(en_vivo)
+        if self.toggles["fps"].isChecked() and fps is not None and en_vivo:
+            self.chip_fps.setText(f"{fps:.1f} FPS".replace(".", ","))
+            self.chip_fps.show()
+        else:
+            self.chip_fps.hide()
+        self._poner_medida(self.txt_fps, "FPS", None if fps is None else f"{fps:.1f}".replace(".", ","))
+        self._poner_medida(
+            self.txt_latencia,
+            "Latencia",
+            None if latencia_ms is None else f"{latencia_ms:.0f} ms",
+        )
+        self._poner_medida(self.txt_vram, "VRAM", vram or None)
+        self._poner_medida(self.txt_proveedor, "Proveedor", proveedor or None)
+        self._poner_medida(self.txt_vigilante, "Vigilante", vigilante or None)
+        self.nota_calidad.setText(calidad_nota)
+        self.pill_obs.setText(salida_texto or ("Salida activa" if virtual else "APAGADA"))
+        self.boton_ventana.setText("Cerrar ventana" if ventana_abierta else "Ventana OBS")
+        if salida_detalle:
+            self.detalle_obs.setText(salida_detalle)
+        if virtual:
+            self.pill_obs.setStyleSheet(
+                "background: #121620; color: #F4F7FB; border-radius: 11px; "
+                "padding: 3px 8px; font-weight: 700;"
+            )
+        else:
+            self.pill_obs.setStyleSheet(
+                "background: #121620; color: #B7C0CE; border-radius: 11px; padding: 3px 8px; font-weight: 700;"
+            )
+        if self.virtual.isChecked() != virtual:
+            self.virtual.blockSignals(True)
+            self.virtual.setChecked(virtual)
+            self.virtual.blockSignals(False)
+        if self.virtual_compacto.isChecked() != virtual:
+            self.virtual_compacto.blockSignals(True)
+            self.virtual_compacto.setChecked(virtual)
+            self.virtual_compacto.blockSignals(False)
+        self._texto_obs = self._texto_obs_de(resolucion, fps_salida, fondo)
+        self.nota_obs.setText(self._texto_obs.replace("\n", " · "))
+        if mensaje:
+            self.banner.setText(mensaje)
+            self.banner.show()
+            self.banner.raise_()
+        else:
+            self.banner.hide()
+        if sesion:
+            self.paso.setText("En directo" if en_vivo else "Viendo el original")
+        elif not tiene_foto:
+            self.paso.setText("Elige una foto o un perfil")
+        else:
+            self.paso.setText("Pulsa EN VIVO")
+        self._colocar_capas()
+
+    def adoptar_vista(self, vista: QtWidgets.QWidget) -> None:
+        self.aviso_vacio.hide()
+        vista.setParent(self.hueco_vista)
+        vista.setMinimumSize(0, 0)
+        vista.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        self.vista_caja.addWidget(vista, 1)
+        self._filtro_encaje = _FiltroEncaje(vista, self)
+        vista.installEventFilter(self._filtro_encaje)
+        vista.show()
+        QtCore.QTimer.singleShot(0, self._filtro_encaje.encajar)
+
+    def resizeEvent(self, evento: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(evento)
+        self._colocar_capas()
+
+    def showEvent(self, evento: QtGui.QShowEvent) -> None:
+        super().showEvent(evento)
+        self._colocar_capas()
+        if self._entradas_hechas:
+            return
+        self._entradas_hechas = True
+        for indice, pieza in enumerate(self._entradas):
+            efecto = QtWidgets.QGraphicsOpacityEffect(pieza)
+            efecto.setOpacity(0.0)
+            pieza.setGraphicsEffect(efecto)
+            animacion = QtCore.QPropertyAnimation(efecto, b"opacity", self)
+            animacion.setDuration(220)
+            animacion.setStartValue(0.0)
+            animacion.setEndValue(1.0)
+            animacion.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
+            animacion.finished.connect(lambda pieza=pieza: pieza.setGraphicsEffect(None))
+            self._animaciones.append(animacion)
+            QtCore.QTimer.singleShot(40 * indice, animacion.start)
+
+    def dragEnterEvent(self, evento: QtGui.QDragEnterEvent) -> None:
+        if self._rutas_de_evento(evento):
+            evento.acceptProposedAction()
+        else:
+            evento.ignore()
+
+    def dropEvent(self, evento: QtGui.QDropEvent) -> None:
+        rutas = self._rutas_de_evento(evento)
+        if rutas:
+            self.pedir_fotos.emit(rutas)
+            evento.acceptProposedAction()
+
+    def _colocar_capas(self) -> None:
+        if self.banner.isVisible():
+            self.banner.setGeometry(24, 24, max(80, self.marco.width() - 48), 72)
+            self.banner.raise_()
+        self.chip_vivo.move(28, self.marco.height() - 48)
+        self.chip_fps.move(self.marco.width() - self.chip_fps.sizeHint().width() - 28, self.marco.height() - 48)
+        self.chip_vivo.raise_()
+        self.chip_fps.raise_()
+
+    def _marcar_original(self, original: bool) -> None:
+        boton = self.segmento_vista.button(0 if original else 1)
+        if boton.isChecked():
+            return
+        self.segmento_vista.grupo.blockSignals(True)
+        boton.setChecked(True)
+        self.segmento_vista.grupo.blockSignals(False)
+
+    def _pulsar_en_vivo(self) -> None:
+        encender = self.boton_vivo.text() != "PARAR"
+        self.pedir_en_vivo.emit(encender)
+
+    def _pulsar_original(self, texto: str) -> None:
+        self.pedir_original.emit(texto == "Original")
+
+    def _soltar_antes(self) -> None:
+        elegido = self.segmento_vista.grupo.checkedButton()
+        self.pedir_original.emit(elegido is not None and elegido.text() == "Original")
+
+    def _pulsar_calidad(self, texto: str) -> None:
+        self.pedir_calidad.emit(texto)
+
+    def _pulsar_aspecto(self, indice: int) -> None:
+        ident = self.aspecto.itemData(indice)
+        if ident:
+            self.pedir_aspecto.emit(str(ident))
+
+    def mostrar_perfiles(self, perfiles: list[tuple[str, str, str, bool]]) -> None:
+        firma = tuple(perfiles)
+        if firma == getattr(self, "_firma_perfiles", None):
+            return
+        self._firma_perfiles = firma
+        self.lista_perfiles.clear()
+        for ident, nombre, ruta, favorito in perfiles:
+            texto = f"★ {nombre}" if favorito else nombre
+            item = QtWidgets.QListWidgetItem(texto)
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, ident)
+            if ruta:
+                icono = QtGui.QIcon(ruta)
+                if not icono.isNull():
+                    item.setIcon(icono)
+            self.lista_perfiles.addItem(item)
+
+    def mostrar_aspecto(self, frase: str) -> None:
+        self.nota_aspecto.setText(frase)
+
+    def _perfil_seleccionado(self) -> str:
+        item = self.lista_perfiles.currentItem()
+        if item is None:
+            return ""
+        return str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+
+    def _pulsar_perfil(self, item: QtWidgets.QListWidgetItem) -> None:
+        ident = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+        if ident:
+            self.pedir_perfil.emit(ident)
+
+    def _guardar_perfil(self) -> None:
+        nombre, ok = QtWidgets.QInputDialog.getText(
+            self, "Guardar perfil", "Nombre, por ejemplo La cara de Juanito"
+        )
+        if ok and nombre.strip():
+            self.pedir_guardar_perfil.emit(nombre.strip())
+
+    def _renombrar_perfil(self) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        nombre, ok = QtWidgets.QInputDialog.getText(self, "Renombrar perfil", "Nombre")
+        if ok and nombre.strip():
+            self.pedir_accion_perfil.emit(ident, "renombrar", nombre.strip())
+
+    def _borrar_perfil(self) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        respuesta = QtWidgets.QMessageBox.question(
+            self,
+            "Borrar perfil",
+            "¿Borrar este perfil de este PC? Las fotos originales no se tocan.",
+        )
+        if respuesta == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.pedir_accion_perfil.emit(ident, "borrar", "")
+
+    def _exportar_perfil(self) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        ruta, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Exportar perfil", "perfil.zip", "Perfil (*.zip)"
+        )
+        if ruta:
+            self.pedir_accion_perfil.emit(ident, "exportar", ruta)
+
+    def _importar_perfil(self) -> None:
+        ruta, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Importar perfil", "", "Perfil (*.zip)"
+        )
+        if ruta:
+            self.pedir_accion_perfil.emit("", "importar", ruta)
+
+    def _accion_perfil(self, accion: str) -> None:
+        ident = self._perfil_seleccionado()
+        if not ident:
+            return
+        extra = ""
+        if accion == "favorito":
+            extra = "1"
+        self.pedir_accion_perfil.emit(ident, accion, extra)
+
+    def _pulsar_fps(self, texto: str) -> None:
+        self.pedir_fps.emit(int(texto))
+
+    def _pulsar_fondo(self, texto: str) -> None:
+        self.pedir_fondo.emit(texto)
+
+    def _cambiar_camara(self, indice: int) -> None:
+        if indice < 0 or self.camara.currentText() == "No hay cámara":
+            return
+        self.pedir_camara.emit(indice)
+
+    def _pedir_archivos(self) -> None:
+        rutas, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, "Añadir foto", "", _FILTRO_FOTO
+        )
+        if rutas:
+            self.pedir_fotos.emit(rutas)
+
+    def _copiar_obs(self) -> None:
+        QtWidgets.QApplication.clipboard().setText(getattr(self, "_texto_obs", ""))
+        self.nota_obs.setText("Copiado. Pégalo donde te haga falta y, en OBS, elige «Drako Cam».")
+
+    def _texto_obs_de(self, resolucion: str, fps: str, fondo: str) -> str:
+        from app.ui.estudio.logica import texto_para_obs
+
+        return texto_para_obs(resolucion, fps, fondo)
+
+    def resizeEvent(self, evento: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(evento)
+        self._encajar_controles()
+
+    def _abrir_ajustes(self, abierto: bool) -> None:
+        self.scroll_ajustes.setVisible(abierto)
+        self.plegar_ajustes.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if abierto else QtCore.Qt.ArrowType.RightArrow
+        )
+        self.plegar_ajustes.setToolTip(
+            "Oculta los ajustes de la cara." if abierto else "Muestra los ajustes de la cara: boca, ojos, bordes y el resto."
+        )
+        self._medir_scroll_ajustes()
+        if abierto:
+            QtCore.QTimer.singleShot(0, self._traer_ajustes)
+
+    def _traer_ajustes(self) -> None:
+        if not self.plegar_ajustes.isChecked():
+            return
+        area = self.scroll_ajustes.parentWidget()
+        while area is not None and not isinstance(area, QtWidgets.QScrollArea):
+            area = area.parentWidget()
+        if not isinstance(area, QtWidgets.QScrollArea) or area is self.scroll_ajustes:
+            return
+        pagina = area.widget()
+        if pagina is None:
+            return
+        origen = self.plegar_ajustes.mapTo(pagina, QtCore.QPoint(0, 0))
+        area.verticalScrollBar().setValue(max(0, origen.y() - 8))
+
+    def _medir_scroll_ajustes(self) -> None:
+        # El interruptor manda. isVisible() a veces sigue en falso un instante
+        # y dejaba el alto del panel en cero.
+        abierto = self.plegar_ajustes.isChecked()
+        # En compacto, con el panel abierto, la tira de fotos cede el sitio
+        # para que los deslizadores quepan encima de la barra de estado.
+        self.galeria.setVisible(not (self._compacto and abierto))
+        self.marco.setMinimumHeight(88 if self._compacto else 135)
+        if not abierto:
+            self.scroll_ajustes.setMinimumHeight(0)
+            self.scroll_ajustes.setMaximumHeight(0)
+            self.ajustes.hide()
+            self.scroll_ajustes.hide()
+            return
+        self.ajustes.show()
+        self.scroll_ajustes.setVisible(True)
+        self.scroll_ajustes.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll_ajustes.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        alto = max(self.ajustes.sizeHint().height(), self.ajustes.minimumSizeHint().height())
+        self.scroll_ajustes.setMinimumHeight(alto)
+        self.scroll_ajustes.setMaximumHeight(alto)
+        if hasattr(self, "scroll_pagina"):
+            politica = (
+                QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+                if self._compacto
+                else QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.scroll_pagina.setVerticalScrollBarPolicy(politica)
+
+    def _anclar_ajustes(self, en_centro: bool) -> None:
+        """En compacto el panel usa el ancho de la ventana, no la columna fija."""
+        piezas = (self.plegar_ajustes, self.scroll_ajustes)
+        for pieza in piezas:
+            padre = pieza.parentWidget()
+            if padre is not None and padre.layout() is not None:
+                padre.layout().removeWidget(pieza)
+        if en_centro:
+            for pieza in piezas:
+                self._caja_centro.addWidget(pieza)
+            return
+        indice = self._caja_columna.indexOf(self.avanzado)
+        if indice < 0:
+            indice = self._caja_columna.count()
+        for desplazamiento, pieza in enumerate(piezas):
+            self._caja_columna.insertWidget(indice + desplazamiento, pieza)
+
+    def _vaciar_filas_vivos(self) -> None:
+        for fila in self._vivos_filas:
+            while fila.count():
+                fila.takeAt(0)
+
+    def _encajar_controles(self) -> None:
+        ancho = self._controles_vivos.width()
+        if ancho <= 0:
+            estrecho = self._compacto
+        else:
+            estrecho = self._compacto or ancho < 740
+        if estrecho == self._vivos_estrecho:
+            return
+        self._vivos_estrecho = estrecho
+        self._vaciar_filas_vivos()
+        for indice, fila in enumerate(self._vivos_filas):
+            fila.setContentsMargins(0, 8 if indice and estrecho else 0, 0, 0)
+        if estrecho:
+            self._vivos_filas[0].addWidget(self.boton_vivo)
+            self._vivos_filas[0].addWidget(self.antes, 1)
+            self._vivos_filas[1].addWidget(self.segmento_vista, 1)
+            self._vivos_filas[2].addWidget(self.camara, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self._vivos_filas[2].addWidget(self.refrescar_camara, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self._vivos_filas[2].addWidget(self.virtual_compacto, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            return
+        self._vivos_filas[0].addWidget(self.boton_vivo)
+        self._vivos_filas[0].addWidget(self.antes)
+        self._vivos_filas[0].addWidget(self.segmento_vista)
+        self._vivos_filas[0].addStretch(1)
+        self._vivos_filas[0].addWidget(self.camara)
+        self._vivos_filas[0].addWidget(self.refrescar_camara)
+        self._vivos_filas[0].addWidget(self.virtual_compacto)
+
+    def _abrir_avanzado(self, abierto: bool) -> None:
+        self.panel_avanzado.setVisible(abierto)
+        self.avanzado.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if abierto else QtCore.Qt.ArrowType.RightArrow
+        )
+
+    def _alternar_compacto(self) -> None:
+        self._compacto = not self._compacto
+        self.rail.setVisible(not self._compacto)
+        self._anclar_ajustes(self._compacto)
+        self.columna.setVisible(not self._compacto)
+        self.virtual_compacto.setVisible(self._compacto)
+        self.paso.setVisible(not self._compacto)
+        self.licencia.setVisible(not self._compacto)
+        for medida in (self.txt_vram, self.txt_proveedor, self.txt_vigilante):
+            medida.setVisible(not self._compacto)
+        self.boton_compacto.setText("Ampliar" if self._compacto else "Modo compacto")
+        self.boton_compacto.setToolTip(
+            "Vuelve a la vista completa." if self._compacto else "Reduce la ventana y deja la cámara y los ajustes de la cara."
+        )
+        self._vivos_estrecho = None
+        self._encajar_controles()
+        self._medir_scroll_ajustes()
+        ventana = self.window()
+        if self._compacto:
+            self._tamano_previo = ventana.size()
+            from app.drako.pantalla import encajar
+
+            encajar(ventana, 440, 720, 360, 620)
+        elif getattr(self, "_tamano_previo", None) is not None:
+            ventana.resize(self._tamano_previo)
+        self.pedir_compacto.emit(self._compacto)
+
+    def _favorito_por_tecla(self, numero: int) -> None:
+        for cara_id, ficha in self._caras.items():
+            if ficha.atajo.text() == f"F{numero}":
+                self.pedir_cara.emit(cara_id)
+                return
+
+    def _invertir_original(self) -> None:
+        actual = self.segmento_vista.checkedButton()
+        if actual is not None and actual.text() == "Original":
+            self.segmento_vista.button(1).setChecked(True)
+            self.pedir_original.emit(False)
+        else:
+            self.segmento_vista.button(0).setChecked(True)
+            self.pedir_original.emit(True)
+
+    def _pintar_sesion(self) -> None:
+        segundos = self._reloj.elapsed() // 1000
+        horas, resto = divmod(segundos, 3600)
+        minutos, seg = divmod(resto, 60)
+        self.txt_sesion.setText(f"Sesión  {horas:02d}:{minutos:02d}:{seg:02d}")
+
+    def _poner_medida(self, etiqueta: QtWidgets.QLabel, titulo: str, valor: str | None) -> None:
+        etiqueta.setText(f"{titulo}  {valor or '—'}")
+
+    def _rutas_de_evento(self, evento: QtGui.QDropEvent | QtGui.QDragEnterEvent) -> list[str]:
+        mime = evento.mimeData()
+        if mime is None or not mime.hasUrls():
+            return []
+        rutas = []
+        for url in mime.urls():
+            ruta = url.toLocalFile()
+            if ruta and extension_admitida(ruta):
+                rutas.append(ruta)
+        return rutas
+
+    def _vaciar(self, caja: QtWidgets.QLayout) -> None:
+        while caja.count():
+            pieza = caja.takeAt(0)
+            if pieza is not None and pieza.widget() is not None:
+                pieza.widget().deleteLater()
+
+    def fijar_fuerza_texto(self, valor: int) -> None:
+        self.fuerza_valor.setText(str(valor))

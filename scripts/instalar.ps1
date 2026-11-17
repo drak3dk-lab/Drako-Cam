@@ -5,7 +5,9 @@
 #Requires -Version 5.1
 param(
     [switch]$DesdeInstalador,
-    [switch]$SoloComprobar
+    [switch]$SoloComprobar,
+    [switch]$ModoVentana,
+    [switch]$SoloCamara
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +24,8 @@ $script:AvisoGpu = $false
 $script:TextoAvisoGpu = ""
 $script:ResumenNvidia = ""
 $script:UvExe = ""
+$script:AvisoCamara = ""
+. (Join-Path $PSScriptRoot "camara_virtual.ps1")
 
 $baseLocal = $env:LOCALAPPDATA
 if (-not $baseLocal) { $baseLocal = $env:TEMP }
@@ -60,9 +64,14 @@ function Write-Log([string]$Mensaje) {
     }
 }
 
+function Emitir-Ventana([string]$Linea) {
+    if ($ModoVentana -and $Linea) { Write-Output $Linea }
+}
+
 function Paso([string]$Numero, [string]$Texto) {
     Write-Log ""
     Write-Log ("[{0}] {1}" -f $Numero, $Texto)
+    Emitir-Ventana ("DRAKO_PASO " + $Numero)
 }
 
 function Asegurar-Directorio([string]$Ruta) {
@@ -312,6 +321,7 @@ function Recibir-Archivo([string]$Url, [string]$Destino) {
                     if ($total -gt 0) {
                         $porcentaje = [math]::Floor(100.0 * $leidoTotal / $total)
                         Write-Host ("  {0}%  ({1} MB)" -f $porcentaje, [math]::Round($leidoTotal / 1MB, 1))
+                        Emitir-Ventana ("DRAKO_PORCIENTO " + $porcentaje)
                     } else {
                         Write-Host ("  {0} MB" -f [math]::Round($leidoTotal / 1MB, 1))
                     }
@@ -542,6 +552,10 @@ function Python-DelVenv {
 }
 
 function Pedir-Acceso {
+    if ($ModoVentana) {
+        Write-Log "La ventana no pide el nombre ahora. Se puede hacer al abrir Drako Cam."
+        return
+    }
     try {
         $python = Python-DelVenv
         if (-not (Test-Path -LiteralPath $python)) {
@@ -810,6 +824,144 @@ function Test-PaquetesMinimos {
     return ((Test-Path -LiteralPath $torch) -and (Test-Path -LiteralPath $pyside))
 }
 
+function Entorno-Uv {
+    # Solo para el proceso de uv. Si la persona ya fijó el valor, se respeta.
+    $extra = @{
+        UV_LINK_MODE = "copy"
+        UV_NO_CONFIG = "1"
+    }
+    $deseado = @{
+        UV_HTTP_TIMEOUT = "1800"
+        UV_HTTP_RETRIES = "20"
+        UV_CONCURRENT_DOWNLOADS = "2"
+    }
+    foreach ($clave in @($deseado.Keys)) {
+        $actual = [Environment]::GetEnvironmentVariable($clave)
+        if ($actual) {
+            Write-Log ("{0} ya está definido ({1}). No lo cambio." -f $clave, $actual)
+        } else {
+            $extra[$clave] = [string]$deseado[$clave]
+            Write-Log ("{0}={1} solo para esta descarga." -f $clave, $deseado[$clave])
+        }
+    }
+    return $extra
+}
+
+function Es-FalloDeRed([string]$Texto, [int]$Codigo) {
+    if ($Codigo -eq 0) { return $false }
+    if (-not $Texto) { return $true }
+    $t = $Texto.ToLowerInvariant()
+    foreach ($pista in @(
+        "timed out", "timeout", "operation timed out",
+        "failed to download", "request failed",
+        "connection", "reset by peer", "broken pipe",
+        "temporary failure", "could not connect",
+        "network", "dns", "name or service not known"
+    )) {
+        if ($t.Contains($pista)) { return $true }
+    }
+    return $false
+}
+
+function Iniciar-LectorUv($lector, $lista) {
+    $espacio = [runspacefactory]::CreateRunspace()
+    $espacio.Open()
+    $shell = [powershell]::Create()
+    $shell.Runspace = $espacio
+    [void]$shell.AddScript({
+        param($entrada, $destino)
+        try {
+            while ($true) {
+                $linea = $entrada.ReadLine()
+                if ($null -eq $linea) { break }
+                [void]$destino.Add($linea)
+            }
+        } catch { }
+    })
+    [void]$shell.AddArgument($lector)
+    [void]$shell.AddArgument($lista)
+    return @{ Shell = $shell; Espacio = $espacio; Async = $shell.BeginInvoke() }
+}
+
+function Invocar-UvConSalida {
+    param(
+        [Parameter(Mandatory = $true)][string]$Archivo,
+        [string[]]$Argumentos = @(),
+        [hashtable]$EntornoExtra = $null
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Archivo
+    $psi.Arguments = (Formatear-Argumentos $Argumentos)
+    $psi.WorkingDirectory = $script:Raiz
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = $script:Utf8
+    $psi.StandardErrorEncoding = $script:Utf8
+    if ($EntornoExtra) {
+        foreach ($clave in @($EntornoExtra.Keys)) {
+            $psi.EnvironmentVariables[$clave] = [string]$EntornoExtra[$clave]
+        }
+    }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $lista = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList))
+    Write-Log ("Ejecuto: {0} {1}" -f (Split-Path -Leaf $Archivo), ($Argumentos -join " "))
+    try {
+        [void]$proc.Start()
+    } catch {
+        throw ("No se pudo iniciar {0}: {1}" -f $Archivo, $_.Exception.Message)
+    }
+    $lectorOut = Iniciar-LectorUv $proc.StandardOutput $lista
+    $lectorErr = Iniciar-LectorUv $proc.StandardError $lista
+    $vistos = 0
+    while (-not $proc.HasExited) {
+        while ($vistos -lt $lista.Count) {
+            $linea = [string]$lista[$vistos]
+            $vistos = $vistos + 1
+            if ($linea -ne "") {
+                Write-Host $linea
+                Write-Log $linea
+            }
+        }
+        Start-Sleep -Milliseconds 80
+    }
+    try { $proc.WaitForExit() } catch { }
+    Start-Sleep -Milliseconds 200
+    while ($vistos -lt $lista.Count) {
+        $linea = [string]$lista[$vistos]
+        $vistos = $vistos + 1
+        if ($linea -ne "") {
+            Write-Host $linea
+            Write-Log $linea
+        }
+    }
+    foreach ($lector in @($lectorOut, $lectorErr)) {
+        try { $lector.Shell.EndInvoke($lector.Async) } catch { }
+        try { $lector.Shell.Dispose() } catch { }
+        try { $lector.Espacio.Close() } catch { }
+    }
+    while ($vistos -lt $lista.Count) {
+        $linea = [string]$lista[$vistos]
+        $vistos = $vistos + 1
+        if ($linea -ne "") {
+            Write-Host $linea
+            Write-Log $linea
+        }
+    }
+    $codigo = -1
+    try { $codigo = $proc.ExitCode } catch { $codigo = -1 }
+    try { $proc.Dispose() } catch { }
+    $texto = ""
+    foreach ($linea in @($lista.ToArray())) {
+        if ($null -ne $linea -and $linea -ne "") {
+            $texto = $texto + $linea + "`n"
+        }
+    }
+    return @{ Codigo = $codigo; Texto = $texto }
+}
+
 function Instalar-Componentes {
     $req = Join-Path $script:Raiz "requirements_cu13.txt"
     if (-not (Test-Path -LiteralPath $req)) {
@@ -851,11 +1003,34 @@ function Instalar-Componentes {
     foreach ($url in @($cfg.Urls)) {
         $argumentos += @("--extra-index-url", [string]$url)
     }
-    $codigo = Invocar-Proceso -Archivo $script:UvExe -Argumentos $argumentos -EntornoExtra @{
-        UV_LINK_MODE = "copy"
-        UV_NO_CONFIG = "1"
+    $entorno = Entorno-Uv
+    $esperas = @(5, 15, 30, 60)
+    $codigo = 1
+    $texto = ""
+    $maxIntentos = 5
+    for ($intento = 1; $intento -le $maxIntentos; $intento++) {
+        if ($intento -gt 1) {
+            $espera = $esperas[$intento - 2]
+            $aviso = "La conexión va lenta, reintento…"
+            Write-Host ""
+            Write-Host $aviso -ForegroundColor Yellow
+            Write-Host ("Intento {0} de {1}. Espero {2} s. Lo ya bajado se conserva." -f $intento, $maxIntentos, $espera) -ForegroundColor Yellow
+            Write-Log ("{0} Intento {1} de {2}, espera {3} s." -f $aviso, $intento, $maxIntentos, $espera)
+            Emitir-Ventana "DRAKO_ESTADO La conexión va lenta, reintento…"
+            Start-Sleep -Seconds $espera
+        }
+        $resultado = Invocar-UvConSalida -Archivo $script:UvExe -Argumentos $argumentos -EntornoExtra $entorno
+        $codigo = [int]$resultado.Codigo
+        $texto = [string]$resultado.Texto
+        if ($codigo -eq 0) { break }
+        if (-not (Es-FalloDeRed $texto $codigo)) { break }
+        if ($intento -ge $maxIntentos) { break }
+        Write-Log "La descarga de componentes se cortó. Vuelvo a lanzar uv: usa su caché."
     }
     if ($codigo -ne 0) {
+        if (Es-FalloDeRed $texto $codigo) {
+            throw "La conexión va lenta y los componentes no se terminaron de bajar (código $codigo). Vuelve a ejecutar Instalar.bat: continúa con lo que ya está en la caché."
+        }
         throw "No se pudieron instalar los componentes (código $codigo). Si fue un corte de red, vuelve a ejecutar Instalar.bat: continúa donde lo dejó."
     }
     if (-not (Test-PaquetesMinimos)) {
@@ -900,24 +1075,39 @@ function Probar-Cuda {
 }
 
 function Nuevo-Acceso([string]$RutaLnk) {
+    $compilado = Join-Path $script:Raiz "DrakoCam.exe"
     $pyw = Pythonw-DelVenv
     $main = Join-Path $script:Raiz "main.py"
-    if (-not (Test-Path -LiteralPath $pyw)) {
+    $usaCompilado = Test-Path -LiteralPath $compilado
+    if (-not $usaCompilado -and -not (Test-Path -LiteralPath $pyw)) {
         throw "No encuentro pythonw.exe. Sin él, el acceso directo no puede abrir Drako Cam."
     }
     $dir = Split-Path -Parent $RutaLnk
     Asegurar-Directorio $dir
     $wsh = New-Object -ComObject WScript.Shell
     $lnk = $wsh.CreateShortcut($RutaLnk)
-    $lnk.TargetPath = $pyw
-    $lnk.Arguments = '"' + $main + '"'
+    if ($usaCompilado) {
+        $lnk.TargetPath = $compilado
+        $lnk.Arguments = ""
+    } else {
+        $lnk.TargetPath = $pyw
+        $lnk.Arguments = '"' + $main + '"'
+    }
     $lnk.WorkingDirectory = $script:Raiz
     $lnk.WindowStyle = 1
     $lnk.Description = "Abrir Drako Cam"
-    $lnk.IconLocation = "$pyw,0"
+    $icono = Join-Path $script:Raiz "installer\logo.ico"
+    if (-not (Test-Path -LiteralPath $icono)) {
+        throw "No encuentro installer\logo.ico. Sin ese isotipo el acceso directo no puede crearse."
+    }
+    $lnk.IconLocation = "$icono,0"
     $lnk.Save()
-    Write-Log ("Acceso directo: {0}" -f $RutaLnk)
-    Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
+    Write-Log ("Acceso directo: {0} (icono {1})" -f $RutaLnk, $icono)
+    if ($usaCompilado) {
+        Write-Log ("Abre con el programa compilado: {0}" -f $compilado)
+    } else {
+        Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
+    }
 }
 
 function Fijar-GpuDedicada {
@@ -931,7 +1121,8 @@ function Fijar-GpuDedicada {
     $py = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
     $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
     $main = Join-Path $script:Raiz "main.py"
-    foreach ($ruta in @($py, $pyw, $main)) {
+    $compilado = Join-Path $script:Raiz "DrakoCam.exe"
+    foreach ($ruta in @($py, $pyw, $main, $compilado)) {
         if (-not (Test-Path -LiteralPath $ruta)) { continue }
         New-ItemProperty -Path $clave -Name $ruta -PropertyType String -Value "GpuPreference=2;" -Force | Out-Null
         Write-Log ("GPU de alto rendimiento para {0}" -f $ruta)
@@ -950,6 +1141,65 @@ function Crear-Accesos {
     }
     Nuevo-Acceso (Join-Path $escritorio "Drako Cam.lnk")
     Nuevo-Acceso (Join-Path $menu "Drako Cam.lnk")
+}
+
+function Instalar-Modelos {
+    $python = Python-DelVenv
+    if (-not (Test-Path -LiteralPath $python)) {
+        throw "No encuentro el Python del entorno para bajar los modelos."
+    }
+    $scriptPy = Join-Path $script:Raiz "download_models.py"
+    if (-not (Test-Path -LiteralPath $scriptPy)) {
+        throw "Falta download_models.py."
+    }
+    Write-Log "Bajo y verifico solo los modelos del cambio de cara en vivo."
+    Write-Log "Si se corta internet, se reanuda desde lo ya bajado. No termino hasta que el hash coincida."
+    Emitir-Ventana "DRAKO_ESTADO Bajando los modelos de la cara"
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $python
+    $psi.Arguments = "-u `"$scriptPy`""
+    $psi.WorkingDirectory = $script:Raiz
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = $script:Utf8
+    $psi.StandardErrorEncoding = $script:Utf8
+    try { $psi.EnvironmentVariables["PYTHONUTF8"] = "1" } catch { }
+    try { $psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8" } catch { }
+    try { $psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1" } catch { }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    try {
+        [void]$proc.Start()
+    } catch {
+        throw ("No se pudo iniciar la descarga de modelos: {0}" -f $_.Exception.Message)
+    }
+    $errAsync = $null
+    try { $errAsync = $proc.StandardError.ReadToEndAsync() } catch { $errAsync = $null }
+    while (-not $proc.StandardOutput.EndOfStream) {
+        $linea = $proc.StandardOutput.ReadLine()
+        if ($null -eq $linea) { break }
+        if ($linea.StartsWith("DRAKO_")) {
+            Emitir-Ventana $linea
+        }
+        Write-Log $linea
+    }
+    try { $proc.WaitForExit() } catch { }
+    if ($errAsync) {
+        try {
+            $err = ([string]$errAsync.Result).Trim()
+            if ($err) { Write-Log $err }
+        } catch { }
+    }
+    $codigo = -1
+    try { $codigo = $proc.ExitCode } catch { $codigo = -1 }
+    try { $proc.Dispose() } catch { }
+    if ($codigo -ne 0) {
+        throw "Los modelos del cambio de cara no quedaron completos y verificados (código $codigo). La instalación no termina hasta que pasen. Vuelve a ejecutar Instalar.bat: continúa desde lo ya bajado."
+    }
+    Write-Log "Todos los modelos requeridos están completos y el hash coincide."
+    Emitir-Ventana "DRAKO_PORCIENTO 100"
 }
 
 function Mirar-Nvidia {
@@ -1017,7 +1267,15 @@ try {
         exit 0
     }
 
-    Paso "1/7" "Comprobando el equipo"
+    if ($SoloCamara) {
+        Write-Log "Registro elevado de la cámara virtual «Drako Cam»."
+        if (Registrar-CamaraDrako -Raiz $script:Raiz -YaElevado) {
+            exit 0
+        }
+        exit 1
+    }
+
+    Paso "1/9" "Comprobando el equipo"
     Assert-AppCerrada
     $prueba = Join-Path $script:Raiz (".drako-escritura-" + [guid]::NewGuid().ToString("n"))
     try {
@@ -1046,39 +1304,70 @@ try {
     } else {
         Write-Log "No hay internet. Solo puedo reparar lo que ya esté descargado."
     }
+    $hayEnlace = $env:DRAKO_CAM_URL_RELEASE -or (Test-Path -LiteralPath (Join-Path $script:Raiz "installer\descarga.url"))
+    if ($hayEnlace) {
+        Write-Log "Hay un enlace de release. Descargo sin usar tokens del repositorio."
+        $descarga = Join-Path $PSScriptRoot "descargar_release.ps1"
+        & $descarga
+        if ($LASTEXITCODE -ne 0) {
+            throw "No se pudo descargar el release. Revisa installer\descarga.url y, si el repo es privado, ejecuta gh auth login. No pegues un token en el programa."
+        }
+    }
     Mirar-Nvidia
     if (-not $script:ResumenNvidia) {
         Write-Host ""
         Write-Host "AVISO: de momento no veo una tarjeta NVIDIA. La instalación sigue." -ForegroundColor Yellow
         Write-Host "Al final te diré si el programa podrá usarla." -ForegroundColor Yellow
         Write-Host ""
+        Emitir-Ventana "DRAKO_AVISO No veo una tarjeta NVIDIA. Se instala igual; el directo puede ir más lento."
     }
 
-    Paso "2/7" "Preparando uv"
+    Paso "2/9" "Preparando uv"
     Asegurar-Uv
 
-    Paso "3/7" "Preparando Python 3.12"
+    Paso "3/9" "Preparando Python 3.12"
     Asegurar-Python
 
-    Paso "4/7" "Preparando FFmpeg 7.1.1"
+    Paso "4/9" "Preparando FFmpeg 7.1.1"
     Asegurar-Ffmpeg
 
-    Paso "5/7" "Instalando los componentes"
+    Paso "5/9" "Instalando los componentes"
     Instalar-Componentes
 
-    Paso "6/7" "Comprobando la tarjeta NVIDIA"
+    Paso "6/9" "Descargando los modelos del cambio de cara"
+    Instalar-Modelos
+
+    Paso "7/9" "Comprobando la tarjeta NVIDIA"
     Probar-Cuda
 
-    Paso "7/7" "Creando los accesos directos"
+    Paso "8/9" "Creando los accesos directos"
     Crear-Accesos
 
+    Paso "9/9" "Registrando la cámara virtual Drako Cam"
+    Registrar-CamaraDrako -Raiz $script:Raiz | Out-Null
+    if ($script:AvisoCamara) {
+        Emitir-Ventana ("DRAKO_AVISO " + $script:AvisoCamara)
+    }
+
     Write-Host ""
+    if ($script:AvisoCamara) {
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  AVISO: la cámara «Drako Cam» no quedó registrada" -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host $script:AvisoCamara -ForegroundColor Yellow
+        Write-Host ""
+    } else {
+        Write-Host "Cámara virtual «Drako Cam» lista. En Meet, Zoom o Teams elige esa cámara." -ForegroundColor Green
+        Write-Host "No hace falta abrir OBS." -ForegroundColor Green
+        Write-Host ""
+    }
     if ($script:AvisoGpu) {
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host "  AVISO: no se ve CUDA" -ForegroundColor Yellow
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host $script:TextoAvisoGpu -ForegroundColor Yellow
         Write-Host ""
+        Emitir-Ventana "DRAKO_AVISO La tarjeta no está lista para el directo. El programa se abre igual."
     }
     Write-Host "============================================================" -ForegroundColor Green
     Write-Host "  Drako Cam está listo" -ForegroundColor Green
@@ -1099,6 +1388,7 @@ try {
         Write-Host "Cuando pulses una tecla se cerrará esta ventana y el instalador terminará."
     }
     Write-Log "Instalación terminada."
+    Emitir-Ventana "DRAKO_LISTO"
     exit 0
 } catch {
     $detalle = $_.Exception.Message
@@ -1119,5 +1409,7 @@ try {
     Write-Host ""
     Write-Host "Puedes volver a ejecutar Instalar.bat. Si ya había avanzado, continúa y repara lo que falte."
     try { Write-Log ("ERROR: " + $detalle) } catch { }
+    $unaLinea = ($detalle -replace "[\r\n]+", " ").Trim()
+    Emitir-Ventana ("DRAKO_ERROR " + $unaLinea)
     exit 1
 }

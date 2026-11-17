@@ -57,7 +57,17 @@ def make_header_widget(
 
     if logo_path and os.path.exists(logo_path):
         logo_lbl = QtWidgets.QLabel()
-        pix = QtGui.QPixmap(logo_path)
+        if str(logo_path).lower().endswith(".svg"):
+            from PySide6.QtSvg import QSvgRenderer
+
+            imagen = QtGui.QImage(logo_width, logo_width, QtGui.QImage.Format.Format_ARGB32)
+            imagen.fill(QtCore.Qt.GlobalColor.transparent)
+            pintor = QtGui.QPainter(imagen)
+            QSvgRenderer(logo_path).render(pintor)
+            pintor.end()
+            pix = QtGui.QPixmap.fromImage(imagen)
+        else:
+            pix = QtGui.QPixmap(logo_path)
         if not pix.isNull():
             scaled = pix.scaledToWidth(logo_width, QtCore.Qt.SmoothTransformation)
             logo_lbl.setPixmap(scaled)

@@ -603,6 +603,8 @@ def select_target_medias(
         main_window, "change target media"
     ):
         return
+    if getattr(main_window, "_estudio", None) is not None:
+        return
 
     files_list = files_list or []
     if source_type == "folder":

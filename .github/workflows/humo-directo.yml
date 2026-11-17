@@ -1,0 +1,40 @@
+name: Humo del directo
+
+on:
+  pull_request:
+    paths:
+      - "app/ui/estudio/**"
+      - "app/ui/pantalla_carga.py"
+      - "app/drako/dialogo.py"
+      - "app/drako/rendimiento/precalentar.py"
+      - "app/drako/rendimiento/camara_virtual.py"
+      - "tests/unit/drako/test_directo_humo.py"
+      - ".github/workflows/humo-directo.yml"
+  workflow_dispatch:
+
+jobs:
+  humo:
+    name: Directo en offscreen
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v5
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Librerías de la ventana en offscreen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libglib2.0-0 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0
+
+      - name: Instalar lo mínimo para la ventana
+        run: python -m pip install --disable-pip-version-check pytest PySide6 numpy argon2-cffi
+
+      - name: Activar el humo sin GPU
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/unit/drako/test_directo_humo.py -q

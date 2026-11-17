@@ -24,3 +24,5 @@ Cambios de este derivado respecto a ese commit:
   y aviso visible si no hay CUDA.
 - Los pesos de los modelos no se versionan: se descargan en el primer
   arranque y se comprueba su SHA-256.
+- La cámara virtual propia usa el filtro DirectShow de Unity Capture
+  (schellingb, licencia MIT), en vendor/unitycapture/. OBS no es obligatorio.

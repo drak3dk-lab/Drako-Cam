@@ -27,6 +27,7 @@ from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
 from app.ui.widgets import widget_components
+from app.ui.qt_vivo import cambio_activo, edicion_activa
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -1307,8 +1308,8 @@ def _serialize_job_data(main_window: "MainWindow") -> dict:
         "selected_target_face_id": getattr(
             main_window, "selected_target_face_id", None
         ),
-        "swap_faces_enabled": main_window.swapfacesButton.isChecked(),
-        "edit_faces_enabled": main_window.editFacesButton.isChecked(),
+        "swap_faces_enabled": cambio_activo(main_window),
+        "edit_faces_enabled": edicion_activa(main_window),
         "last_target_media_folder_path": main_window.last_target_media_folder_path,
         "last_input_media_folder_path": main_window.last_input_media_folder_path,
         "loaded_embedding_filename": main_window.loaded_embedding_filename,
