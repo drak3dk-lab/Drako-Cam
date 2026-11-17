@@ -43,7 +43,8 @@ $nombres = @(
     "Instalando el cambio de cara",
     "Bajando los modelos de la cara",
     "Comprobando la tarjeta gráfica",
-    "Creando el acceso directo"
+    "Creando el acceso directo",
+    "Registrando la cámara Drako Cam"
 )
 
 $script:fase = "inicio"
@@ -147,8 +148,8 @@ for ($i = 0; $i -lt $nombres.Count; $i++) {
     $marca.ForeColor = $apagado
     $marca.AutoSize = $false
     $marca.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-    $marca.Size = New-Object System.Drawing.Size(22, 24)
-    $marca.Location = New-Object System.Drawing.Point(36, (220 + ($i * 26)))
+    $marca.Size = New-Object System.Drawing.Size(22, 22)
+    $marca.Location = New-Object System.Drawing.Point(36, (216 + ($i * 24)))
     $form.Controls.Add($marca)
     $script:marcas += $marca
 
@@ -158,8 +159,8 @@ for ($i = 0; $i -lt $nombres.Count; $i++) {
     $etiqueta.ForeColor = $apagado
     $etiqueta.AutoSize = $false
     $etiqueta.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-    $etiqueta.Size = New-Object System.Drawing.Size(380, 24)
-    $etiqueta.Location = New-Object System.Drawing.Point(62, (220 + ($i * 26)))
+    $etiqueta.Size = New-Object System.Drawing.Size(380, 22)
+    $etiqueta.Location = New-Object System.Drawing.Point(62, (216 + ($i * 24)))
     $form.Controls.Add($etiqueta)
     $script:etiquetas += $etiqueta
 }
@@ -235,8 +236,8 @@ $script:detallesAbiertos = $false
 
 function Actualizar-Barra {
     $fraccion = 0.0
-    if ($script:paso -gt 0) { $fraccion = ($script:paso - 1) / 8.0 }
-    if ($script:porcentaje -ge 0) { $fraccion += ($script:porcentaje / 100.0) / 8.0 }
+    if ($script:paso -gt 0) { $fraccion = ($script:paso - 1) / 9.0 }
+    if ($script:porcentaje -ge 0) { $fraccion += ($script:porcentaje / 100.0) / 9.0 }
     if ($script:fase -eq "listo") { $fraccion = 1.0 }
     if ($fraccion -gt 1) { $fraccion = 1 }
     if ($fraccion -lt 0) { $fraccion = 0 }
@@ -271,6 +272,8 @@ function Poner-Paso([int]$numero) {
         $estado.Text = "Esta parte es la larga. Deja la ventana abierta."
     } elseif ($numero -eq 6) {
         $estado.Text = "Si se corta internet, se reanuda. No cierres la ventana."
+    } elseif ($numero -eq 9) {
+        $estado.Text = "Windows puede pedir permiso una vez para la cámara."
     } else {
         $estado.Text = "No cierres esta ventana."
     }
@@ -324,7 +327,7 @@ function Refrescar-Detalles {
 
 function Mostrar-Listo {
     $script:fase = "listo"
-    $script:paso = 9
+    $script:paso = 10
     $estado.Text = "Ya está en este PC."
     $script:boton.Text = "Abrir Drako Cam"
     $script:boton.Enabled = $true

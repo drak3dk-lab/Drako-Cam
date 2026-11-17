@@ -494,8 +494,10 @@ class TargetMediaCardButton(CardButton):
 
                 layout_actions.fit_image_to_view_onchange(main_window)
 
+            if self.file_type == "webcam" and isinstance(main_window.control, dict):
+                main_window.control["SendVirtCamFramesEnableToggle"] = True
             if (
-                main_window.control["SendVirtCamFramesEnableToggle"]
+                main_window.control.get("SendVirtCamFramesEnableToggle")
                 and self.file_type != "image"
             ):
                 main_window.video_processor.enable_virtualcam()

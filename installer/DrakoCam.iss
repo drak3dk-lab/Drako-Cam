@@ -49,6 +49,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Source: "..\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.pyo,*.log,*.onnx,*.pth,*.safetensors,*.engine,*.ckpt,*.dfm,*.trt,*.pb,*.npy,*.bin,*.onnx.data"
 Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.pyo"
+Source: "..\vendor\unitycapture\*"; DestDir: "{app}\vendor\unitycapture"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.pyo,*.onnx,*.pth,*.safetensors,*.engine,*.ckpt,*.dfm,*.trt,*.pb,*.npy,*.bin"
 Source: "..\model_assets\*"; DestDir: "{app}\model_assets"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.onnx,*.pth,*.safetensors,*.engine,*.ckpt,*.dfm,*.trt,*.pb,*.npy,*.bin,*.onnx.data"
 Source: "..\installer\*"; DestDir: "{app}\installer"; Flags: ignoreversion recursesubdirs createallsubdirs

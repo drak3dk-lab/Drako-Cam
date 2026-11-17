@@ -10,3 +10,6 @@
 # El código y los scripts de shell se quedan en LF.
 *.py text eol=lf
 *.sh text eol=lf
+
+# El filtro DirectShow no es texto.
+vendor/unitycapture/*.dll binary
