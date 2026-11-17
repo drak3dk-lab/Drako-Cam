@@ -69,12 +69,13 @@ class VideoProcessor(QObject):
     # --- Signals ---
     # Removed QPixmap to ensure thread safety. GUI thread will handle conversion.
     frame_processed_signal = Signal(int, numpy.ndarray)
-    webcam_frame_processed_signal = Signal(numpy.ndarray)
+    webcam_frame_processed_signal = Signal(object)
     single_frame_processed_signal = Signal(int, int, numpy.ndarray, object)
     processing_started_signal = Signal()  # Unified signal for any processing start
     processing_stopped_signal = Signal()  # Unified signal for any processing stop
     processing_heartbeat_signal = Signal()  # Emits periodically to show liveness
     fatal_processing_error_signal = Signal(str)
+    aviso_camara_virtual_signal = Signal(str, str)
 
     def __init__(self, main_window: "MainWindow", num_threads=2):
         """
@@ -144,6 +145,7 @@ class VideoProcessor(QObject):
         # --- Subprocesses ---
         self.virtcam: pyvirtualcam.Camera | None = None
         self._virtcam_error_latch: bool = False
+        self._avisos_camara: set[str] = set()
         self.encoder = FFmpegEncoder()
         self.ffmpeg_input_sp: subprocess.Popen | None = (
             None  # ffmpeg process that feeds raw frames for recording FPS cap mode
@@ -223,6 +225,7 @@ class VideoProcessor(QObject):
         self.single_frame_processed_signal.connect(self.display_current_frame)
         self.single_frame_processed_signal.connect(self.store_single_frame_to_display)
         self.fatal_processing_error_signal.connect(self._handle_fatal_processing_error)
+        self.aviso_camara_virtual_signal.connect(self._mostrar_aviso_camara)
 
     @property
     def ui_state_is_dirty(self) -> bool:
@@ -490,9 +493,11 @@ class VideoProcessor(QObject):
 
     def send_frame_to_virtualcam(self, frame: numpy.ndarray):
         """
-        OPTIMIZED: Sends the given frame to the pyvirtualcam device.
-        Removed sleep_until_next_frame() to prevent blocking the Main GUI Thread.
-        The UI metronome (QTimer) already handles perfect timing and synchronization.
+        Envía el fotograma ya limpio a la cámara virtual.
+
+        No dibuja «EN VIVO», recuadros, esquinas ni ningún adorno: eso solo
+        vive en la vista de la aplicación. El fotograma que llega es la cara
+        con el filtro.
         """
         if self.main_window.control.get("SendVirtCamFramesEnableToggle", False):
             # JIT Initialization: Ensure VirtCam is spun up if toggle is active but uninitialized.
@@ -2900,7 +2905,9 @@ class VideoProcessor(QObject):
         # this race condition.
         time.sleep(0.15)
 
-        backend_to_use = backend or self.main_window.control["VirtCamBackendSelection"]
+        backend_pedido = backend or self.main_window.control.get(
+            "VirtCamBackendSelection", "auto"
+        )
         formato = self._salida_virtual.formato
         fmt = (
             pyvirtualcam.PixelFormat.RGBA
@@ -2909,32 +2916,124 @@ class VideoProcessor(QObject):
         )
         print(
             f"[INFO] Cámara virtual: {frame_width}x{frame_height} @ {int(current_fps)} fps, "
-            f"backend {backend_to_use}, formato {formato}"
+            f"preferencia {backend_pedido}, formato {formato}"
         )
 
-        for attempt in range(2):
-            try:
-                self.virtcam = pyvirtualcam.Camera(
-                    width=frame_width,
-                    height=frame_height,
-                    fps=int(current_fps),
-                    backend=backend_to_use,
-                    fmt=fmt,
+        from app.drako.rendimiento.camara_virtual import (
+            NOMBRE_DRAKO,
+            abrir_con_respaldo,
+        )
+
+        def _abrir(backend_nombre, dispositivo):
+            argumentos = {
+                "width": frame_width,
+                "height": frame_height,
+                "fps": int(current_fps),
+                "backend": backend_nombre,
+                "fmt": fmt,
+            }
+            if dispositivo:
+                argumentos["device"] = dispositivo
+            return pyvirtualcam.Camera(**argumentos)
+
+        def _anotar_fallo(backend_nombre, dispositivo, exc, intento):
+            nombre = dispositivo or "el primero disponible"
+            print(
+                f"[AVISO] No se abrió {backend_nombre} ({nombre}), "
+                f"intento {intento}: {exc}"
+            )
+
+        resultado = abrir_con_respaldo(
+            _abrir, str(backend_pedido), pausa=time.sleep, al_fallar=_anotar_fallo
+        )
+        if resultado.camara is None:
+            print(
+                "[ERROR] No se pudo abrir la cámara virtual «Drako Cam» ni el respaldo OBS."
+            )
+            self.virtcam = None
+            self._virtcam_error_latch = True
+            self._avisar_camara(resultado.codigo, "")
+            return
+
+        self.virtcam = resultado.camara
+        if resultado.codigo == "drako":
+            print(
+                f"[INFO] Cámara virtual «{NOMBRE_DRAKO}» lista "
+                f"({resultado.backend}). No hace falta abrir OBS."
+            )
+        elif resultado.codigo == "obs":
+            print(
+                "[INFO] Respaldo OBS Virtual Camera. "
+                "La cámara propia «Drako Cam» no está disponible."
+            )
+        else:
+            print(
+                f"[INFO] Cámara virtual «{resultado.dispositivo}» lista "
+                f"({resultado.backend})."
+            )
+        self._avisar_camara(resultado.codigo, resultado.dispositivo)
+
+    def _avisar_camara(self, codigo: str, dispositivo: str) -> None:
+        """Un aviso por situación, en el hilo de la interfaz."""
+        from app.drako.rendimiento.camara_virtual import (
+            mensaje_para_usuario,
+            titulo_para_usuario,
+        )
+
+        if codigo in ("", "drako"):
+            return
+        if codigo in self._avisos_camara:
+            return
+        texto = mensaje_para_usuario(codigo, dispositivo)
+        if not texto:
+            return
+        self._avisos_camara.add(codigo)
+        try:
+            self.aviso_camara_virtual_signal.emit(
+                titulo_para_usuario(codigo), texto
+            )
+        except Exception:
+            print(f"[AVISO] {texto}")
+
+    def _mostrar_aviso_camara(self, titulo: str, mensaje: str) -> None:
+        print(f"[AVISO] {titulo}: {mensaje}")
+        try:
+            from app.ui.widgets.actions.common_actions import (
+                create_and_show_messagebox,
+                create_and_show_toast_message,
+            )
+
+            if titulo == "Cámara virtual no disponible":
+                create_and_show_messagebox(
+                    self.main_window, titulo, mensaje, self.main_window
                 )
-                print(f"[INFO] Virtual camera '{self.virtcam.device}' started.")
-                break  # success — exit retry loop
-            except Exception as e:
-                if attempt == 0:
-                    # First attempt failed (driver may still be releasing the handle).
-                    print(
-                        f"[WARN] Virtual camera open failed (attempt 1): {e}. Retrying in 500 ms"
-                    )
-                    time.sleep(0.5)
-                else:
-                    # Second attempt failed. Trip the circuit breaker to prevent infinite loop.
-                    print(f"[ERROR] Failed to enable virtual camera: {e}")
-                    self.virtcam = None
-                    self._virtcam_error_latch = True
+                return
+            create_and_show_toast_message(
+                self.main_window, titulo, mensaje, "warning"
+            )
+        except Exception as exc:
+            print(f"[AVISO] No se pudo mostrar el aviso de la cámara: {exc}")
+
+    def _activar_salida_en_vivo(self) -> None:
+        """EN VIVO envía el fotograma limpio a la cámara «Drako Cam»."""
+        control = self.main_window.control
+        control["SendVirtCamFramesEnableToggle"] = True
+        if not str(control.get("VirtCamBackendSelection") or "").strip():
+            control["VirtCamBackendSelection"] = "auto"
+        widgets = getattr(self.main_window, "parameter_widgets", None) or {}
+        boton = widgets.get("SendVirtCamFramesEnableToggle")
+        if boton is None:
+            return
+        try:
+            boton.blockSignals(True)
+            boton.set_value(True)
+        except Exception:
+            pass
+        finally:
+            try:
+                boton.blockSignals(False)
+            except Exception:
+                pass
 
     def disable_virtualcam(self):
         """Stops the pyvirtualcam device."""
@@ -3571,6 +3670,8 @@ class VideoProcessor(QObject):
         if self.file_type != "webcam":
             print("[WARN] Process_webcam: Only applicable for webcam input.")
             return
+
+        self._activar_salida_en_vivo()
 
         # 1. Retrieve User Settings from the UI Control Dictionary
         try:

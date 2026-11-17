@@ -1,8 +1,12 @@
-"""Salida a la cámara virtual de OBS.
+"""Salida a la cámara virtual propia de Drako Cam.
 
-El fotograma del pipeline ya es BGR. Se abre la cámara en BGR para no
-hacer otra conversión. El fondo verde o transparente es opcional y
-se compone en un buffer fijo del tamaño bloqueado.
+El fotograma del pipeline ya es BGR y va limpio: la cara con el filtro,
+sin letreros ni recuadros de la interfaz. Se abre en BGR para no hacer
+otra conversión. El fondo verde o transparente es opcional y se compone
+en un buffer fijo del tamaño bloqueado.
+
+En Windows el backend es Unity Capture, registrado como «Drako Cam».
+OBS Virtual Camera solo se abre si esa cámara no está disponible.
 """
 
 from __future__ import annotations
@@ -205,3 +209,166 @@ def _aplicar_alfa(destino, caja, preparador: PreparadorSalida) -> None:
     mascara = _mascara(preparador, destino.shape[0], destino.shape[1], caja)
     destino[:, :, 3] = 0
     destino[mascara, 3] = 255
+
+
+# Nombre que ve Meet, Zoom y Teams. Unity Capture lo guarda en el registro
+# al llamar a regsvr32 /i:UnityCaptureName=...
+NOMBRE_DRAKO = "Drako Cam"
+NOMBRE_UNITY = "Unity Video Capture"
+BACKEND_UNITY = "unitycapture"
+BACKEND_OBS = "obs"
+
+# CLSID del dispositivo 0 en schellingb/UnityCapture (filtro DirectShow).
+CLSID_64 = "{5C2CD55C-92AD-4999-8666-912BD3E70010}"
+CLSID_32 = "{5C2CD55C-92AD-4999-8666-912BD3E70020}"
+
+
+def intentos(backend: str | None = None) -> list[tuple[str, str | None]]:
+    """Unity Capture primero. OBS solo entra si la cámara propia no abre.
+
+    El ajuste heredado puede decir ``obs``. No cambia el orden: la cámara
+    «Drako Cam» se prueba igual. ``None`` como dispositivo deja que el
+    backend use el primero que tenga registrado.
+    """
+    pedido = str(backend or "auto").strip().lower()
+    unity = [
+        (BACKEND_UNITY, NOMBRE_DRAKO),
+        (BACKEND_UNITY, NOMBRE_UNITY),
+        (BACKEND_UNITY, None),
+    ]
+    obs = [(BACKEND_OBS, None)]
+    if pedido == "obs":
+        return unity + obs
+    return unity + obs
+
+
+def _ausente(exc: BaseException) -> bool:
+    texto = str(exc).lower()
+    marcas = (
+        "no camera",
+        "no virtual camera",
+        "not installed",
+        "did you install",
+        "not found",
+        "failed to find",
+        "no se encuentra",
+    )
+    return any(marca in texto for marca in marcas)
+
+
+@dataclass(frozen=True)
+class ResultadoApertura:
+    camara: object
+    backend: str
+    dispositivo: str
+    codigo: str  # drako | unity | obs | ninguna
+
+
+def abrir_con_respaldo(
+    abrir,
+    backend_pedido: str | None = None,
+    pausa=None,
+    al_fallar=None,
+) -> ResultadoApertura:
+    """Prueba cada candidato. Reintenta una vez solo si el fallo no es «no está»."""
+    if pausa is None:
+        import time
+
+        pausa = time.sleep
+    for backend, device in intentos(backend_pedido):
+        for intento in (1, 2):
+            try:
+                camara = abrir(backend, device)
+            except Exception as exc:
+                if al_fallar is not None:
+                    al_fallar(backend, device, exc, intento)
+                if _ausente(exc) or intento == 2:
+                    break
+                pausa(0.4)
+                continue
+            nombre = str(getattr(camara, "device", "") or device or "")
+            return ResultadoApertura(
+                camara, backend, nombre, _codigo(backend, nombre)
+            )
+    return ResultadoApertura(None, "", "", "ninguna")
+
+
+def _codigo(backend: str, nombre: str) -> str:
+    if backend == BACKEND_OBS:
+        return "obs"
+    if nombre.strip() == NOMBRE_DRAKO:
+        return "drako"
+    return "unity"
+
+
+def titulo_para_usuario(codigo: str) -> str:
+    if codigo == "ninguna":
+        return "Cámara virtual no disponible"
+    if codigo == "obs":
+        return "Respaldo OBS"
+    return "Cámara virtual"
+
+
+def mensaje_para_usuario(codigo: str, dispositivo: str = "") -> str | None:
+    if codigo == "drako":
+        return None
+    if codigo == "unity":
+        visto = dispositivo.strip() or NOMBRE_UNITY
+        return (
+            f"La cámara virtual responde como «{visto}», no como «{NOMBRE_DRAKO}». "
+            "En Meet, Zoom o Teams elige ese nombre. "
+            "Para verla como «Drako Cam», ejecuta Instalar.bat como administrador."
+        )
+    if codigo == "obs":
+        return (
+            "No está la cámara «Drako Cam». Se usa OBS Virtual Camera como respaldo. "
+            "OBS no es obligatorio: cierra Drako Cam y ejecuta Instalar.bat como "
+            "administrador para registrar la cámara propia. Solo hace falta una vez."
+        )
+    if codigo == "ninguna":
+        return (
+            "No se pudo abrir la cámara virtual. Ejecuta Instalar.bat como "
+            "administrador para registrar «Drako Cam». Solo hace falta una vez. "
+            "No hace falta tener OBS instalado ni abierto."
+        )
+    return None
+
+
+def ya_registrada(nombre: str, servidor: str, dll: str) -> bool:
+    """True si ese CLSID ya apunta a nuestra DLL y se llama Drako Cam."""
+    if str(nombre or "").strip() != NOMBRE_DRAKO:
+        return False
+    if not servidor or not dll:
+        return False
+    import os
+
+    try:
+        return os.path.normcase(os.path.abspath(servidor)) == os.path.normcase(
+            os.path.abspath(dll)
+        )
+    except OSError:
+        return False
+
+
+def separar_vista_y_salida(paquete):
+    """La vista de la app puede llevar adornos. La salida a la cámara, no."""
+    if (
+        isinstance(paquete, tuple)
+        and len(paquete) == 2
+        and getattr(paquete[0], "shape", None) is not None
+        and getattr(paquete[1], "shape", None) is not None
+    ):
+        return paquete[0], paquete[1]
+    return paquete, paquete
+
+
+def hay_adornos_de_interfaz(control: dict | None, comparar: bool = False) -> bool:
+    """Recuadros, puntos y la comparación son de la interfaz, no de la señal."""
+    if comparar:
+        return True
+    control = control or {}
+    return bool(
+        control.get("ShowAllDetectedFacesBBoxToggle")
+        or control.get("ShowByteTrackBBoxToggle")
+        or control.get("ShowLandmarksEnableToggle")
+    )

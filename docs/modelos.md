@@ -1,6 +1,6 @@
 # Modelos del directo
 
-Drako Cam solo cambia caras en vivo, de la cámara web hacia OBS. El primer
+Drako Cam solo cambia caras en vivo, de la cámara web hacia la cámara virtual «Drako Cam». El primer
 arranque descarga estos pesos y nada más. Antes, el catálogo heredado de
 VisoMaster Fusion pesaba **17,36 GB** (77 archivos). Ahora son **1,14 GB**
 (8 archivos).

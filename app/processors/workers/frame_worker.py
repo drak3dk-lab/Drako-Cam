@@ -487,6 +487,7 @@ class FrameWorker(threading.Thread):
                     or is_view_face_mask
                 )
 
+                self._numpy_salida_limpia = None
                 if needs_processing:
                     # Ensure input frame is C-contiguous for PyTorch/OpenCV compatibility
                     if not self.frame.flags["C_CONTIGUOUS"]:
@@ -524,7 +525,13 @@ class FrameWorker(threading.Thread):
                 except Exception:
                     pass
             if self.video_processor.file_type == "webcam" and not self.is_single_frame:
-                self.video_processor.webcam_frame_processed_signal.emit(self.frame)
+                limpio = getattr(self, "_numpy_salida_limpia", None)
+                if limpio is not None:
+                    self.video_processor.webcam_frame_processed_signal.emit(
+                        (self.frame, limpio)
+                    )
+                else:
+                    self.video_processor.webcam_frame_processed_signal.emit(self.frame)
             elif not self.is_single_frame:
                 self.video_processor.frame_processed_signal.emit(
                     self.frame_number, self.frame
@@ -703,23 +710,44 @@ class FrameWorker(threading.Thread):
                 self.models_processor.device
             )
 
+        # Los adornos de la interfaz se aplican después, solo a la vista.
+        self._numpy_salida_limpia = None
+        self._tensor_vr_limpio = None
+
         # --- ROUTING LOGIC ---
         if control.get("VR180ModeEnableToggle", False):
-            # Delegate entirely to the VR Worker
-            processed_tensor_rgb_uint8 = self.vr_processor.process_frame_vr180(
+            decorado = self.vr_processor.process_frame_vr180(
                 processed_tensor_rgb_uint8, img_numpy_rgb_uint8, control, stop_event
             )
-        else:
-            # Delegate entirely to the Standard Worker
-            processed_tensor_rgb_uint8 = self.standard_processor.process_standard_frame(
-                processed_tensor_rgb_uint8, control, stop_event
-            )
+            limpio = getattr(self, "_tensor_vr_limpio", None)
+            self._tensor_vr_limpio = None
+            separado = limpio is not None
+            base = limpio if separado else decorado
+            if control.get("FrameEnhancerEnableToggle", False) and not (
+                self.is_view_face_mask or self.is_view_face_compare
+            ):
+                if stop_event.is_set():
+                    assert img_numpy_rgb_uint8 is not None
+                    return img_numpy_rgb_uint8[..., ::-1]
+                base = self.function_worker.enhance_core(base, control=control)
+                if separado:
+                    decorado = self.function_worker.enhance_core(
+                        decorado, control=control
+                    )
+            if control.get("FundidoCaraEnableToggle", True):
+                base = self._fundir_si_se_pierde(base)
+                if not separado:
+                    decorado = base
+            vista = decorado if separado else base
+            return self._empaquetar_salida(vista, base, False)
 
-        # --- Common Post-Processing (Enhancers, etc.) ---
+        processed_tensor_rgb_uint8 = self.standard_processor.process_standard_frame(
+            processed_tensor_rgb_uint8, control, stop_event
+        )
+
         compare_mode_active = self.is_view_face_mask or self.is_view_face_compare
 
         if control.get("FrameEnhancerEnableToggle", False) and not compare_mode_active:
-            # Check 5: Before final heavy operation
             if stop_event.is_set():
                 assert img_numpy_rgb_uint8 is not None
                 return img_numpy_rgb_uint8[..., ::-1]
@@ -733,23 +761,36 @@ class FrameWorker(threading.Thread):
                 processed_tensor_rgb_uint8
             )
 
+        vista = self.standard_processor.adornar_para_vista(
+            processed_tensor_rgb_uint8, control
+        )
+        return self._empaquetar_salida(vista, processed_tensor_rgb_uint8, residente)
+
+    def _empaquetar_salida(self, vista, limpio, residente: bool):
+        """Vista para la interfaz. La salida virtual se queda sin adornos."""
+        numpy_vista = self._numpy_bgr(vista, residente)
+        if vista is not limpio:
+            self._numpy_salida_limpia = self._numpy_bgr(limpio, residente)
+        else:
+            self._numpy_salida_limpia = None
+        return numpy_vista
+
+    def _numpy_bgr(self, tensor, residente: bool):
         if residente:
             from app.drako.rendimiento.buffers import AnilloAnfitrion, bajar_bgr
 
             anillo = getattr(self, "_anillo_salida", None)
             if anillo is None:
-                anillo = AnilloAnfitrion(4)
+                anillo = AnilloAnfitrion(6)
                 self._anillo_salida = anillo
-            bajada = bajar_bgr(processed_tensor_rgb_uint8, anillo)
+            bajada = bajar_bgr(tensor, anillo)
             if bajada is not None:
                 return bajada
-
         final_img_np_rgb_uint8 = (
-            processed_tensor_rgb_uint8.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
         )
         if not final_img_np_rgb_uint8.flags["C_CONTIGUOUS"]:
             final_img_np_rgb_uint8 = np.ascontiguousarray(final_img_np_rgb_uint8)
-
         return final_img_np_rgb_uint8[..., ::-1]
 
     def _fundir_si_se_pierde(self, procesado: torch.Tensor) -> torch.Tensor:

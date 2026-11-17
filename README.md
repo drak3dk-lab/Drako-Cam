@@ -15,7 +15,7 @@ Los **pesos de los modelos no están en el repositorio**. El primer arranque los
 - Anota en local, cifrado (AES-GCM) y firmado (HMAC-SHA256), cada apertura, cierre, duración, intento fallido y cara usada. De la cara solo guarda el nombre del archivo y un hash, nunca la imagen ni el embedding.
 - Puede avisar a un bot de Telegram. Si no hay red, encola y reintenta. Si Telegram no está configurado, el programa funciona igual.
 - Escribe logs rotativos, muestra un cuadro si hay una excepción no controlada, reabre la webcam si se desconecta y avisa en pantalla si no hay CUDA.
-- El directo (webcam → cambio de cara → OBS) usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. El detalle y lo que hay que medir en la GPU real está en [docs/rendimiento.md](docs/rendimiento.md).
+- El directo (webcam → cambio de cara → cámara virtual «Drako Cam») usa perfiles de VRAM, motores TensorRT FP16 con caché por tarjeta y un canal que tira fotogramas viejos. No hace falta OBS: el instalador registra Unity Capture una vez, como administrador. OBS Virtual Camera queda solo como respaldo. El detalle está en [docs/rendimiento.md](docs/rendimiento.md).
 
 La interfaz heredada de VisoMaster (paneles, controles y manual) sigue en inglés. Los cuadros nuevos de Drako Cam están en español.
 
@@ -42,6 +42,7 @@ Para Windows 10 u 11, de 64 bits, con internet. No hace falta instalar Python, F
 4. Si algo falla, la ventana se queda abierta con el motivo. El detalle queda en `%LOCALAPPDATA%\DrakoCam\logs\instalacion.log`.
 5. Al terminar hay un acceso directo **Drako Cam** en el escritorio y en el menú Inicio. Ábrelo: no sale una ventana de consola.
 6. Si no hay una GPU NVIDIA con CUDA, la instalación termina igual y lo dice con claridad. El programa puede abrirse, pero el directo no irá a velocidad de cámara.
+7. Al final pide permiso de administrador **una vez** para registrar la cámara virtual «Drako Cam» (Unity Capture, incluido en `vendor/unitycapture/`). Si ya está registrada, no la duplica. Si no hay permiso, la instalación del programa sigue y la ventana explica cómo ejecutar `Instalar.bat` como administrador. Sin ese registro, Meet, Zoom y Teams no ven la cámara. OBS no es obligatorio.
 
 Volver a ejecutar `Instalar.bat` repara o actualiza lo que falte (componentes y accesos directos).
 
@@ -53,7 +54,7 @@ Para quitarlo: Configuración de Windows → Aplicaciones → Drako Cam → Desi
 
 ### Quitar lo instalado con Instalar.bat
 
-Doble clic en `Desinstalar.bat`. Borra el entorno de Python y los accesos directos. No borra `%APPDATA%\DrakoCam` (contraseña, registros y avisos) salvo que escribas `SI` cuando lo pregunte. La carpeta del programa no se borra: puedes eliminarla a mano si ya no la quieres.
+Doble clic en `Desinstalar.bat`. Borra el entorno de Python, los accesos directos y, si esta copia la registró, la cámara «Drako Cam». No borra `%APPDATA%\DrakoCam` (contraseña, registros y avisos) salvo que escribas `SI` cuando lo pregunte. La carpeta del programa no se borra: puedes eliminarla a mano si ya no la quieres. Si Windows pide administrador, es solo para quitar esa cámara.
 
 ## Instalación manual
 
@@ -99,9 +100,9 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 1. La primera vez el programa pide **crear** la contraseña de administrador (8 caracteres como mínimo) y repetirla. Esa contraseña es de este PC. No está escrita en el programa.
 2. Después, cada apertura pide esa contraseña.
 3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
-4. Comprueba los modelos del directo (1,14 GB) y, si no han cambiado, no vuelve a verificar el hash. Drako Cam solo cambia caras de la cámara hacia OBS. El detalle está en [docs/modelos.md](docs/modelos.md).
+4. Comprueba los modelos del directo (1,14 GB) y, si no han cambiado, no vuelve a verificar el hash. Drako Cam cambia caras de la webcam y las envía a su cámara virtual «Drako Cam». El detalle está en [docs/modelos.md](docs/modelos.md).
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
-6. Elige webcam como medio de destino y activa la cámara virtual (`pyvirtualcam`) para Zoom, Discord u OBS.
+6. Elige la webcam y pulsa **EN VIVO**. La cara con el filtro sale por la cámara «Drako Cam», sin letreros de la interfaz. En Meet, Zoom o Teams elige esa cámara. No hace falta abrir OBS.
 
 El código de acceso y el servidor que lo comprueba se explican en [server/README.md](server/README.md). Hasta que esa URL y la clave pública estén en `app/drako/licencia_config.py`, el programa avisa de que el acceso no está configurado y no entra.
 

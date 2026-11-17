@@ -1,6 +1,6 @@
 # Rendimiento del directo
 
-Webcam → cambio de cara → cámara virtual de OBS. La estabilidad va primero
+Webcam → cambio de cara → cámara virtual «Drako Cam» (Unity Capture; OBS solo como respaldo). La estabilidad va primero
 y los fotogramas por segundo, después. El público usa tarjetas **Blackwell
 (RTX 5060, 5060 Ti, 5070, 5070 Ti y 5080, 8–16 GB, sm_120)**. La RTX 4050
 Laptop de 6 GB es solo el portátil de desarrollo y tiene un perfil de

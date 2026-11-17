@@ -2280,16 +2280,38 @@ def initialize_media_button_icons(main_window: "MainWindow"):
     set_record_button_icon(main_window)
 
 
+def _es_directo_webcam(main_window: "MainWindow") -> bool:
+    procesador = getattr(main_window, "video_processor", None)
+    return getattr(procesador, "file_type", "") == "webcam"
+
+
+def _rotular_boton_reproducir(main_window: "MainWindow", en_marcha: bool) -> None:
+    """En la webcam el botón es EN VIVO. En un archivo sigue siendo reproducir."""
+    boton = main_window.buttonMediaPlay
+    if _es_directo_webcam(main_window):
+        if hasattr(boton, "setText"):
+            boton.setText("EN VIVO")
+        boton.setToolTip(
+            "Detener el directo"
+            if en_marcha
+            else "EN VIVO: envía la cara a la cámara virtual Drako Cam, sin abrir OBS"
+        )
+        return
+    if hasattr(boton, "setText"):
+        boton.setText("")
+    boton.setToolTip("Stop" if en_marcha else "Play")
+
+
 def set_play_button_icon_to_play(main_window: "MainWindow"):
     """Sets the Play button icon and tooltip to the 'ready-to-play' (stopped) state."""
     main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
-    main_window.buttonMediaPlay.setToolTip("Play")
+    _rotular_boton_reproducir(main_window, False)
 
 
 def set_play_button_icon_to_stop(main_window: "MainWindow"):
     """Sets the Play button icon and tooltip to the 'playing active' (stop) state."""
     main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
-    main_window.buttonMediaPlay.setToolTip("Stop")
+    _rotular_boton_reproducir(main_window, True)
 
 
 def reset_media_buttons(main_window: "MainWindow"):
@@ -2313,10 +2335,10 @@ def set_play_button_icon(main_window: "MainWindow"):
     """Updates the Play button icon and tooltip to reflect its current checked state."""
     if main_window.buttonMediaPlay.isChecked():
         main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_on.png"))
-        main_window.buttonMediaPlay.setToolTip("Stop")
+        _rotular_boton_reproducir(main_window, True)
     else:
         main_window.buttonMediaPlay.setIcon(QtGui.QIcon(":/media/media/play_hover.png"))
-        main_window.buttonMediaPlay.setToolTip("Play")
+        _rotular_boton_reproducir(main_window, False)
 
 
 def set_record_button_icon(main_window: "MainWindow"):
