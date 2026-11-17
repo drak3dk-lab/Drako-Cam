@@ -5,7 +5,8 @@
 #Requires -Version 5.1
 param(
     [switch]$Silencioso,
-    [switch]$BorrarDatos
+    [switch]$BorrarDatos,
+    [switch]$SoloCamara
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +14,8 @@ $ErrorActionPreference = "Stop"
 $script:Utf8 = New-Object System.Text.UTF8Encoding $false
 $script:Raiz = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $script:Venv = Join-Path $script:Raiz ".venv"
+$script:AvisoCamara = ""
+. (Join-Path $PSScriptRoot "camara_virtual.ps1")
 
 $baseLocal = $env:LOCALAPPDATA
 if (-not $baseLocal) { $baseLocal = $env:TEMP }
@@ -88,11 +91,20 @@ try {
     Write-Log "======== Drako Cam: desinstalación ========"
     Write-Log ("Carpeta: {0}" -f $script:Raiz)
 
+    if ($SoloCamara) {
+        Write-Log "Desregistro elevado de la cámara virtual «Drako Cam»."
+        if (Quitar-CamaraDrako -Raiz $script:Raiz -YaElevado) {
+            exit 0
+        }
+        exit 1
+    }
+
     if (-not $Silencioso) {
         $texto = @(
             "Se va a borrar:",
             "  - el entorno de Python (.venv) de esta carpeta",
             "  - los accesos directos «Drako Cam» del escritorio y del menú Inicio",
+            "  - la cámara virtual «Drako Cam», si esta copia la registró",
             "",
             "No se borra la carpeta del programa ni los modelos ya descargados.",
             "La configuración de %APPDATA%\DrakoCam se pregunta después.",
@@ -107,6 +119,8 @@ try {
             exit 0
         }
     }
+
+    Quitar-CamaraDrako -Raiz $script:Raiz -Silencioso:$Silencioso | Out-Null
 
     if (Test-Path -LiteralPath $script:Venv) {
         Write-Log "Borrando el entorno .venv..."
@@ -160,6 +174,13 @@ try {
     Write-Host "Puedes borrarla a mano si ya no quieres Drako Cam."
     Write-Host "Si lo instalaste con el archivo .exe, también puedes quitarlo"
     Write-Host "desde Configuración de Windows, Aplicaciones, Drako Cam."
+    if ($script:AvisoCamara) {
+        Write-Host ""
+        Write-Host $script:AvisoCamara -ForegroundColor Yellow
+    } else {
+        Write-Host ""
+        Write-Host "Si esta copia había registrado la cámara «Drako Cam», ya se quitó."
+    }
     if (-not $borrarDatos) {
         Write-Host ""
         Write-Host "La contraseña y los registros siguen en:"

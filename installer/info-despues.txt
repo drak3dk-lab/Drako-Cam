@@ -7,6 +7,10 @@ Si todo va bien, pulsa una tecla en esa ventana cuando te lo pida.
 Después podrás abrir «Drako Cam» desde el escritorio.
 Ese acceso directo no muestra una ventana de consola.
 
+En Meet, Zoom o Teams elige la cámara «Drako Cam».
+No hace falta tener OBS abierto. Si Windows no dejó registrar
+la cámara, ejecuta Instalar.bat como administrador. Solo hace falta una vez.
+
 Si aparece un aviso de que no hay tarjeta NVIDIA, el programa se ha
 instalado igual, pero el cambio de cara en directo no irá fluido.
 

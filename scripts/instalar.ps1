@@ -5,7 +5,8 @@
 #Requires -Version 5.1
 param(
     [switch]$DesdeInstalador,
-    [switch]$SoloComprobar
+    [switch]$SoloComprobar,
+    [switch]$SoloCamara
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +23,8 @@ $script:AvisoGpu = $false
 $script:TextoAvisoGpu = ""
 $script:ResumenNvidia = ""
 $script:UvExe = ""
+$script:AvisoCamara = ""
+. (Join-Path $PSScriptRoot "camara_virtual.ps1")
 
 $baseLocal = $env:LOCALAPPDATA
 if (-not $baseLocal) { $baseLocal = $env:TEMP }
@@ -1017,7 +1020,15 @@ try {
         exit 0
     }
 
-    Paso "1/7" "Comprobando el equipo"
+    if ($SoloCamara) {
+        Write-Log "Registro elevado de la cámara virtual «Drako Cam»."
+        if (Registrar-CamaraDrako -Raiz $script:Raiz -YaElevado) {
+            exit 0
+        }
+        exit 1
+    }
+
+    Paso "1/8" "Comprobando el equipo"
     Assert-AppCerrada
     $prueba = Join-Path $script:Raiz (".drako-escritura-" + [guid]::NewGuid().ToString("n"))
     try {
@@ -1054,25 +1065,39 @@ try {
         Write-Host ""
     }
 
-    Paso "2/7" "Preparando uv"
+    Paso "2/8" "Preparando uv"
     Asegurar-Uv
 
-    Paso "3/7" "Preparando Python 3.12"
+    Paso "3/8" "Preparando Python 3.12"
     Asegurar-Python
 
-    Paso "4/7" "Preparando FFmpeg 7.1.1"
+    Paso "4/8" "Preparando FFmpeg 7.1.1"
     Asegurar-Ffmpeg
 
-    Paso "5/7" "Instalando los componentes"
+    Paso "5/8" "Instalando los componentes"
     Instalar-Componentes
 
-    Paso "6/7" "Comprobando la tarjeta NVIDIA"
+    Paso "6/8" "Comprobando la tarjeta NVIDIA"
     Probar-Cuda
 
-    Paso "7/7" "Creando los accesos directos"
+    Paso "7/8" "Creando los accesos directos"
     Crear-Accesos
 
+    Paso "8/8" "Registrando la cámara virtual Drako Cam"
+    Registrar-CamaraDrako -Raiz $script:Raiz | Out-Null
+
     Write-Host ""
+    if ($script:AvisoCamara) {
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  AVISO: la cámara «Drako Cam» no quedó registrada" -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host $script:AvisoCamara -ForegroundColor Yellow
+        Write-Host ""
+    } else {
+        Write-Host "Cámara virtual «Drako Cam» lista. En Meet, Zoom o Teams elige esa cámara." -ForegroundColor Green
+        Write-Host "No hace falta abrir OBS." -ForegroundColor Green
+        Write-Host ""
+    }
     if ($script:AvisoGpu) {
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host "  AVISO: no se ve CUDA" -ForegroundColor Yellow

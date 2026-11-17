@@ -225,7 +225,7 @@ class Ui_MainWindow(object):
         sizePolicy5.setVerticalStretch(0)
         sizePolicy5.setHeightForWidth(self.buttonMediaPlay.sizePolicy().hasHeightForWidth())
         self.buttonMediaPlay.setSizePolicy(sizePolicy5)
-        self.buttonMediaPlay.setMaximumSize(QSize(100, 16777215))
+        self.buttonMediaPlay.setMaximumSize(QSize(140, 16777215))
         icon4 = QIcon()
         icon4.addFile(u":/media/media/play_hover.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.buttonMediaPlay.setIcon(icon4)

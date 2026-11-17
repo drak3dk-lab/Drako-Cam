@@ -1605,6 +1605,11 @@ class MediaPipeline(QObject):
             self.vp.tail_pending_stall_start_sec = 0.0
 
         # 3. Output to System (UI, Encoder, VirtualCam)
+        # La vista puede llevar adornos. La cámara virtual recibe el fotograma limpio.
+        from app.drako.rendimiento.camara_virtual import separar_vista_y_salida
+
+        vista, salida = separar_vista_y_salida(frame)
+        frame = vista
         self.vp.current_frame = frame
 
         # Increment absolute counter strictly upon frame display
@@ -1619,9 +1624,9 @@ class MediaPipeline(QObject):
 
         canal = getattr(self, "_canal_en_vivo", None)
         if self.vp.file_type == "webcam" and canal is not None:
-            canal.salida.poner_fresco(frame, al_descartar=canal.cronometro.descartar)
+            canal.salida.poner_fresco(salida, al_descartar=canal.cronometro.descartar)
         else:
-            self.vp.send_frame_to_virtualcam(frame)
+            self.vp.send_frame_to_virtualcam(salida)
         if self.vp.file_type == "webcam":
             from app.drako.rendimiento.watchdog import observar_latido
 

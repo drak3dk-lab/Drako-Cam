@@ -495,8 +495,10 @@ class TargetMediaCardButton(CardButton):
 
             layout_actions.fit_image_to_view_onchange(main_window)
 
+        if self.file_type == "webcam":
+            main_window.control["SendVirtCamFramesEnableToggle"] = True
         if (
-            main_window.control["SendVirtCamFramesEnableToggle"]
+            main_window.control.get("SendVirtCamFramesEnableToggle")
             and self.file_type != "image"
         ):
             # Re-initialize virtualcam to reset its dimensions with that of the new video
