@@ -46,12 +46,10 @@ class StandardProcessor:
         - Overlays (BBox, Landmarks, Comparison)
         """
         # FW-RACE-02: read button state from snapshotted feeder dict, not live Qt buttons
-        swap_button_is_checked_global = (
-            self.worker.main_window.swapfacesButton.isChecked()
-        )
-        edit_button_is_checked_global = (
-            self.worker.main_window.editFacesButton.isChecked()
-        )
+        from app.ui.qt_vivo import cambio_activo, edicion_activa
+
+        swap_button_is_checked_global = cambio_activo(self.worker.main_window)
+        edit_button_is_checked_global = edicion_activa(self.worker.main_window)
 
         # FW-RACE-01: snapshot target_faces under lock so the worker thread never
         # iterates the live dict while the UI thread may be modifying it.
@@ -515,6 +513,11 @@ class StandardProcessor:
                             target_face,
                             face_bbox=best_fface["bbox"],
                         )
+                        _params_for_swap_a = dict(_params_for_swap_a)
+                        _params_for_swap_a["_cara_id"] = str(
+                            getattr(target_face, "face_id", "principal")
+                        )
+                        _params_for_swap_a["_caja"] = best_fface.get("bbox")
                         try:
                             (
                                 img,
@@ -662,6 +665,11 @@ class StandardProcessor:
                             best_target,
                             face_bbox=fface["bbox"],
                         )
+                        _params_for_swap_b = dict(_params_for_swap_b)
+                        _params_for_swap_b["_cara_id"] = str(
+                            getattr(best_target, "face_id", "principal")
+                        )
+                        _params_for_swap_b["_caja"] = fface.get("bbox")
                         try:
                             img, fface["original_face"], fface["swap_mask"] = (
                                 self.worker.swap_core(

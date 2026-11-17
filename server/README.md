@@ -89,7 +89,7 @@ npx wrangler d1 migrations apply drako-cam-licencias --remote
 
 Si pregunta si quieres continuar, escribe `yes` y pulsa Enter.
 
-Si la base ya existía, ejecuta el mismo comando otra vez. La migración nueva es `migrations/0003_bot_estado.sql`. Crea la tabla donde el bot recuerda, durante 10 minutos, que estás escribiendo el nombre de una persona. Sin esa tabla, el botón **Nuevo acceso** no puede preguntarte el nombre.
+Si la base ya existía, ejecuta el mismo comando otra vez. La migración `migrations/0003_bot_estado.sql` crea la tabla donde el bot recuerda, durante 10 minutos, que estás escribiendo el nombre de una persona. Sin esa tabla, el botón **Nuevo acceso** no puede preguntarte el nombre. La migración `migrations/0004_reasignar.sql` deja que el bot apruebe el mismo código en otro PC. Sin ella, un PC nuevo se rechaza y no aparece el botón de aprobación.
 
 ## 6. Generar las claves de firma
 
@@ -253,7 +253,7 @@ Te llega un mensaje con dos botones: **Aprobar** y **Rechazar**. Muestran la per
 
 La oficina se guarda con el código. Sale en los avisos de entrada y de salida, y también en `/lista`, `/activos` e `/historial`.
 
-El código tiene esta forma: `DRAKO-XXXX-XXXX-XXXX-XXXX`. Se puede escribir con o sin guiones.
+El código nuevo tiene esta forma: `DRAKO-XXXX-XXXX`. Los códigos antiguos de cuatro grupos siguen valiendo. Se puede escribir con o sin guiones. No usa 0, O, 1 ni I, para que no se confundan.
 
 El primer PC que lo active se queda ligado a ese código. Otro PC con el mismo código no entra. Si Ana cambia de ordenador, revoca el código y crea otro con `/nuevo`.
 

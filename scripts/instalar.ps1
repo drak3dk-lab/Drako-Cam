@@ -5,7 +5,8 @@
 #Requires -Version 5.1
 param(
     [switch]$DesdeInstalador,
-    [switch]$SoloComprobar
+    [switch]$SoloComprobar,
+    [switch]$ModoVentana
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,9 +61,14 @@ function Write-Log([string]$Mensaje) {
     }
 }
 
+function Emitir-Ventana([string]$Linea) {
+    if ($ModoVentana -and $Linea) { Write-Output $Linea }
+}
+
 function Paso([string]$Numero, [string]$Texto) {
     Write-Log ""
     Write-Log ("[{0}] {1}" -f $Numero, $Texto)
+    Emitir-Ventana ("DRAKO_PASO " + $Numero)
 }
 
 function Asegurar-Directorio([string]$Ruta) {
@@ -312,6 +318,7 @@ function Recibir-Archivo([string]$Url, [string]$Destino) {
                     if ($total -gt 0) {
                         $porcentaje = [math]::Floor(100.0 * $leidoTotal / $total)
                         Write-Host ("  {0}%  ({1} MB)" -f $porcentaje, [math]::Round($leidoTotal / 1MB, 1))
+                        Emitir-Ventana ("DRAKO_PORCIENTO " + $porcentaje)
                     } else {
                         Write-Host ("  {0} MB" -f [math]::Round($leidoTotal / 1MB, 1))
                     }
@@ -542,6 +549,10 @@ function Python-DelVenv {
 }
 
 function Pedir-Acceso {
+    if ($ModoVentana) {
+        Write-Log "La ventana no pide el nombre ahora. Se puede hacer al abrir Drako Cam."
+        return
+    }
     try {
         $python = Python-DelVenv
         if (-not (Test-Path -LiteralPath $python)) {
@@ -900,24 +911,39 @@ function Probar-Cuda {
 }
 
 function Nuevo-Acceso([string]$RutaLnk) {
+    $compilado = Join-Path $script:Raiz "DrakoCam.exe"
     $pyw = Pythonw-DelVenv
     $main = Join-Path $script:Raiz "main.py"
-    if (-not (Test-Path -LiteralPath $pyw)) {
+    $usaCompilado = Test-Path -LiteralPath $compilado
+    if (-not $usaCompilado -and -not (Test-Path -LiteralPath $pyw)) {
         throw "No encuentro pythonw.exe. Sin él, el acceso directo no puede abrir Drako Cam."
     }
     $dir = Split-Path -Parent $RutaLnk
     Asegurar-Directorio $dir
     $wsh = New-Object -ComObject WScript.Shell
     $lnk = $wsh.CreateShortcut($RutaLnk)
-    $lnk.TargetPath = $pyw
-    $lnk.Arguments = '"' + $main + '"'
+    if ($usaCompilado) {
+        $lnk.TargetPath = $compilado
+        $lnk.Arguments = ""
+    } else {
+        $lnk.TargetPath = $pyw
+        $lnk.Arguments = '"' + $main + '"'
+    }
     $lnk.WorkingDirectory = $script:Raiz
     $lnk.WindowStyle = 1
     $lnk.Description = "Abrir Drako Cam"
-    $lnk.IconLocation = "$pyw,0"
+    $icono = Join-Path $script:Raiz "installer\logo.ico"
+    if (-not (Test-Path -LiteralPath $icono)) {
+        throw "No encuentro installer\logo.ico. Sin ese isotipo el acceso directo no puede crearse."
+    }
+    $lnk.IconLocation = "$icono,0"
     $lnk.Save()
-    Write-Log ("Acceso directo: {0}" -f $RutaLnk)
-    Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
+    Write-Log ("Acceso directo: {0} (icono {1})" -f $RutaLnk, $icono)
+    if ($usaCompilado) {
+        Write-Log ("Abre con el programa compilado: {0}" -f $compilado)
+    } else {
+        Write-Log ("Abre con: {0} {1}" -f $pyw, $main)
+    }
 }
 
 function Fijar-GpuDedicada {
@@ -931,7 +957,8 @@ function Fijar-GpuDedicada {
     $py = Join-Path (Join-Path $script:Venv "Scripts") "python.exe"
     $pyw = Join-Path (Join-Path $script:Venv "Scripts") "pythonw.exe"
     $main = Join-Path $script:Raiz "main.py"
-    foreach ($ruta in @($py, $pyw, $main)) {
+    $compilado = Join-Path $script:Raiz "DrakoCam.exe"
+    foreach ($ruta in @($py, $pyw, $main, $compilado)) {
         if (-not (Test-Path -LiteralPath $ruta)) { continue }
         New-ItemProperty -Path $clave -Name $ruta -PropertyType String -Value "GpuPreference=2;" -Force | Out-Null
         Write-Log ("GPU de alto rendimiento para {0}" -f $ruta)
@@ -1046,12 +1073,22 @@ try {
     } else {
         Write-Log "No hay internet. Solo puedo reparar lo que ya esté descargado."
     }
+    $hayEnlace = $env:DRAKO_CAM_URL_RELEASE -or (Test-Path -LiteralPath (Join-Path $script:Raiz "installer\descarga.url"))
+    if ($hayEnlace) {
+        Write-Log "Hay un enlace de release. Descargo sin usar tokens del repositorio."
+        $descarga = Join-Path $PSScriptRoot "descargar_release.ps1"
+        & $descarga
+        if ($LASTEXITCODE -ne 0) {
+            throw "No se pudo descargar el release. Revisa installer\descarga.url y, si el repo es privado, ejecuta gh auth login. No pegues un token en el programa."
+        }
+    }
     Mirar-Nvidia
     if (-not $script:ResumenNvidia) {
         Write-Host ""
         Write-Host "AVISO: de momento no veo una tarjeta NVIDIA. La instalación sigue." -ForegroundColor Yellow
         Write-Host "Al final te diré si el programa podrá usarla." -ForegroundColor Yellow
         Write-Host ""
+        Emitir-Ventana "DRAKO_AVISO No veo una tarjeta NVIDIA. Se instala igual; el directo puede ir más lento."
     }
 
     Paso "2/7" "Preparando uv"
@@ -1079,6 +1116,7 @@ try {
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host $script:TextoAvisoGpu -ForegroundColor Yellow
         Write-Host ""
+        Emitir-Ventana "DRAKO_AVISO La tarjeta no está lista para el directo. El programa se abre igual."
     }
     Write-Host "============================================================" -ForegroundColor Green
     Write-Host "  Drako Cam está listo" -ForegroundColor Green
@@ -1099,6 +1137,7 @@ try {
         Write-Host "Cuando pulses una tecla se cerrará esta ventana y el instalador terminará."
     }
     Write-Log "Instalación terminada."
+    Emitir-Ventana "DRAKO_LISTO"
     exit 0
 } catch {
     $detalle = $_.Exception.Message
@@ -1119,5 +1158,7 @@ try {
     Write-Host ""
     Write-Host "Puedes volver a ejecutar Instalar.bat. Si ya había avanzado, continúa y repara lo que falte."
     try { Write-Log ("ERROR: " + $detalle) } catch { }
+    $unaLinea = ($detalle -replace "[\r\n]+", " ").Trim()
+    Emitir-Ventana ("DRAKO_ERROR " + $unaLinea)
     exit 1
 }

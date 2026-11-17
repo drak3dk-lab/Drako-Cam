@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Qt, Slot, QUrl
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app.helpers.typing_helper import ControlTypes, FacesParametersTypes
+from app.ui.qt_vivo import cambio_activo, edicion_activa
 import app.helpers.miscellaneous as misc_helpers
 from app.ui.widgets.actions import (
     graphics_view_actions,
@@ -781,14 +782,14 @@ class MediaPipeline(QObject):
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
                 # 4. Sequential Detection Check
-                is_swap_active = self.main_window.swapfacesButton.isChecked()
-                is_edit_active = self.main_window.editFacesButton.isChecked()
+                is_swap_active = cambio_activo(self.main_window)
+                is_edit_active = edicion_activa(self.main_window)
 
                 if len(self.main_window.target_faces) > 0 and (
                     is_swap_active or is_edit_active
                 ):
                     self.vp._video_had_targets = True
-                    is_master_edit_active = self.main_window.editFacesButton.isChecked()
+                    is_master_edit_active = edicion_activa(self.main_window)
                     bboxes, kpss_5, kpss, kpss_203 = self.vp.sequential_detector.run(
                         frame_rgb=frame_rgb,
                         local_control_for_worker=local_control_for_worker,
@@ -945,7 +946,7 @@ class MediaPipeline(QObject):
 
         anillo = getattr(self, "_anillo_captura", None)
         if anillo is None:
-            anillo = AnilloAnfitrion(3)
+            anillo = AnilloAnfitrion(2)
             self._anillo_captura = anillo
         return anillo.copiar(frame_bgr)
 
@@ -1016,8 +1017,8 @@ class MediaPipeline(QObject):
             local_params_for_worker = copia_estado(self._webcam_cached_params)
             local_control_for_worker = copia_estado(self._webcam_cached_control)
 
-        is_swap_active = self.main_window.swapfacesButton.isChecked()
-        is_edit_active = self.main_window.editFacesButton.isChecked()
+        is_swap_active = cambio_activo(self.main_window)
+        is_edit_active = edicion_activa(self.main_window)
         residente = bool(local_control_for_worker.get("PipelineResidenteEnableToggle", True))
         inteligente = bool(
             local_control_for_worker.get("DeteccionInteligenteEnableToggle", True)
@@ -1137,7 +1138,7 @@ class MediaPipeline(QObject):
             frame_rgb=frame_rgb,
             local_control_for_worker=control,
             local_params_for_worker=params,
-            is_master_edit_active=self.main_window.editFacesButton.isChecked(),
+            is_master_edit_active=edicion_activa(self.main_window),
             frame_tensor=tensor,
             frame_number=0,
         )
@@ -1227,14 +1228,14 @@ class MediaPipeline(QObject):
                     )
 
                 # 5. Sequential Detection Check
-                is_swap_active = self.main_window.swapfacesButton.isChecked()
-                is_edit_active = self.main_window.editFacesButton.isChecked()
+                is_swap_active = cambio_activo(self.main_window)
+                is_edit_active = edicion_activa(self.main_window)
 
                 if len(self.main_window.target_faces) > 0 and (
                     is_swap_active or is_edit_active
                 ):
                     self.vp._webcam_had_targets = True
-                    is_master_edit_active = self.main_window.editFacesButton.isChecked()
+                    is_master_edit_active = edicion_activa(self.main_window)
                     bboxes, kpss_5, kpss, kpss_203 = self.vp.sequential_detector.run(
                         frame_rgb=frame_rgb,
                         local_control_for_worker=local_control_for_worker,

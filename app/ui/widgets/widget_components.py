@@ -277,9 +277,12 @@ class TargetMediaCardButton(CardButton):
     def reset_media_state(self):
         main_window = self.main_window
         # Deselect the currently selected video
-        if main_window.selected_video_button:
-            main_window.selected_video_button.toggle()  # Deselect the previous video
-            main_window.selected_video_button = False
+        from app.ui.qt_vivo import qt_sigue, tocar
+
+        anterior = getattr(main_window, "selected_video_button", None)
+        if qt_sigue(anterior):
+            tocar(anterior, lambda boton: boton.toggle())
+        main_window.selected_video_button = False
 
         # Stop the current video processing
         main_window.video_processor.stop_processing()
@@ -342,9 +345,12 @@ class TargetMediaCardButton(CardButton):
             return
 
         # Deselect the currently selected video
-        if main_window.selected_video_button:
-            main_window.selected_video_button.toggle()  # Deselect the previous video
-            main_window.selected_video_button = False
+        from app.ui.qt_vivo import qt_sigue, tocar
+
+        anterior = getattr(main_window, "selected_video_button", None)
+        if qt_sigue(anterior):
+            tocar(anterior, lambda boton: boton.toggle())
+        main_window.selected_video_button = False
 
         # Stop the current video processing
         main_window.video_processor.stop_processing()
@@ -415,28 +421,25 @@ class TargetMediaCardButton(CardButton):
             main_window.video_processor.max_frame_number = max_frames_number
 
         elif self.file_type == "webcam":
-            # MODIFICATION: Set rotation to 0 for webcam
             main_window.video_processor.media_rotation = 0
-            res_width, res_height = self.main_window.control[
-                "WebcamMaxResSelection"
-            ].split("x")
+            from app.drako.camaras import abrir_webcam
 
-            media_capture = cv2.VideoCapture(self.webcam_index, self.webcam_backend)
-
-            try:
-                fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-                media_capture.set(cv2.CAP_PROP_FOURCC, fourcc)
-            except Exception:
-                pass
-
-            media_capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(res_width))
-            media_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res_height))
+            apertura = abrir_webcam(int(self.webcam_index))
             max_frames_number = 999999
-            _, frame = misc_helpers.read_frame(media_capture, 0)  # 0 for webcam
-            main_window.video_processor.media_capture = media_capture
-            self.media_capture = media_capture
-            main_window.video_processor.fps = media_capture.get(cv2.CAP_PROP_FPS)
-            main_window.video_processor.max_frame_number = max_frames_number
+            if apertura is None:
+                frame = None
+                media_capture = None
+            else:
+                media_capture = apertura.captura
+                frame = apertura.primer_frame
+                main_window.video_processor.media_capture = media_capture
+                self.media_capture = media_capture
+                self.webcam_backend = apertura.backend_id
+                main_window.video_processor.fps = apertura.fps
+                main_window.video_processor.max_frame_number = max_frames_number
+                if isinstance(getattr(main_window, "control", None), dict):
+                    main_window.control["WebcamBackendSelection"] = apertura.backend
+                    main_window.control["WebcamDeviceSelection"] = int(self.webcam_index)
 
         if frame is not None:
             main_window.scene.clear()
@@ -450,65 +453,71 @@ class TargetMediaCardButton(CardButton):
                 main_window, pixmap, 0, reset_fit=True
             )
 
-        self.reset_related_widgets_and_values()
-
         main_window.video_processor.file_type = self.file_type
-        main_window.videoSeekSlider.blockSignals(
-            True
-        )  # Block signals to prevent unnecessary updates
-        main_window.videoSeekSlider.setMaximum(max_frames_number)
-        main_window.videoSeekSlider.setValue(0)  # Set the slider to 0 for the new video
-        main_window.videoSeekSlider.blockSignals(False)  # Unblock signals
-
-        # --- FORCE TIMELINE & THUMBNAILS TO REFRESH ---
-        main_window.videoSeekSlider.rangeChanged.emit(0, max_frames_number)
-        if hasattr(main_window, "timelineContainer"):
-            main_window.timelineContainer.thumbnail_track.request_thumbnails()
-
-        # Toggle UI elements visibility based on file type
-        self._toggle_timeline_visibility(
-            main_window, self.file_type in ["video", "webcam"]
-        )
-
-        # Append the selected video button to the list
         main_window.selected_video_button = self
+        try:
+            self.reset_related_widgets_and_values()
 
-        # Update the graphics frame after the reset
-        main_window.graphicsViewFrame.update()
+            from app.ui.qt_vivo import qt_sigue
 
-        # Set Parameter widget values to default
-        common_widget_actions.set_widgets_values_using_face_id_parameters(
-            main_window=main_window, face_id=None
-        )
+            if qt_sigue(getattr(main_window, "videoSeekSlider", None)):
+                main_window.videoSeekSlider.blockSignals(True)
+                main_window.videoSeekSlider.setMaximum(max_frames_number)
+                main_window.videoSeekSlider.setValue(0)
+                main_window.videoSeekSlider.blockSignals(False)
+                main_window.videoSeekSlider.rangeChanged.emit(0, max_frames_number)
+            if qt_sigue(getattr(main_window, "timelineContainer", None)):
+                main_window.timelineContainer.thumbnail_track.request_thumbnails()
 
-        main_window.loading_new_media = True
-        common_widget_actions.refresh_frame(main_window, synchronous=True)
+            self._toggle_timeline_visibility(
+                main_window, self.file_type in ["video", "webcam"]
+            )
+            if qt_sigue(getattr(main_window, "graphicsViewFrame", None)):
+                main_window.graphicsViewFrame.update()
 
-        if main_window.control.get("AutoSwapToggle"):
-            # Run detect on 0 frame or image
-            card_actions.find_target_faces(main_window)
-            if main_window.target_faces and not main_window.selected_target_face_id:
-                list(main_window.target_faces.values())[0].click()
-            common_widget_actions.refresh_frame(main_window)
+            common_widget_actions.set_widgets_values_using_face_id_parameters(
+                main_window=main_window, face_id=None
+            )
 
-            from app.ui.widgets.actions import layout_actions
+            main_window.loading_new_media = True
+            common_widget_actions.refresh_frame(main_window, synchronous=True)
 
-            layout_actions.fit_image_to_view_onchange(main_window)
+            if main_window.control.get("AutoSwapToggle"):
+                card_actions.find_target_faces(main_window)
+                if main_window.target_faces and not main_window.selected_target_face_id:
+                    cara = next(iter(main_window.target_faces.values()), None)
+                    if qt_sigue(cara):
+                        cara.click()
+                common_widget_actions.refresh_frame(main_window)
 
-        if (
-            main_window.control["SendVirtCamFramesEnableToggle"]
-            and self.file_type != "image"
-        ):
-            # Re-initialize virtualcam to reset its dimensions with that of the new video
-            main_window.video_processor.enable_virtualcam()
+                from app.ui.widgets.actions import layout_actions
+
+                layout_actions.fit_image_to_view_onchange(main_window)
+
+            if (
+                main_window.control["SendVirtCamFramesEnableToggle"]
+                and self.file_type != "image"
+            ):
+                main_window.video_processor.enable_virtualcam()
+        except RuntimeError as exc:
+            print(f"[AVISO] La vista antigua ya no está. La cámara sigue. {exc}")
 
         # --- AUTO-START WEBCAM FEED ---
         # A webcam is a live sensor, so it should stream immediately without waiting for "Play".
+        # El botón de reproducción vive en la ventana vieja y puede estar ya borrado.
         if self.file_type == "webcam":
-            main_window.buttonMediaPlay.blockSignals(True)
-            main_window.buttonMediaPlay.setChecked(True)
-            main_window.buttonMediaPlay.blockSignals(False)
-            video_control_actions.set_play_button_icon_to_stop(main_window)
+            from app.ui.qt_vivo import tocar
+
+            def marcar_reproduccion(boton) -> None:
+                boton.blockSignals(True)
+                boton.setChecked(True)
+                boton.blockSignals(False)
+
+            tocar(getattr(main_window, "buttonMediaPlay", None), marcar_reproduccion)
+            try:
+                video_control_actions.set_play_button_icon_to_stop(main_window)
+            except RuntimeError:
+                pass
 
             # Start the live stream immediately
             main_window.video_processor.process_webcam()

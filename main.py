@@ -22,6 +22,10 @@ if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 os.chdir(RAIZ)
 
+from app.drako.sin_consola import ocultar_consolas
+
+ocultar_consolas()
+
 # Hay que fijarlo antes de importar torch, que ocurre dentro de _run_app.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "garbage_collection_threshold:0.8")
 # La GPU discreta, si el equipo es híbrido, se numera por el bus PCI.
@@ -52,6 +56,9 @@ MODULOS_DRAKO = (
     "app.drako.rendimiento.tensorrt",
     "app.drako.rendimiento.dgpu",
     "app.drako.rendimiento.watchdog",
+    "app.drako.rendimiento.suavizado",
+    "app.ui.estudio.logica",
+    "app.ui.estudio.biblioteca",
 )
 
 
@@ -177,6 +184,14 @@ def _run_app(argv: list[str] | None = None) -> int:
     )
     aplicacion.setStyleSheet(estilo)
 
+    from app.drako.integridad import verificar_instalacion
+
+    integra, aviso_integridad = verificar_instalacion(RAIZ)
+    if not integra:
+        logger.error("Integridad: %s", aviso_integridad)
+        QtWidgets.QMessageBox.critical(None, "Drako Cam — acceso", aviso_integridad)
+        return 1
+
     from app.ui.pantalla_carga import PantallaCarga
 
     pantalla = PantallaCarga()
@@ -235,6 +250,24 @@ def _run_app(argv: list[str] | None = None) -> int:
     pantalla.poner("Preparando la ventana y la cámara…", 70)
     ventana = main_ui.MainWindow(gpu_id=args.gpu_id)
     instalar_menu(ventana, contexto, claves, al_cambiar_codigo=vigilante.pedir_cambio)
+
+    def cortar_directo() -> None:
+        ventana._licencia_cortada = True
+        motor = getattr(ventana, "_motor_estudio", None)
+        if motor is not None:
+            motor.poner_en_vivo(False)
+        procesador = getattr(ventana, "video_processor", None)
+        if procesador is not None and getattr(procesador, "processing", False):
+            procesador.stop_processing()
+
+    def restaurar_directo() -> None:
+        ventana._licencia_cortada = False
+
+    vigilante.al_cortar_directo = cortar_directo
+    vigilante.al_restaurar = restaurar_directo
+    from app.drako.pantalla import asegurar_cabe
+
+    asegurar_cabe(ventana)
     ventana.show()
     ventana.raise_()
     ventana.activateWindow()
@@ -280,14 +313,18 @@ def _mensaje_fatal(exc: BaseException) -> None:
 
 
 if __name__ == "__main__":
+    codigo = 1
     try:
-        sys.exit(_run_app())
+        codigo = _run_app()
     except KeyboardInterrupt:
-        sys.exit(0)
+        codigo = 0
     except Exception as exc:
         try:
             _mensaje_fatal(exc)
         except Exception:
             print(f"[ERROR] Drako Cam se detuvo: {exc}", file=sys.stderr)
             traceback.print_exc()
-        sys.exit(1)
+        codigo = 1
+    # sys.exit espera a los hilos que no son daemon. Si uno se queda
+    # colgado, pythonw sigue vivo y bloquea la carpeta.
+    os._exit(int(codigo or 0))

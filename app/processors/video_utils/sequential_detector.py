@@ -101,7 +101,14 @@ class SequentialDetector:
         # CUDA illegal-instruction crashes on TensorRT hardware (PR #176 regression).
         # ONNX Runtime manages its own internal streams; no wrapper is needed.
         control = detector_control_override or local_control_for_worker
-        use_landmark = control.get("LandmarkDetectToggle", True)
+        from app.drako.rendimiento.one_euro import alpha_por_velocidad
+
+        oclusion = float(control.get("_OclusionReciente", 0) or 0)
+        pedido = bool(control.get("LandmarkDetectToggle", False))
+        use_landmark = pedido or oclusion >= 0.35
+        if use_landmark and not pedido:
+            control = dict(control)
+            control["LandmarkDetectModelSelection"] = "orformer98"
         landmark_mode = control.get("LandmarkDetectModelSelection", "203")
         from_points = control.get("DetectFromPointsToggle", False)
 
@@ -117,9 +124,6 @@ class SequentialDetector:
                     is_expression_active = face_params.get(
                         "FaceExpressionEnableBothToggle", False
                     )
-                    is_auto_mouth_active = face_params.get(
-                        "AutoMouthExpressionEnableToggle", False
-                    )
                     is_makeup_active = is_master_edit_active and (
                         face_params.get("FaceMakeupEnableToggle", False)
                         or face_params.get("HairMakeupEnableToggle", False)
@@ -130,7 +134,6 @@ class SequentialDetector:
                     if (
                         is_face_editor_active
                         or is_expression_active
-                        or is_auto_mouth_active
                         or is_makeup_active
                     ):
                         requires_203 = True
@@ -570,15 +573,11 @@ class SequentialDetector:
 
                     # If a match is found, apply Exponential Moving Average (EMA)
                     if _best_match_key is not None:
-                        base_alpha = (
-                            local_control_for_worker.get("KPSEmaAlphaSlider", 35)
-                            / 100.0
-                        )
-
-                        # Dynamic Alpha: Increase responsiveness (less smoothing) during fast movement
-                        movement_factor = min(1.0, _min_dist / 15.0)
-                        dynamic_alpha = base_alpha + movement_factor * (
-                            1.0 - base_alpha
+                        dynamic_alpha = alpha_por_velocidad(
+                            _min_dist,
+                            ajuste=float(
+                                local_control_for_worker.get("KPSEmaAlphaSlider", 25)
+                            ),
                         )
 
                         new_smoothed_kps[_i] = (

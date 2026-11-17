@@ -47,6 +47,16 @@ from app.drako.rendimiento.watchdog import Vigilante
 import main as entrada
 
 
+def test_one_euro_sigue_la_cabeza_cuando_se_mueve():
+    from app.drako.rendimiento.one_euro import alpha_por_velocidad
+
+    quieto = alpha_por_velocidad(0, ajuste=25)
+    movido = alpha_por_velocidad(30, ajuste=25)
+    assert quieto < 0.5
+    assert movido > 0.75
+    assert movido > quieto
+
+
 def test_perfiles_por_gpu():
     assert (
         perfil_por_hardware("NVIDIA GeForce RTX 4050 Laptop GPU", 6 * 1024**3).id
@@ -71,6 +81,14 @@ def test_perfiles_por_gpu():
     assert PERFIL_ALTO.permite_60 and PERFIL_ALTO.resolucion == "1920x1080"
     assert PERFIL_8GB.fps == 30 and not PERFIL_8GB.permite_60
     assert PERFIL_6GB.resolucion == "1280x720" and PERFIL_6GB.tope_gb == 4.5
+    assert PERFIL_6GB.deteccion_cada == 2
+    assert PERFIL_8GB.resolucion == "1280x720"
+    from app.drako.rendimiento.perfiles import con_captura
+
+    rtx = con_captura(PERFIL_8GB, "NVIDIA GeForce RTX 5060", 8 * 1024**3)
+    assert rtx.resolucion == "1920x1080"
+    portatil = con_captura(PERFIL_6GB, "NVIDIA GeForce RTX 4050 Laptop GPU", 6 * 1024**3)
+    assert portatil.resolucion == "1280x720"
     assert PERFIL_ALTO.mejoradores_pesados and not PERFIL_6GB.mejoradores_pesados
 
 

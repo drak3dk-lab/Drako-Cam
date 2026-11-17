@@ -22,22 +22,28 @@ function ordenar(valor: unknown): unknown {
   return valor;
 }
 
+function formatearCodigo(cuerpo: string): string {
+  const grupos = cuerpo.match(/.{4}/g) || [];
+  return `DRAKO-${grupos.join("-")}`;
+}
+
 export function normalizarCodigo(bruto: unknown): string | null {
   if (typeof bruto !== "string") return null;
   const limpio = bruto.toUpperCase().replace(/[\s-]+/g, "");
-  if (!/^DRAKO[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{16}$/.test(limpio)) return null;
-  const cuerpo = limpio.slice(5);
-  return `DRAKO-${cuerpo.slice(0, 4)}-${cuerpo.slice(4, 8)}-${cuerpo.slice(8, 12)}-${cuerpo.slice(12, 16)}`;
+  if (!/^DRAKO[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}(?:[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8})?$/.test(limpio)) {
+    return null;
+  }
+  return formatearCodigo(limpio.slice(5));
 }
 
 export function generarCodigo(): string {
-  const bytes = new Uint8Array(16);
+  const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   let cuerpo = "";
   for (let i = 0; i < bytes.length; i += 1) {
     cuerpo += ALFABETO[bytes[i] % ALFABETO.length];
   }
-  return `DRAKO-${cuerpo.slice(0, 4)}-${cuerpo.slice(4, 8)}-${cuerpo.slice(8, 12)}-${cuerpo.slice(12, 16)}`;
+  return formatearCodigo(cuerpo);
 }
 
 export function normalizarHuella(bruto: unknown): string | null {

@@ -27,6 +27,8 @@ OutputBaseFilename=DrakoCam-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=logo.ico
+UninstallDisplayIcon={app}\installer\logo.ico
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -56,6 +58,8 @@ Source: "..\Desinstalar.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Start.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Start_mac.sh"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\main.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\DrakoCam.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\integridad_manifiesto.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\launcher.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\download_models.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements_cu13.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -66,10 +70,11 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Step by step guide to install Conda and Visomaster for RTX 50xx series.pdf"; DestDir: "{app}"; Flags: ignoreversion
+Source: "wizard-logo.bmp"; Flags: dontcopy
 
 [Icons]
-Name: "{autodesktop}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; Comment: "Abrir Drako Cam"
-Name: "{autoprograms}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; Comment: "Abrir Drako Cam"
+Name: "{autodesktop}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\logo.ico"; Comment: "Abrir Drako Cam"
+Name: "{autoprograms}\Drako Cam"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\logo.ico"; Comment: "Abrir Drako Cam"
 
 [Run]
 Filename: "{app}\Instalar.bat"; Parameters: "-DesdeInstalador"; WorkingDir: "{app}"; StatusMsg: "Preparando Python, FFmpeg y los componentes. Puede tardar mucho. No cierres la ventana negra."; Flags: waituntilterminated
@@ -88,8 +93,24 @@ Type: filesandordirs; Name: "{app}\logs"
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\.venv\Scripts\python.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\.venv\Scripts\pythonw.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\main.py"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\DirectX\UserGpuPreferences"; ValueType: string; ValueName: "{app}\DrakoCam.exe"; ValueData: "GpuPreference=2;"; Flags: uninsdeletevalue
 
 [Code]
+procedure InitializeWizard;
+var
+  Logo: TBitmapImage;
+begin
+  ExtractTemporaryFile('wizard-logo.bmp');
+  Logo := TBitmapImage.Create(WizardForm);
+  Logo.Parent := WizardForm;
+  Logo.Bitmap.LoadFromFile(ExpandConstant('{tmp}\wizard-logo.bmp'));
+  Logo.Stretch := True;
+  Logo.Width := 72;
+  Logo.Height := 72;
+  Logo.Left := ScaleX(16);
+  Logo.Top := ScaleY(8);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Datos: String;

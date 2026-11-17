@@ -33,7 +33,7 @@ from app.ui.widgets.actions import video_control_actions
 from app.ui.widgets.actions import layout_actions
 from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import save_load_actions
-from app.ui.widgets.settings_layout_data import CAMERA_BACKENDS
+from app.ui.qt_vivo import valor_slider
 from app.processors.video_utils.video_encoding import FFmpegEncoder, FFmpegPostProcessor
 from app.processors.video_utils.issue_scanner import (
     IssueScanner,
@@ -494,6 +494,7 @@ class VideoProcessor(QObject):
         Removed sleep_until_next_frame() to prevent blocking the Main GUI Thread.
         The UI metronome (QTimer) already handles perfect timing and synchronization.
         """
+        publicado = frame
         if self.main_window.control.get("SendVirtCamFramesEnableToggle", False):
             # JIT Initialization: Ensure VirtCam is spun up if toggle is active but uninitialized.
             # We use a Circuit Breaker (_virtcam_error_latch) to prevent infinite loops if initialization completely fails.
@@ -526,14 +527,11 @@ class VideoProcessor(QObject):
                     return
                 height, width = frame.shape[0], frame.shape[1]
                 if self.virtcam.height != height or self.virtcam.width != width:
-                    # La salida va bloqueada al tamaño de los ajustes. Si la
-                    # cámara se abrió con otro, se reabre una sola vez.
-                    print(
-                        f"[INFO] Cámara virtual {self.virtcam.width}x{self.virtcam.height} "
-                        f"→ {width}x{height}. Se reabre."
-                    )
-                    self.enable_virtualcam()
-                    return
+                    # Reabrir cambia el dispositivo y OBS pierde la fuente.
+                    from app.drako.rendimiento.camara_virtual import encajar
+
+                    frame = encajar(frame, self.virtcam.width, self.virtcam.height)
+                publicado = frame
 
                 if self.virtcam:
                     try:
@@ -545,6 +543,9 @@ class VideoProcessor(QObject):
                         # If the driver crashes midway, trip the circuit breaker and disable to prevent spam.
                         self._virtcam_error_latch = True
                         self.disable_virtualcam()
+        entrega = getattr(self, "entrega_ventana", None)
+        if entrega is not None:
+            entrega.publicar(publicado)
 
     def set_number_of_threads(self, value):
         """Updates the thread count for the *next* worker pool."""
@@ -594,7 +595,7 @@ class VideoProcessor(QObject):
                 print(
                     "[INFO] media_capture not open on process_video() entry; attempting reopen..."
                 )
-                current_slider_pos = self.main_window.videoSeekSlider.value()
+                current_slider_pos = valor_slider(self.main_window)
                 if self._reopen_video_capture(current_slider_pos):
                     print("[INFO] media_capture reopened successfully.")
                 else:
@@ -729,7 +730,7 @@ class VideoProcessor(QObject):
         # --- 7. AUDIO/VIDEO SYNC LOGIC ---
 
         # 7a. Get the target frame (slider is in SOURCE-frame space under Approach 2)
-        actual_start_frame = self.main_window.videoSeekSlider.value()
+        actual_start_frame = valor_slider(self.main_window)
 
         # --- Segmented Playback Snap Logic ---
         if not self.recording and self.main_window.control.get(
@@ -1061,7 +1062,7 @@ class VideoProcessor(QObject):
 
         # Set frame number for processing
         if self.file_type == "video":
-            self.current_frame_number = self.main_window.videoSeekSlider.value()
+            self.current_frame_number = valor_slider(self.main_window)
         elif self.file_type == "image" or self.file_type == "webcam":
             self.current_frame_number = 0
 
@@ -1246,44 +1247,26 @@ class VideoProcessor(QObject):
         self.stop_processing()
 
     def reabrir_webcam(self) -> bool:
-        """Suelta la captura y vuelve a abrir la webcam. True si el dispositivo responde."""
+        """Suelta la captura y vuelve a abrirla con DirectShow, en formato nativo."""
         try:
             if self.media_capture is not None:
                 misc_helpers.release_capture(self.media_capture)
                 self.media_capture = None
             indice = int(self.main_window.control.get("WebcamDeviceSelection", 0))
-            backend_nombre = str(
-                self.main_window.control.get("WebcamBackendSelection", "Default")
-            )
-            backend_id = CAMERA_BACKENDS.get(backend_nombre, cv2.CAP_ANY)
-            captura = cv2.VideoCapture(indice, backend_id)
-            if captura is None or not captura.isOpened():
-                if captura is not None:
-                    captura.release()
+            from app.drako.camaras import abrir_webcam
+
+            apertura = abrir_webcam(indice)
+            if apertura is None:
                 self.media_capture = None
-                print("[AVISO] La webcam no respondió al reabrirla.")
                 return False
-            try:
-                fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-                captura.set(cv2.CAP_PROP_FOURCC, fourcc)
-            except Exception:
-                pass
-            resolucion = str(
-                self.main_window.control.get("WebcamMaxResSelection", "1280x720")
-            )
-            try:
-                ancho, alto = (int(parte) for parte in resolucion.split("x"))
-                captura.set(cv2.CAP_PROP_FRAME_WIDTH, ancho)
-                captura.set(cv2.CAP_PROP_FRAME_HEIGHT, alto)
-            except Exception:
-                pass
-            self.media_capture = captura
-            print(
-                f"[INFO] Webcam reconectada (dispositivo {indice}, backend {backend_nombre})."
-            )
+            self.media_capture = apertura.captura
+            if apertura.primer_frame is not None:
+                self.current_frame = apertura.primer_frame
             return True
         except Exception as exc:
-            print(f"[AVISO] Error al reconectar la webcam: {exc}")
+            import logging
+
+            logging.getLogger("drako").error("Cámara: error al reabrir: %s", exc)
             self.media_capture = None
             return False
 
@@ -1311,7 +1294,9 @@ class VideoProcessor(QObject):
                     print(
                         "[INFO] stop_processing: Capture missing/closed while idle. Recovering..."
                     )
-                    self._reopen_video_capture(self.main_window.videoSeekSlider.value())
+                    from app.ui.qt_vivo import valor_slider
+
+                    self._reopen_video_capture(valor_slider(self.main_window, 0))
                     video_control_actions.reset_media_buttons(self.main_window)
                     return True
             video_control_actions.reset_media_buttons(self.main_window)
@@ -1462,39 +1447,32 @@ class VideoProcessor(QObject):
             else:
                 print("[WARN] Failed to re-open media capture after active stop.")
         elif self.file_type == "webcam":
-            # For webcam, re-opening essentially prepares it for the next 'Play' click.
+            # Al parar, se reabre una sola vez con DirectShow y el formato nativo.
+            # No se fuerza MJPG ni la resolución: eso deja la webcam inutilizable.
             try:
-                webcam_index = int(
-                    self.main_window.control.get("WebcamDeviceSelection", 0)
-                )
-
-                backend_name = str(
-                    self.main_window.control.get("WebcamBackendSelection", "Default")
-                )
-                backend_id = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
-
-                self.media_capture = cv2.VideoCapture(webcam_index, backend_id)
-
-                if self.media_capture.isOpened():
-                    try:
-                        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-                        self.media_capture.set(cv2.CAP_PROP_FOURCC, fourcc)
-                    except Exception:
-                        pass
-
-                    res_str = str(
-                        self.main_window.control.get(
-                            "WebcamMaxResSelection", "1280x720"
-                        )
-                    )
-                    target_width, target_height = map(int, res_str.split("x"))
-                    self.media_capture.set(cv2.CAP_PROP_FRAME_WIDTH, target_width)
-                    self.media_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, target_height)
-                else:
-                    print("[WARN] Failed to re-open webcam capture after stop.")
+                if getattr(self.main_window, "_cerrando", False) or getattr(
+                    self.main_window, "_salida_pedida", False
+                ):
                     self.media_capture = None
+                else:
+                    webcam_index = int(
+                        self.main_window.control.get("WebcamDeviceSelection", 0)
+                    )
+                    from app.drako.camaras import abrir_webcam
+
+                    apertura = abrir_webcam(webcam_index)
+                    if apertura is None:
+                        self.media_capture = None
+                    else:
+                        self.media_capture = apertura.captura
+                        if apertura.primer_frame is not None:
+                            self.current_frame = apertura.primer_frame
             except Exception as e:
-                print(f"[WARN] Error re-opening webcam capture: {e}")
+                import logging
+
+                logging.getLogger("drako").error(
+                    "Cámara: error al reabrirla después de parar: %s", e
+                )
                 self.media_capture = None
 
         # 9. Final cleanup and UI reset
@@ -1562,6 +1540,62 @@ class VideoProcessor(QObject):
         self._used_ffmpeg_cap = False
 
         return True  # Processing was stopped
+
+    def apagar(self) -> None:
+        """Suelta cámara, ffmpeg e hilos al cerrar. No vuelve a abrir nada."""
+        self.processing = False
+        self.recording = False
+        self.is_processing_segments = False
+        for nombre in ("gpu_memory_update_timer", "preroll_timer", "single_frame_handoff_timer"):
+            temporizador = getattr(self, nombre, None)
+            if temporizador is None:
+                continue
+            try:
+                temporizador.stop()
+            except Exception:
+                pass
+        try:
+            self.stop_live_sound()
+        except Exception:
+            pass
+        try:
+            self._stop_recording_ffmpeg_input_stream()
+        except Exception:
+            pass
+        proceso = getattr(self, "ffmpeg_input_sp", None)
+        if proceso is not None and getattr(proceso, "poll", lambda: 0)() is None:
+            try:
+                proceso.kill()
+            except Exception:
+                pass
+            self.ffmpeg_input_sp = None
+        captura = getattr(self, "media_capture", None)
+        if captura:
+            try:
+                misc_helpers.release_capture(captura)
+            except Exception:
+                pass
+            self.media_capture = None
+        encoder = getattr(self, "encoder", None)
+        grabacion = getattr(encoder, "recording_sp", None) if encoder is not None else None
+        if grabacion is not None and grabacion.poll() is None:
+            try:
+                grabacion.kill()
+            except Exception:
+                pass
+            try:
+                encoder.recording_sp = None
+            except Exception:
+                pass
+        try:
+            if hasattr(self, "sequential_detector"):
+                self.sequential_detector.reset_state()
+        except Exception:
+            pass
+        try:
+            self.join_and_clear_threads()
+        except Exception as exc:
+            print(f"[AVISO] Al parar los hilos de vídeo: {exc}")
 
     def join_and_clear_threads(self, clear_module_caches: bool = True):
         """Facade: Delegates thread synchronization and VRAM cleanup to WorkerPoolManager."""
@@ -2162,7 +2196,7 @@ class VideoProcessor(QObject):
             self.current_frame_number = (
                 reset_frame_number
                 if reset_frame_number is not None
-                else int(self.main_window.videoSeekSlider.value())
+                else int(valor_slider(self.main_window))
             )
 
     def _probe_video_duration(self, file_path: str) -> float | None:
@@ -3523,7 +3557,7 @@ class VideoProcessor(QObject):
 
             # Reset media capture
             if self.file_type == "video" and self.media_path:
-                current_slider_pos = self.main_window.videoSeekSlider.value()
+                current_slider_pos = valor_slider(self.main_window)
                 if self._reopen_video_capture(current_slider_pos):
                     print("[INFO] Video capture re-opened and seeked.")
                 else:
@@ -3572,103 +3606,70 @@ class VideoProcessor(QObject):
             print("[WARN] Process_webcam: Only applicable for webcam input.")
             return
 
-        # 1. Retrieve User Settings from the UI Control Dictionary
+        # El formato lo elige la cámara. No se pide resolución ni FPS aquí.
+        import logging
+
+        registro = logging.getLogger("drako")
         try:
-            # Device Index
             webcam_index = int(self.main_window.control.get("WebcamDeviceSelection", 0))
-
-            # Resolution (String like "1920x1080")
-            res_str = self.main_window.control.get("WebcamMaxResSelection", "1280x720")
-            target_width, target_height = map(int, res_str.split("x"))
-
-            # Backend (String like "DirectShow") -> Mapped to cv2 Constant
-            backend_name = self.main_window.control.get(
-                "WebcamBackendSelection", "Default"
-            )
-            backend_id = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
-
-            # FPS (String like "30")
-            target_fps = int(self.main_window.control.get("WebCamMaxFPSSelection", 30))
-
         except Exception as e:
-            print(
-                f"[ERROR] Error parsing webcam settings: {e}. Falling back to defaults."
-            )
+            registro.error("Cámara: no pude leer el índice (%s). Uso 0.", e)
             webcam_index = 0
-            target_width, target_height = 1280, 720
-            backend_id = cv2.CAP_ANY
-            target_fps = 30
-
-        print(
-            f"[INFO] Init Webcam: Device={webcam_index}, Backend={backend_name}, Target={target_width}x{target_height} @ {target_fps}fps"
+        registro.info(
+            "Cámara índice %s: abro con DirectShow y dejo el formato nativo.",
+            webcam_index,
         )
 
-        # 2. Initialize VideoCapture with the selected Backend (Prevent Race Condition)
-        reinitialize_needed = True
+        from app.drako.camaras import abrir_webcam
 
-        # Determine if we can safely reuse the existing capture
+        ya_abierta = False
         if self.media_capture and self.media_capture.isOpened():
-            selected_btn = getattr(self.main_window, "selected_video_button", None)
-            from app.ui.widgets import widget_components
-
-            if isinstance(
-                selected_btn, widget_components.TargetMediaCardButton
-            ) and getattr(selected_btn, "is_webcam", False):
-                if (
-                    selected_btn.webcam_index == webcam_index
-                    and selected_btn.webcam_backend == backend_id
-                ):
-                    reinitialize_needed = False
-                    print(
-                        "[INFO] Reusing existing webcam capture to prevent hardware lock issues."
+            # DirectShow ya la abrió. No la cierro para probar otro backend.
+            for _intento in range(8):
+                try:
+                    ok, frame = self.media_capture.read()
+                except Exception as exc:
+                    registro.error(
+                        "Cámara índice %s: la captura abierta falló al leer: %s",
+                        webcam_index,
+                        exc,
                     )
-
-        if reinitialize_needed:
+                    ok, frame = False, None
+                if ok and frame is not None:
+                    ya_abierta = True
+                    self.current_frame = frame
+                    alto, ancho = frame.shape[:2]
+                    registro.info(
+                        "Cámara índice %s: reutilizo la captura abierta, "
+                        "primer fotograma=sí, resolución %sx%s.",
+                        webcam_index,
+                        ancho,
+                        alto,
+                    )
+                    break
+                time.sleep(0.06)
+            if not ya_abierta:
+                registro.error(
+                    "Cámara índice %s: DirectShow ya la tenía abierta y no dio "
+                    "fotograma. La dejo abierta; no pruebo otro backend.",
+                    webcam_index,
+                )
+                ya_abierta = True
+        if not ya_abierta:
             if self.media_capture:
                 misc_helpers.release_capture(self.media_capture)
                 self.media_capture = None
-                # CRITICAL: Wait for OS driver hardware lock to fully release
-                time.sleep(0.5)
-
-            try:
-                self.media_capture = cv2.VideoCapture(webcam_index, backend_id)
-            except Exception as e:
-                print(f"[ERROR] Failed to init webcam with backend {backend_name}: {e}")
-                self.media_capture = cv2.VideoCapture(webcam_index)
-
-        if not (self.media_capture and self.media_capture.isOpened()):
-            print("[ERROR] Unable to open webcam source.")
-            video_control_actions.reset_media_buttons(self.main_window)
-            return
-
-        # 3. Apply Configuration
-        try:
-            # Force MJPG to allow high framerate at high res (saves USB bandwidth)
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            self.media_capture.set(cv2.CAP_PROP_FOURCC, fourcc)
-        except Exception:
-            pass
-
-        self.media_capture.set(cv2.CAP_PROP_FRAME_WIDTH, target_width)
-        self.media_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, target_height)
-        self.media_capture.set(cv2.CAP_PROP_FPS, target_fps)
-
-        # 4. Verify actual resolution obtained
-        actual_w = self.media_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-        actual_h = self.media_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        print(
-            f"[INFO] Webcam initialized at: {int(actual_w)}x{int(actual_h)} (Requested: {target_width}x{target_height})"
-        )
-
-        # Warn if the camera refused the resolution
-        if int(actual_w) != target_width or int(actual_h) != target_height:
-            print(
-                f"[WARN] Camera did not accept requested resolution. Using {int(actual_w)}x{int(actual_h)}."
-            )
-            if int(actual_w) == 640 and backend_name != "DirectShow":
-                print(
-                    "[TIP] Try changing 'Webcam Backend' to 'DirectShow' in Settings to unlock HD."
+            apertura = abrir_webcam(webcam_index)
+            if apertura is None:
+                registro.error(
+                    "Cámara índice %s: no se abrió. El error concreto está más arriba en este registro.",
+                    webcam_index,
                 )
+                video_control_actions.reset_media_buttons(self.main_window)
+                return
+            self.media_capture = apertura.captura
+            if apertura.primer_frame is not None:
+                self.current_frame = apertura.primer_frame
 
         print("[INFO] Starting webcam processing setup...")
 

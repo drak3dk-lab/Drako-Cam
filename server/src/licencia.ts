@@ -1,4 +1,5 @@
 import { dejarAviso, textoCierre, textoCorte, textoInicio, textoRechazo } from "./avisos";
+import { pedirReasignacion } from "./solicitud";
 import {
   entero,
   firmarCarga,
@@ -17,7 +18,8 @@ const MENSAJES: Record<string, string> = {
   ya_cerrada: "La sesión ya estaba cerrada.",
   revocado: "Este código está revocado.",
   desconocido: "Este código no existe.",
-  otro_equipo: "Este código está ligado a otro equipo.",
+  otro_equipo:
+    "Este código está ligado a otro equipo. Se pidió pasarlo a este PC. Apruébalo en Telegram, en Pendientes, con Aprobar este PC. Luego se entra otra vez con el mismo código.",
   mal_formato: "El código o la huella del equipo no son válidos.",
   sesion_desconocida: "No hay una sesión abierta. Hay que volver a entrar.",
   sesion_ajena: "Esa sesión no corresponde a este código.",
@@ -232,6 +234,17 @@ async function denegar(
   oficina = "",
 ): Promise<Response> {
   rechazar(ctx, env, lugar, motivo, codigo, equipo, huella, oficina);
+  if (motivo === "otro_equipo" && accion === "activar" && codigo) {
+    ctx.waitUntil(
+      pedirReasignacion(env, lugar, {
+        codigo,
+        nombre: persona || "Sin nombre",
+        oficina,
+        equipo,
+        huella,
+      }).catch(() => undefined),
+    );
+  }
   const carga = await cargaBase(env, lugar, {
     accion,
     ok: false,

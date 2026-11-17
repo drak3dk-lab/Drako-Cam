@@ -69,6 +69,9 @@ auditoria.log
 # Instalador de un clic: FFmpeg descargado y el .exe compilado.
 dist/
 dependencies/ffmpeg/
+DrakoCam.exe
+integridad_manifiesto.json
+installer/descarga.url
 
 # Servidor de licencias. El código sí se versiona; los secretos y node_modules, no.
 server/node_modules/

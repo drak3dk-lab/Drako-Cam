@@ -84,12 +84,14 @@ def update_control(
     exec_function_args: Optional[list] = None,
 ):
     exec_function_args = exec_function_args or []
-    current_position = main_window.videoSeekSlider.value()
+    from app.ui.qt_vivo import slider_responde, valor_slider
+
+    current_position = valor_slider(main_window, 0) if slider_responde(main_window) else None
 
     # Update marker control too
     # FIX: We MUST update the dictionary value regardless of the exec_function,
     # otherwise marker data becomes stale and reverts user changes on seek.
-    if main_window.markers.get(current_position):
+    if current_position is not None and main_window.markers.get(current_position):
         main_window.markers[current_position]["control"][control_name] = control_value
 
     if exec_function:
@@ -148,7 +150,9 @@ def update_parameter(
     exec_function_args: Optional[list] = None,
 ):
     exec_function_args = exec_function_args or []
-    current_position = main_window.videoSeekSlider.value()
+    from app.ui.qt_vivo import slider_responde, valor_slider
+
+    current_position = valor_slider(main_window, 0) if slider_responde(main_window) else None
     face_id = main_window.selected_target_face_id
 
     # Get the old value for comparison before any updates
@@ -745,11 +749,16 @@ def extract_frame_as_image(
             if _attempt < 2:
                 _time.sleep(0.5)  # wait before retry (file may still be flushed)
     elif file_type == "webcam":
-        camera = cv2.VideoCapture(webcam_index, webcam_backend)
-        if camera.isOpened():
-            # Pass 0 for webcam rotation
-            ret, frame = misc_helpers.read_frame(camera, 0)
-            camera.release()  # Release camera immediately after grabbing one frame
+        # Misma apertura que el directo: DirectShow y formato nativo.
+        from app.drako.camaras import abrir_webcam
+
+        apertura = abrir_webcam(int(webcam_index) if webcam_index is not False else 0)
+        if apertura is not None:
+            frame = apertura.primer_frame
+            try:
+                apertura.captura.release()
+            except Exception:
+                pass
 
     if isinstance(frame, np.ndarray):
         # Create a new thumbnail in the cache for next time.

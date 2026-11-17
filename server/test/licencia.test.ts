@@ -144,7 +144,7 @@ describe("acceso", () => {
     expect(alta.respuesta.status).toBe(200);
     expect(avisos[0]).toContain("Ana García");
     const codigo = avisos[0].split("\n")[1];
-    expect(codigo).toMatch(/^DRAKO-[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
+    expect(codigo).toMatch(/^DRAKO-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/);
 
     const activado = await llamar("/v1/activar", {
       codigo,
@@ -172,12 +172,44 @@ describe("acceso", () => {
     expect(otro.datos.carga?.ok).toBe(false);
     expect(await firmaValida(otro.datos.carga as Carga, otro.datos.firma || "")).toBe(true);
     expect(avisos.some((texto) => texto.includes("otro equipo"))).toBe(true);
-
-    const estado = await llamar("/v1/estado", { codigo, huella: HUELLA_A, equipo: "PC-CASA" });
-    expect(estado.datos.carga?.ok).toBe(true);
-    expect(estado.datos.carga?.motivo).toBe("ok");
-    const sesiones = await env.DB.prepare("SELECT COUNT(*) AS n FROM sesiones").first<{ n: number }>();
-    expect(Number(sesiones?.n)).toBe(1);
+    avisos = [];
+    await bot("⏳ Pendientes");
+    expect(avisos.at(-1)).toContain("Cambio de equipo");
+    expect(avisos.at(-1)).toContain("PC-AJENO");
+    const pendientes = cuerpos.at(-1)?.reply_markup as {
+      inline_keyboard: { text: string; callback_data: string }[][];
+    };
+    expect(pendientes.inline_keyboard[0].map((boton) => boton.text)).toEqual([
+      "Aprobar este PC",
+      "Rechazar",
+    ]);
+    const reasignar = await env.DB.prepare(
+      "SELECT id, tipo, estado FROM solicitudes WHERE tipo = 'reasignar'",
+    ).all<{ id: string; tipo: string; estado: string }>();
+    expect(reasignar.results).toHaveLength(1);
+    expect(reasignar.results[0].estado).toBe("pendiente");
+    const aprobada = await llamar(
+      "/telegram/webhook",
+      {
+        callback_query: {
+          id: "cb-reasignar",
+          data: `aprobar:${reasignar.results[0].id}`,
+          from: { id: 4242 },
+          message: { message_id: 11, chat: { id: 4242 } },
+        },
+      },
+      { "X-Telegram-Bot-Api-Secret-Token": "secreto-de-prueba-webhook" },
+    );
+    expect(aprobada.respuesta.status).toBe(200);
+    expect(avisos.some((texto) => texto.includes(codigo) && texto.includes("PC-AJENO"))).toBe(true);
+    const enNuevo = await llamar("/v1/activar", {
+      codigo,
+      huella: HUELLA_B,
+      equipo: "PC-AJENO",
+    });
+    expect(enNuevo.datos.carga?.ok).toBe(true);
+    const enViejo = await llamar("/v1/estado", { codigo, huella: HUELLA_A, equipo: "PC-CASA" });
+    expect(enViejo.datos.carga?.motivo).toBe("otro_equipo");
   });
 
   it("late el corazón, cierra con duración y deja fuera un código revocado", async () => {
@@ -398,7 +430,9 @@ describe("acceso", () => {
     expect(avisos.some((texto) => texto.includes("Solicitud rechazada") && texto.includes("Luis"))).toBe(true);
     avisos = [];
     await bot("/pendientes");
-    expect(avisos[0]).toContain("No hay solicitudes pendientes");
+    expect(avisos[0]).toContain("Ana García");
+    expect(avisos[0]).toContain("OTRO");
+    expect(avisos[0]).not.toContain("Luis");
     avisos = [];
     await bot("/lista");
     expect(avisos[0]).toContain("Sexta planta");
@@ -476,7 +510,7 @@ describe("acceso", () => {
     await bot("Ana García");
     const creado = avisos.at(-1) || "";
     const codigo = creado.split("\n")[1] || "";
-    expect(codigo).toMatch(/^DRAKO-[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
+    expect(codigo).toMatch(/^DRAKO-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/);
     const entidad = cuerpos.at(-1)?.entities as { type: string; offset: number; length: number }[];
     expect(entidad).toEqual([{ type: "code", offset: creado.indexOf(codigo), length: codigo.length }]);
     const yaNo = await env.DB.prepare("SELECT COUNT(*) AS n FROM bot_estado").first<{ n: number }>();

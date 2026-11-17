@@ -545,12 +545,10 @@ class VRProcessor:
         - Stitching back
         """
         # FW-RACE-02: read from snapshotted feeder state instead of live Qt button
-        swap_button_is_checked_global = (
-            self.worker.main_window.swapfacesButton.isChecked()
-        )
-        edit_button_is_checked_global = (
-            self.worker.main_window.editFacesButton.isChecked()
-        )
+        from app.ui.qt_vivo import cambio_activo, edicion_activa
+
+        swap_button_is_checked_global = cambio_activo(self.worker.main_window)
+        edit_button_is_checked_global = edicion_activa(self.worker.main_window)
 
         # How this frame's pixels map to directions: eye layout, storage projection
         # and per-eye coverage.  Everything downstream asks the geometry rather than

@@ -168,6 +168,31 @@ def uncheck_all_merged_embeddings(main_window: "MainWindow"):
         torch.cuda.empty_cache()
 
 
+def _recordar_caja(main_window, face_id: str, puntos, imagen) -> None:
+    """Guarda el tamaño y el sitio de la cara para elegir la principal."""
+    try:
+        import numpy
+
+        plano = numpy.asarray(puntos, dtype=numpy.float32).reshape(-1, 2)
+        caja = (
+            float(plano[:, 0].min()),
+            float(plano[:, 1].min()),
+            float(plano[:, 0].max()),
+            float(plano[:, 1].max()),
+        )
+    except Exception:
+        return
+    cajas = getattr(main_window, "_cajas_destino", None)
+    if cajas is None:
+        main_window._cajas_destino = {}
+        cajas = main_window._cajas_destino
+    cajas[face_id] = caja
+    try:
+        main_window._marco_destino = (int(imagen.shape[1]), int(imagen.shape[0]))
+    except Exception:
+        pass
+
+
 def find_target_faces(main_window: "MainWindow"):
     from app.ui.widgets.actions import video_control_actions
 
@@ -204,12 +229,13 @@ def find_target_faces(main_window: "MainWindow"):
                     print(
                         "[WARN] Webcam is initializing. Frame not ready for extraction."
                     )
-                    common_widget_actions.create_and_show_messagebox(
-                        main_window,
-                        "Webcam Starting",
-                        "The webcam feed is currently initializing. Please wait a moment before finding faces.",
-                        main_window,
-                    )
+                    if not getattr(main_window, "_estudio_activo", False):
+                        common_widget_actions.create_and_show_messagebox(
+                            main_window,
+                            "Webcam Starting",
+                            "The webcam feed is currently initializing. Please wait a moment before finding faces.",
+                            main_window,
+                        )
                     return
             else:
                 # Pass 0 for webcam rotation (Only executes if the stream is paused/idle)
@@ -281,6 +307,7 @@ def find_target_faces(main_window: "MainWindow"):
                             face[1],
                         ) >= float(threshhold):
                             found = True
+                            _recordar_caja(main_window, face_id, face[0], img)
                             break
 
                     if not found:
@@ -311,6 +338,7 @@ def find_target_faces(main_window: "MainWindow"):
                         embedding_store[str(selected_recognition_model)] = face[1]
 
                         face_id = str(uuid.uuid1())
+                        _recordar_caja(main_window, face_id, face[0], img)
 
                         # Pass QImage instead of Pixmap
                         list_view_actions.add_media_thumbnail_to_target_faces_list(
