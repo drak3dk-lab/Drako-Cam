@@ -83,7 +83,7 @@ class MarcoVista(QtWidgets.QWidget):
         self._animacion.setEasingCurve(QtCore.QEasingCurve.Type.InOutSine)
         self._animacion.setLoopCount(-1)
         self._animacion.valueChanged.connect(self._respirar)
-        self.setMinimumSize(480, 270)
+        self.setMinimumSize(240, 135)
 
     def encender(self, activo: bool) -> None:
         self._vivo = activo
@@ -188,6 +188,39 @@ class FichaCara(QtWidgets.QFrame):
         self.favorita.emit(self.cara_id, not self._favorita)
 
 
+class _ColumnaLateral(QtWidgets.QWidget):
+    """Prefiere 400 px y puede bajar a 300 si la ventana se estrecha."""
+
+    def sizeHint(self) -> QtCore.QSize:
+        base = super().sizeHint()
+        return QtCore.QSize(400, max(base.height(), 480))
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        alto = super().minimumSizeHint().height()
+        return QtCore.QSize(300, alto)
+
+
+class _BarraQueCabe(QtWidgets.QWidget):
+    """La fila de EN VIVO puede partirse. Su mínimo es el de una sola línea, no la suma."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self._ancho_util = 320
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        base = super().minimumSizeHint()
+        return QtCore.QSize(min(base.width(), self._ancho_util), base.height())
+
+    def sizeHint(self) -> QtCore.QSize:
+        base = super().sizeHint()
+        return QtCore.QSize(max(base.width(), self._ancho_util), base.height())
+
+
 class Segmento(QtWidgets.QWidget):
     """Varias opciones en una sola pastilla. Una está elegida."""
 
@@ -273,6 +306,9 @@ class Estudio(QtWidgets.QWidget):
         cuerpo.addWidget(self.columna)
         raiz.addWidget(self.cuerpo, 1)
         raiz.addWidget(self._estado())
+        for area in self.findChildren(QtWidgets.QScrollArea):
+            area.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+            area.viewport().setAutoFillBackground(False)
         self._entradas = [
             self.marco,
             self.galeria,
@@ -296,10 +332,19 @@ class Estudio(QtWidgets.QWidget):
         fila.addSpacing(18)
         self.paso = QtWidgets.QLabel("Elige una foto o un perfil")
         self.paso.setObjectName("secundario")
-        fila.addWidget(self.paso)
-        fila.addStretch(1)
+        self.paso.setMinimumWidth(0)
+        self.paso.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        fila.addWidget(self.paso, 1)
         self.licencia = QtWidgets.QLabel("Licencia activa")
         self.licencia.setObjectName("pista")
+        self.licencia.setMinimumWidth(0)
+        self.licencia.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         fila.addWidget(self.licencia)
         fila.addSpacing(12)
         self.boton_compacto = BotonPildora("Modo compacto")
@@ -332,6 +377,7 @@ class Estudio(QtWidgets.QWidget):
     def _centro(self) -> QtWidgets.QWidget:
         centro = QtWidgets.QWidget()
         caja = QtWidgets.QVBoxLayout(centro)
+        self._caja_centro = caja
         caja.setContentsMargins(22, 8, 22, 16)
         caja.setSpacing(14)
         self.marco = MarcoVista()
@@ -369,32 +415,40 @@ class Estudio(QtWidgets.QWidget):
         caja.addWidget(self.marco, 1)
         self.galeria = self._galeria()
         caja.addWidget(self.galeria)
-        vivos = QtWidgets.QHBoxLayout()
+        self._controles_vivos = _BarraQueCabe()
+        self._vivos_caja = QtWidgets.QVBoxLayout(self._controles_vivos)
+        self._vivos_caja.setContentsMargins(0, 0, 0, 0)
+        self._vivos_caja.setSpacing(0)
+        self._vivos_filas = [QtWidgets.QHBoxLayout() for _ in range(3)]
+        for fila_vivos in self._vivos_filas:
+            fila_vivos.setContentsMargins(0, 0, 0, 0)
+            fila_vivos.setSpacing(8)
+            self._vivos_caja.addLayout(fila_vivos)
+        self._vivos_estrecho = None
         self.boton_vivo = BotonIris("EN VIVO")
         self.boton_vivo.setObjectName("enVivo")
-        self.boton_vivo.setMinimumWidth(168)
+        self.boton_vivo.setMinimumWidth(148)
         self.boton_vivo.clicked.connect(self._pulsar_en_vivo)
-        vivos.addWidget(self.boton_vivo)
         self.antes = BotonPildora("Ver antes")
         self.antes.setToolTip("Mantén pulsado para ver tu cara, sin el cambio.")
         self.antes.pressed.connect(lambda: self.pedir_original.emit(True))
         self.antes.released.connect(self._soltar_antes)
-        vivos.addWidget(self.antes)
         self.segmento_vista = Segmento(["Original", "Cambiada"])
         self.segmento_vista.grupo.buttonClicked.connect(
             lambda boton: self._pulsar_original(boton.text())
         )
         self.segmento_vista.button(1).setChecked(True)
-        vivos.addWidget(self.segmento_vista)
-        vivos.addStretch(1)
         self.camara = QtWidgets.QComboBox()
-        self.camara.setMinimumWidth(240)
+        self.camara.setMinimumWidth(0)
         self.camara.setMaximumWidth(360)
         self.camara.setMinimumHeight(44)
         self.camara.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.camara.setMinimumContentsLength(18)
+        self.camara.setMinimumContentsLength(8)
+        self.camara.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.camara.currentIndexChanged.connect(self._cambiar_camara)
-        vivos.addWidget(self.camara)
         self.refrescar_camara = QtWidgets.QPushButton("↻")
         self.refrescar_camara.setObjectName("refrescar")
         self.refrescar_camara.setFixedSize(44, 44)
@@ -402,12 +456,16 @@ class Estudio(QtWidgets.QWidget):
         self.refrescar_camara.setToolTip("Actualizar la lista de cámaras")
         self.refrescar_camara.setAccessibleName("Actualizar cámaras")
         self.refrescar_camara.clicked.connect(self.pedir_refrescar_camaras.emit)
-        vivos.addWidget(self.refrescar_camara)
         self.virtual_compacto = QtWidgets.QCheckBox("Cámara virtual")
+        self.virtual_compacto.setToolTip("Envía la imagen a la cámara virtual.")
+        self.virtual_compacto.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Minimum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.virtual_compacto.hide()
         self.virtual_compacto.toggled.connect(self.pedir_virtual.emit)
-        vivos.addWidget(self.virtual_compacto)
-        caja.addLayout(vivos)
+        caja.addWidget(self._controles_vivos)
+        self._encajar_controles()
         return centro
 
     def _galeria(self) -> QtWidgets.QWidget:
@@ -441,14 +499,23 @@ class Estudio(QtWidgets.QWidget):
         return bloque
 
     def _columna_obs(self) -> QtWidgets.QWidget:
-        columna = QtWidgets.QWidget()
+        columna = _ColumnaLateral()
         columna.setObjectName("columnaObs")
-        columna.setFixedWidth(400)
+        columna.setMinimumWidth(300)
+        columna.setMaximumWidth(440)
+        columna.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         interior = QtWidgets.QWidget()
+        interior.setMinimumWidth(0)
         caja = QtWidgets.QVBoxLayout(interior)
+        self._caja_columna = caja
         caja.setContentsMargins(18, 18, 18, 18)
         caja.setSpacing(14)
         fila = QtWidgets.QHBoxLayout()
@@ -476,23 +543,23 @@ class Estudio(QtWidgets.QWidget):
         self.detalle_obs = QtWidgets.QLabel("1280×720 · 30 FPS")
         self.detalle_obs.setObjectName("pista")
         caja.addWidget(self.detalle_obs)
-        fila_obs = QtWidgets.QHBoxLayout()
         como = BotonPildora("Cómo añadirlo")
         como.setMinimumHeight(44)
+        como.setToolTip("Abre los pasos para añadir Drako Cam en OBS.")
         como.clicked.connect(self.pedir_asistente_obs.emit)
         probar = BotonPildora("Probar salida")
         probar.setMinimumHeight(44)
+        probar.setToolTip("Comprueba que la salida de vídeo llega bien.")
         probar.clicked.connect(self.pedir_probar_salida.emit)
         self.boton_ventana = BotonPildora("Ventana OBS")
         self.boton_ventana.setMinimumHeight(44)
         self.boton_ventana.setToolTip("Abre o cierra la ventana para OBS. También Ctrl+O.")
         self.boton_ventana.clicked.connect(self.pedir_ventana_salida.emit)
-        fila_obs.addWidget(como)
-        fila_obs.addWidget(probar)
-        fila_obs.addWidget(self.boton_ventana)
-        caja.addLayout(fila_obs)
+        caja.addWidget(self._rejilla_botones([como, probar, self.boton_ventana]))
         self.copiar = BotonPildora("Copiar ajustes para OBS")
         self.copiar.setObjectName("copiarObs")
+        self.copiar.setMinimumWidth(0)
+        self.copiar.setToolTip("Copia la resolución, los FPS y el nombre de la cámara para pegarlos en OBS.")
         self.copiar.clicked.connect(self._copiar_obs)
         caja.addWidget(self.copiar)
         self.nota_obs = QtWidgets.QLabel("")
@@ -504,11 +571,21 @@ class Estudio(QtWidgets.QWidget):
         self.calidad = QtWidgets.QComboBox()
         self.calidad.addItems(list(CALIDADES))
         self.calidad.setMinimumHeight(44)
+        self.calidad.setMinimumWidth(0)
+        self.calidad.setMinimumContentsLength(10)
+        self.calidad.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         self.calidad.currentTextChanged.connect(self._pulsar_calidad)
         caja.addWidget(self.calidad)
         caja.addWidget(QtWidgets.QLabel("Aspecto"))
         self.aspecto = QtWidgets.QComboBox()
         self.aspecto.setMinimumHeight(44)
+        self.aspecto.setMinimumWidth(0)
+        self.aspecto.setMinimumContentsLength(10)
+        self.aspecto.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         from app.drako.perfiles.aspecto import ETIQUETAS
 
         for ident, texto in ETIQUETAS:
@@ -525,52 +602,74 @@ class Estudio(QtWidgets.QWidget):
         self.lista_perfiles.setFixedHeight(132)
         self.lista_perfiles.itemClicked.connect(self._pulsar_perfil)
         caja.addWidget(self.lista_perfiles)
-        botones = QtWidgets.QHBoxLayout()
         guardar = BotonPildora("Guardar")
+        guardar.setToolTip("Guarda la cara y los ajustes en un perfil.")
         guardar.clicked.connect(self._guardar_perfil)
         duplicar = BotonPildora("Duplicar")
+        duplicar.setToolTip("Crea una copia del perfil seleccionado.")
         duplicar.clicked.connect(lambda: self._accion_perfil("duplicar"))
         borrar = BotonPildora("Borrar")
+        borrar.setToolTip("Borra el perfil seleccionado de este PC.")
         borrar.clicked.connect(self._borrar_perfil)
-        botones.addWidget(guardar)
-        botones.addWidget(duplicar)
-        botones.addWidget(borrar)
-        caja.addLayout(botones)
-        archivos = QtWidgets.QHBoxLayout()
+        caja.addWidget(self._rejilla_botones([guardar, duplicar, borrar]))
         exportar = BotonPildora("Exportar")
+        exportar.setToolTip("Guarda el perfil en un archivo zip.")
         exportar.clicked.connect(self._exportar_perfil)
         importar = BotonPildora("Importar")
+        importar.setToolTip("Trae un perfil desde un archivo zip.")
         importar.clicked.connect(self._importar_perfil)
         favorito = BotonPildora("Favorito")
+        favorito.setToolTip("Marca o quita el perfil de favoritos.")
         favorito.clicked.connect(lambda: self._accion_perfil("favorito"))
         renombrar = BotonPildora("Renombrar")
+        renombrar.setToolTip("Cambia el nombre del perfil seleccionado.")
         renombrar.clicked.connect(self._renombrar_perfil)
-        archivos.addWidget(renombrar)
-        archivos.addWidget(favorito)
-        archivos.addWidget(exportar)
-        archivos.addWidget(importar)
-        caja.addLayout(archivos)
+        caja.addWidget(self._rejilla_botones([renombrar, favorito, exportar, importar]))
         self.nota_calidad = QtWidgets.QLabel("Según la tarjeta que haya en el equipo.")
         self.nota_calidad.setWordWrap(True)
         self.nota_calidad.setObjectName("pista")
         caja.addWidget(self.nota_calidad)
         caja.addWidget(self._linea())
         self.plegar_ajustes = QtWidgets.QToolButton()
+        self.plegar_ajustes.setObjectName("plegar")
         self.plegar_ajustes.setText("Ajustar cara")
+        self.plegar_ajustes.setToolTip("Muestra u oculta los ajustes de la cara: boca, ojos, bordes y el resto.")
+        self.plegar_ajustes.setAccessibleName("Ajustar cara")
         self.plegar_ajustes.setCheckable(True)
         self.plegar_ajustes.setChecked(False)
         self.plegar_ajustes.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.plegar_ajustes.setArrowType(QtCore.Qt.ArrowType.RightArrow)
         self.plegar_ajustes.setMinimumHeight(44)
+        self.plegar_ajustes.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.plegar_ajustes.toggled.connect(self._abrir_ajustes)
         caja.addWidget(self.plegar_ajustes)
+        self.scroll_ajustes = QtWidgets.QScrollArea()
+        self.scroll_ajustes.setObjectName("scrollAjustes")
+        self.scroll_ajustes.setWidgetResizable(True)
+        self.scroll_ajustes.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll_ajustes.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_ajustes.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_ajustes.setMinimumWidth(220)
+        self.scroll_ajustes.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         self.ajustes = PanelAjustes()
-        self.ajustes.hide()
+        self.scroll_ajustes.setWidget(self.ajustes)
         self.ajustes.cambiado.connect(self.pedir_control.emit)
-        caja.addWidget(self.ajustes)
+        self.ajustes.hide()
+        self.scroll_ajustes.hide()
+        self.scroll_ajustes.setMinimumHeight(0)
+        self.scroll_ajustes.setMaximumHeight(0)
+        caja.addWidget(self.scroll_ajustes)
         self.toggles: dict[str, QtWidgets.QCheckBox] = {}
         self.avanzado = QtWidgets.QToolButton()
+        self.avanzado.setObjectName("plegar")
         self.avanzado.setText("Avanzado")
+        self.avanzado.setToolTip("Resolución, proveedor, detector y otros ajustes de la salida.")
         self.avanzado.setCheckable(True)
         self.avanzado.setChecked(False)
         self.avanzado.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -667,6 +766,11 @@ class Estudio(QtWidgets.QWidget):
     def _medida(self, titulo: str) -> QtWidgets.QLabel:
         etiqueta = QtWidgets.QLabel(f"{titulo}  —")
         etiqueta.setObjectName("numero")
+        etiqueta.setMinimumWidth(0)
+        etiqueta.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         return etiqueta
 
     def _slider(self, valor: int, slot) -> QtWidgets.QSlider:
@@ -706,10 +810,35 @@ class Estudio(QtWidgets.QWidget):
         combo = QtWidgets.QComboBox()
         combo.addItems(opciones)
         combo.setMinimumHeight(44)
+        combo.setMinimumWidth(0)
+        combo.setMinimumContentsLength(8)
+        combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         combo.currentTextChanged.connect(lambda texto, nombre=clave: self.pedir_ajuste.emit(nombre, texto))
         caja.addWidget(etiqueta)
         caja.addWidget(combo)
         bloque.combo = combo  # type: ignore[attr-defined]
+        return bloque
+
+    def _rejilla_botones(self, botones: list[QtWidgets.QWidget]) -> QtWidgets.QWidget:
+        """Dos columnas: las etiquetas se leen enteras dentro de la columna estrecha."""
+        bloque = QtWidgets.QWidget()
+        bloque.setMinimumWidth(0)
+        rejilla = QtWidgets.QGridLayout(bloque)
+        rejilla.setContentsMargins(0, 0, 0, 0)
+        rejilla.setHorizontalSpacing(8)
+        rejilla.setVerticalSpacing(8)
+        for indice, boton in enumerate(botones):
+            boton.setMinimumWidth(0)
+            boton.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            rejilla.addWidget(boton, indice // 2, indice % 2)
+        if len(botones) % 2 == 1:
+            rejilla.setColumnStretch(0, 1)
+            rejilla.setColumnStretch(1, 1)
         return bloque
 
     def _linea(self) -> QtWidgets.QFrame:
@@ -1055,11 +1184,108 @@ class Estudio(QtWidgets.QWidget):
 
         return texto_para_obs(resolucion, fps, fondo)
 
+    def resizeEvent(self, evento: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(evento)
+        self._encajar_controles()
+
     def _abrir_ajustes(self, abierto: bool) -> None:
-        self.ajustes.setVisible(abierto)
+        self.scroll_ajustes.setVisible(abierto)
         self.plegar_ajustes.setArrowType(
             QtCore.Qt.ArrowType.DownArrow if abierto else QtCore.Qt.ArrowType.RightArrow
         )
+        self.plegar_ajustes.setToolTip(
+            "Oculta los ajustes de la cara." if abierto else "Muestra los ajustes de la cara: boca, ojos, bordes y el resto."
+        )
+        self._medir_scroll_ajustes()
+        if abierto:
+            QtCore.QTimer.singleShot(0, self._traer_ajustes)
+
+    def _traer_ajustes(self) -> None:
+        if not self.plegar_ajustes.isChecked():
+            return
+        area = self.scroll_ajustes.parentWidget()
+        while area is not None and not isinstance(area, QtWidgets.QScrollArea):
+            area = area.parentWidget()
+        if not isinstance(area, QtWidgets.QScrollArea) or area is self.scroll_ajustes:
+            return
+        pagina = area.widget()
+        if pagina is None:
+            return
+        origen = self.plegar_ajustes.mapTo(pagina, QtCore.QPoint(0, 0))
+        area.verticalScrollBar().setValue(max(0, origen.y() - 8))
+
+    def _medir_scroll_ajustes(self) -> None:
+        # El interruptor manda. isVisible() a veces sigue en falso un instante
+        # y dejaba el alto del panel en cero.
+        abierto = self.plegar_ajustes.isChecked()
+        # En compacto, con el panel abierto, la tira de fotos cede el sitio
+        # para que los deslizadores quepan encima de la barra de estado.
+        self.galeria.setVisible(not (self._compacto and abierto))
+        self.marco.setMinimumHeight(88 if self._compacto else 135)
+        if not abierto:
+            self.scroll_ajustes.setMinimumHeight(0)
+            self.scroll_ajustes.setMaximumHeight(0)
+            self.ajustes.hide()
+            self.scroll_ajustes.hide()
+            return
+        self.ajustes.show()
+        self.scroll_ajustes.setVisible(True)
+        if self._compacto:
+            self.scroll_ajustes.setMinimumHeight(96)
+            self.scroll_ajustes.setMaximumHeight(220)
+        else:
+            self.scroll_ajustes.setMinimumHeight(240)
+            self.scroll_ajustes.setMaximumHeight(560)
+
+    def _anclar_ajustes(self, en_centro: bool) -> None:
+        """En compacto el panel usa el ancho de la ventana, no la columna fija."""
+        piezas = (self.plegar_ajustes, self.scroll_ajustes)
+        for pieza in piezas:
+            padre = pieza.parentWidget()
+            if padre is not None and padre.layout() is not None:
+                padre.layout().removeWidget(pieza)
+        if en_centro:
+            for pieza in piezas:
+                self._caja_centro.addWidget(pieza)
+            return
+        indice = self._caja_columna.indexOf(self.avanzado)
+        if indice < 0:
+            indice = self._caja_columna.count()
+        for desplazamiento, pieza in enumerate(piezas):
+            self._caja_columna.insertWidget(indice + desplazamiento, pieza)
+
+    def _vaciar_filas_vivos(self) -> None:
+        for fila in self._vivos_filas:
+            while fila.count():
+                fila.takeAt(0)
+
+    def _encajar_controles(self) -> None:
+        ancho = self._controles_vivos.width()
+        if ancho <= 0:
+            estrecho = self._compacto
+        else:
+            estrecho = self._compacto or ancho < 740
+        if estrecho == self._vivos_estrecho:
+            return
+        self._vivos_estrecho = estrecho
+        self._vaciar_filas_vivos()
+        for indice, fila in enumerate(self._vivos_filas):
+            fila.setContentsMargins(0, 8 if indice and estrecho else 0, 0, 0)
+        if estrecho:
+            self._vivos_filas[0].addWidget(self.boton_vivo)
+            self._vivos_filas[0].addWidget(self.antes, 1)
+            self._vivos_filas[1].addWidget(self.segmento_vista, 1)
+            self._vivos_filas[2].addWidget(self.camara, 1)
+            self._vivos_filas[2].addWidget(self.refrescar_camara)
+            self._vivos_filas[2].addWidget(self.virtual_compacto)
+            return
+        self._vivos_filas[0].addWidget(self.boton_vivo)
+        self._vivos_filas[0].addWidget(self.antes)
+        self._vivos_filas[0].addWidget(self.segmento_vista)
+        self._vivos_filas[0].addStretch(1)
+        self._vivos_filas[0].addWidget(self.camara)
+        self._vivos_filas[0].addWidget(self.refrescar_camara)
+        self._vivos_filas[0].addWidget(self.virtual_compacto)
 
     def _abrir_avanzado(self, abierto: bool) -> None:
         self.panel_avanzado.setVisible(abierto)
@@ -1070,15 +1296,26 @@ class Estudio(QtWidgets.QWidget):
     def _alternar_compacto(self) -> None:
         self._compacto = not self._compacto
         self.rail.setVisible(not self._compacto)
+        self._anclar_ajustes(self._compacto)
         self.columna.setVisible(not self._compacto)
         self.virtual_compacto.setVisible(self._compacto)
+        self.paso.setVisible(not self._compacto)
+        self.licencia.setVisible(not self._compacto)
+        for medida in (self.txt_vram, self.txt_proveedor, self.txt_vigilante):
+            medida.setVisible(not self._compacto)
         self.boton_compacto.setText("Ampliar" if self._compacto else "Modo compacto")
+        self.boton_compacto.setToolTip(
+            "Vuelve a la vista completa." if self._compacto else "Reduce la ventana y deja la cámara y los ajustes de la cara."
+        )
+        self._vivos_estrecho = None
+        self._encajar_controles()
+        self._medir_scroll_ajustes()
         ventana = self.window()
         if self._compacto:
             self._tamano_previo = ventana.size()
             from app.drako.pantalla import encajar
 
-            encajar(ventana, 440, 720, 360, 480)
+            encajar(ventana, 440, 720, 360, 620)
         elif getattr(self, "_tamano_previo", None) is not None:
             ventana.resize(self._tamano_previo)
         self.pedir_compacto.emit(self._compacto)

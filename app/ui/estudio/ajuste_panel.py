@@ -1,43 +1,122 @@
-"""Panel «Ajustar cara»: un grupo, un interruptor, los sliders debajo."""
+"""Panel «Ajustar cara»: un grupo, un interruptor, los sliders debajo.
+
+El título y el número van juntos. «Restablecer» baja a otra línea
+si no cabe al lado, y el deslizador ocupa todo el ancho. Nada se sale
+por la derecha: el panel vive en un área con scroll vertical.
+"""
 
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.estudio.controles import GRUPOS, Control, Grupo, por_clave
 
 
+def _marcar(widget: QtWidgets.QWidget, activo: bool) -> None:
+    widget.setProperty("activo", "true" if activo else "false")
+    estilo = widget.style()
+    estilo.unpolish(widget)
+    estilo.polish(widget)
+    widget.update()
+
+
+class _TextoQueCabe(QtWidgets.QLabel):
+    """Parte el texto en varias líneas y no ensancha el panel."""
+
+    def __init__(self, texto: str = "", parent: QtWidgets.QWidget | None = None):
+        super().__init__(texto, parent)
+        self.setWordWrap(True)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        alto = max(self.fontMetrics().lineSpacing(), 1)
+        return QtCore.QSize(0, alto)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+
 class _Fila(QtWidgets.QWidget):
+    """Un control: título con su número, deslizador a todo el ancho y Restablecer."""
+
     def __init__(self, control: Control, parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
         self.control = control
+        self._apilado: bool | None = None
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         caja = QtWidgets.QVBoxLayout(self)
-        caja.setContentsMargins(0, 4, 0, 4)
-        caja.setSpacing(2)
-        cabeza = QtWidgets.QHBoxLayout()
-        self.titulo = QtWidgets.QLabel(control.nombre)
+        caja.setContentsMargins(0, 6, 0, 6)
+        caja.setSpacing(4)
+        self._rejilla = QtWidgets.QGridLayout()
+        self._rejilla.setContentsMargins(0, 0, 0, 0)
+        self._rejilla.setHorizontalSpacing(8)
+        self._rejilla.setVerticalSpacing(4)
+        self._rejilla.setColumnStretch(0, 1)
+        self.titulo = _TextoQueCabe(control.nombre)
         self.titulo.setToolTip(self._ayuda())
-        cabeza.addWidget(self.titulo, 1)
+        self._rejilla.addWidget(self.titulo, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
         self.valor = QtWidgets.QLabel(self._texto(control.predeterminado))
         self.valor.setObjectName("numero")
-        cabeza.addWidget(self.valor)
+        self.valor.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        ancho_valor = self.valor.fontMetrics().horizontalAdvance("-000,00") + 6
+        self.valor.setMinimumWidth(ancho_valor)
+        self.valor.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        self._rejilla.addWidget(
+            self.valor,
+            0,
+            1,
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignTop,
+        )
         self.reset = QtWidgets.QToolButton()
+        self.reset.setObjectName("restablecer")
         self.reset.setText("Restablecer")
-        self.reset.setToolTip(f"Vuelve a {self._texto(control.recomendado)}, el valor recomendado.")
-        self.reset.setMinimumHeight(32)
-        cabeza.addWidget(self.reset)
-        caja.addLayout(cabeza)
-        pista = QtWidgets.QLabel(control.ayuda)
-        pista.setWordWrap(True)
+        self.reset.setToolTip(f"Restablecer a {self._texto(control.recomendado)}, el valor recomendado.")
+        self.reset.setAccessibleName("Restablecer")
+        self.reset.setAccessibleDescription(self.reset.toolTip())
+        self.reset.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.reset.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self.reset.setAutoRaise(False)
+        self.reset.setMinimumHeight(36)
+        self.reset.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self._rejilla.addWidget(self.reset, 3, 0, 1, 3, QtCore.Qt.AlignmentFlag.AlignLeft)
+        self._apilado = True
+        pista = _TextoQueCabe(control.ayuda)
         pista.setObjectName("pista")
-        caja.addWidget(pista)
         if control.tipo == "eleccion":
             self.editor: QtWidgets.QWidget = QtWidgets.QComboBox()
-            self.editor.addItems(list(control.opciones))
-            self.editor.setCurrentText(str(control.predeterminado))
-            self.editor.setMinimumHeight(40)
+            editor = self.editor
+            assert isinstance(editor, QtWidgets.QComboBox)
+            editor.addItems(list(control.opciones))
+            editor.setCurrentText(str(control.predeterminado))
+            editor.setMinimumHeight(40)
+            editor.setMinimumContentsLength(8)
+            editor.setSizeAdjustPolicy(
+                QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            editor.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            editor.setMinimumWidth(0)
         elif control.tipo == "toggle":
             self.editor = QtWidgets.QCheckBox("Activado")
+            self.editor.setToolTip("Enciende o apaga este ajuste.")
             self.editor.setChecked(bool(control.predeterminado))
         else:
             escala = 10**control.decimales
@@ -47,9 +126,46 @@ class _Fila(QtWidgets.QWidget):
             slider.setValue(int(round(float(control.predeterminado) * escala)))
             slider.setSingleStep(max(1, int(round(control.paso * escala))))
             slider.setMinimumHeight(36)
+            slider.setMinimumWidth(0)
+            slider.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
             self.editor = slider
         self.editor.setToolTip(self._ayuda())
-        caja.addWidget(self.editor)
+        self._rejilla.addWidget(self.editor, 1, 0, 1, 3)
+        self._rejilla.addWidget(pista, 2, 0, 1, 3)
+        caja.addLayout(self._rejilla)
+
+    def resizeEvent(self, evento: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(evento)
+        self._revisar_ancho()
+
+    def showEvent(self, evento: QtGui.QShowEvent) -> None:
+        super().showEvent(evento)
+        self._revisar_ancho()
+
+    def _revisar_ancho(self) -> None:
+        if self.width() <= 0:
+            return
+        reservado = self.valor.minimumWidth() + self.reset.sizeHint().width() + 28
+        # Unos 120 px para que el título se lea; si no llegan, el botón baja.
+        self._colocar(self.width() < reservado + 120)
+
+    def _colocar(self, apilar: bool) -> None:
+        if apilar == self._apilado:
+            return
+        self._apilado = apilar
+        self._rejilla.removeWidget(self.reset)
+        if apilar:
+            self._rejilla.addWidget(self.reset, 3, 0, 1, 3, QtCore.Qt.AlignmentFlag.AlignLeft)
+        else:
+            self._rejilla.addWidget(
+                self.reset,
+                0,
+                2,
+                QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignTop,
+            )
 
     def _ayuda(self) -> str:
         return f"{self.control.ayuda} Recomendado: {self._texto(self.control.recomendado)}."
@@ -88,22 +204,30 @@ class PanelAjustes(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         self._filas: dict[str, _Fila] = {}
         self._cuerpos: dict[str, QtWidgets.QWidget] = {}
         self._maestros: dict[str, QtWidgets.QCheckBox] = {}
+        self._bloques: dict[str, QtWidgets.QWidget] = {}
+        self._estados: dict[str, QtWidgets.QLabel] = {}
+        self._grupos: dict[str, Grupo] = {}
         self._silencio = False
         caja = QtWidgets.QVBoxLayout(self)
-        caja.setContentsMargins(0, 0, 0, 0)
-        caja.setSpacing(8)
+        caja.setContentsMargins(2, 0, 8, 8)
+        caja.setSpacing(0)
         titulo = QtWidgets.QLabel("Ajustar cara")
         titulo.setObjectName("tituloPanel")
         caja.addWidget(titulo)
-        nota = QtWidgets.QLabel("Se guarda con la cara elegida. Los cambios se ven en el directo.")
-        nota.setWordWrap(True)
+        nota = _TextoQueCabe("Se guarda con la cara elegida. Los cambios se ven en el directo.")
         nota.setObjectName("pista")
         caja.addWidget(nota)
         for grupo in GRUPOS:
             caja.addWidget(self._grupo(grupo))
+        caja.addStretch(1)
         self._refrescar()
 
     def fijar(self, valores: dict[str, object]) -> None:
@@ -121,30 +245,38 @@ class PanelAjustes(QtWidgets.QWidget):
 
     def _grupo(self, grupo: Grupo) -> QtWidgets.QWidget:
         bloque = QtWidgets.QWidget()
+        bloque.setObjectName("grupoAjuste")
+        bloque.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        bloque.setMinimumWidth(0)
         caja = QtWidgets.QVBoxLayout(bloque)
-        caja.setContentsMargins(0, 8, 0, 0)
-        caja.setSpacing(4)
-        cabeza = QtWidgets.QHBoxLayout()
+        caja.setContentsMargins(0, 12, 0, 4)
+        caja.setSpacing(6)
         texto_interruptor = "Mejorar cara" if grupo.ident == "nitidez" else grupo.nombre
         interruptor = QtWidgets.QCheckBox(texto_interruptor)
+        interruptor.setObjectName("interruptorGrupo")
         interruptor.setChecked(grupo.maestro == "BordermaskEnableToggle")
         interruptor.setToolTip(grupo.frase)
+        interruptor.setAccessibleName(texto_interruptor)
+        interruptor.setAccessibleDescription(grupo.frase)
+        interruptor.setMinimumWidth(0)
+        interruptor.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         interruptor.toggled.connect(lambda activo, clave=grupo.maestro: self._emitir(clave, activo))
         self._maestros[grupo.maestro] = interruptor
-        cabeza.addWidget(interruptor, 1)
-        coste = QtWidgets.QLabel(grupo.coste)
-        coste.setObjectName("pista")
-        coste.setToolTip("No está medido en FPS en esta máquina. Pesado suele bajar los fotogramas.")
-        cabeza.addWidget(coste)
-        caja.addLayout(cabeza)
-        frase = QtWidgets.QLabel(grupo.frase)
-        frase.setWordWrap(True)
-        frase.setObjectName("pista")
-        caja.addWidget(frase)
+        self._bloques[grupo.ident] = bloque
+        self._grupos[grupo.ident] = grupo
+        caja.addWidget(interruptor)
+        estado = _TextoQueCabe()
+        estado.setObjectName("pista")
+        self._estados[grupo.ident] = estado
+        caja.addWidget(estado)
         cuerpo = QtWidgets.QWidget()
+        cuerpo.setMinimumWidth(0)
         interior = QtWidgets.QVBoxLayout(cuerpo)
-        interior.setContentsMargins(8, 0, 0, 0)
-        interior.setSpacing(0)
+        interior.setContentsMargins(12, 4, 0, 0)
+        interior.setSpacing(2)
         for control in grupo.controles:
             fila = _Fila(control)
             self._filas[control.clave] = fila
@@ -195,10 +327,14 @@ class PanelAjustes(QtWidgets.QWidget):
             if isinstance(fila.editor, QtWidgets.QCheckBox):
                 activos[clave] = fila.editor.isChecked()
         for grupo in GRUPOS:
+            activo = self._maestros[grupo.maestro].isChecked()
             cuerpo = self._cuerpos[grupo.ident]
-            cuerpo.setVisible(
-                self._maestros[grupo.maestro].isChecked()
-                or grupo.ident in ("nitidez", "estabilidad", "boca")
+            cuerpo.setVisible(activo or grupo.ident in ("nitidez", "estabilidad", "boca"))
+            _marcar(self._bloques[grupo.ident], activo)
+            _marcar(self._maestros[grupo.maestro], activo)
+            estado = "Encendido" if activo else "Apagado"
+            self._estados[grupo.ident].setText(
+                f"{estado} · {grupo.coste.capitalize()}. {grupo.frase}"
             )
         for clave, fila in self._filas.items():
             depende = fila.control.muestra_si
