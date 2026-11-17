@@ -54,6 +54,10 @@ class MotorEnVivo:
         self._loader = None
         self._entrando = False
         self._reintentos = 0
+        self._embeddings: dict = {}
+        from app.ui.estudio.caras import CicloCara
+
+        self._ciclo = CicloCara()
         self._virtual = bool(self.biblioteca.estado().get("camara_virtual") or False)
         self._salida_activa = False
         self._ventana_salida = None
@@ -152,6 +156,50 @@ class MotorEnVivo:
         if self.en_vivo:
             self._aplicar_cara(redetectar=False)
 
+    def quitar_foto(self, ident: str) -> str:
+        from app.ui.estudio.caras import CicloCara, es_widget, quitar_muertos
+
+        foto = next((item for item in self.biblioteca.listar() if item.id == ident), None)
+        clave = self._clave_foto(foto.ruta) if foto is not None else ""
+        self.biblioteca.borrar(ident)
+        if clave:
+            self._embeddings.pop(clave, None)
+        if getattr(self._ciclo, "foto", None) == clave:
+            self._ciclo = CicloCara()
+        if self._cara_id == ident:
+            self._cara_id = ""
+            self.en_vivo = False
+            self._entrando = False
+            self._fijar_cambio(False)
+            caras = getattr(self.ventana, "target_faces", None)
+            if isinstance(caras, dict):
+                quitar_muertos(caras)
+                for llave, valor in list(caras.items()):
+                    if not es_widget(valor):
+                        del caras[llave]
+            self.ventana.selected_target_face_id = None
+            self.ventana.cur_selected_target_face_button = None
+            self.biblioteca.recordar(ultima_cara="")
+            self.mensaje = "Foto quitada. Elige otra para seguir en directo."
+            return self.mensaje
+        self.mensaje = "Foto quitada de la galería."
+        return self.mensaje
+
+    def renombrar_foto(self, ident: str, nombre: str) -> str:
+        foto = next((item for item in self.biblioteca.listar() if item.id == ident), None)
+        if foto is None:
+            return ""
+        clave = self._clave_foto(foto.ruta)
+        nueva = self.biblioteca.renombrar(ident, nombre)
+        guardado = self._embeddings.pop(clave, None)
+        if guardado is not None:
+            self._embeddings[self._clave_foto(nueva.ruta)] = guardado
+        if self._cara_id == ident:
+            self._cara_id = nueva.id
+            self.biblioteca.recordar(ultima_cara=nueva.id)
+        self.mensaje = ""
+        return ""
+
     def fijar_favorita(self, ident: str, favorita: bool) -> None:
         self.biblioteca.fijar_favorita(ident, favorita)
 
@@ -234,8 +282,10 @@ class MotorEnVivo:
             self.en_vivo = False
             return aviso
         assert foto is not None
-        if self._boton_entrada(foto.ruta) is None:
-            self.mensaje = MENSAJE_CARGANDO
+        if self._embedding_de(foto.ruta) is None:
+            from app.ui.estudio.caras import MENSAJE_PREPARANDO
+
+            self.mensaje = MENSAJE_PREPARANDO
             self._entrando = True
             self._reintentos = 0
             self._pedir_embedding(foto.ruta)
@@ -326,6 +376,11 @@ class MotorEnVivo:
 
     def _aviso_ventana(self, texto: str) -> None:
         self.mensaje = texto
+        abierta = (
+            self._ventana_salida is not None and self._ventana_salida.esta_abierta()
+        )
+        if not abierta:
+            self._salida_activa = bool(self._virtual)
 
     def probar_salida(self) -> str:
         texto = self._encender_salida()
@@ -632,60 +687,56 @@ class MotorEnVivo:
     def _reintentar_en_vivo(self) -> None:
         if not self._entrando:
             return
+        from app.ui.estudio.caras import MENSAJE_FOTO_MALA, MENSAJE_PREPARANDO
+
         foto = self._foto_seleccionada()
-        if foto is not None and self._boton_entrada(foto.ruta) is not None:
+        if foto is not None and self._embedding_de(foto.ruta) is not None:
+            self._ciclo.listo(self._embedding_de(foto.ruta))
+        paso = self._ciclo.paso()
+        if paso == "activar":
             self._entrando = False
+            self._ciclo.marcar_aplicada()
             self._activar()
             return
-        self._reintentos += 1
-        if self._reintentos > 20:
-            self._entrando = False
-            self.mensaje = "No pude leer la foto. Prueba con otra, de frente y con luz."
+        if paso == "esperar":
+            self.mensaje = MENSAJE_PREPARANDO
+            QtCore.QTimer.singleShot(300, self._reintentar_en_vivo)
             return
-        QtCore.QTimer.singleShot(300, self._reintentar_en_vivo)
+        self._entrando = False
+        self.mensaje = MENSAJE_FOTO_MALA
 
     def _aplicar_cara(self, redetectar: bool) -> None:
+        import logging
+
+        from app.ui.estudio.caras import MENSAJE_PREPARANDO
+
         foto = self._foto_seleccionada()
         if foto is None:
             self.mensaje = MENSAJE_FOTO
             return
-        boton = self._boton_entrada(foto.ruta)
-        if boton is None:
-            self.mensaje = MENSAJE_CARGANDO
+        store = self._embedding_de(foto.ruta)
+        if store is None:
+            self.mensaje = MENSAJE_PREPARANDO
             self._pedir_embedding(foto.ruta)
             self._reintentar_si_sigue()
             return
-        self._marcar_entrada(boton)
-        if redetectar or not getattr(self.ventana, "target_faces", None):
-            self._poner_valor("MaxFacesToDetectSlider", 5)
-            try:
-                from app.ui.widgets.actions import card_actions
-
-                card_actions.find_target_faces(self.ventana)
-            except Exception as exc:
-                self.mensaje = f"No pude detectar la cara. {exc}"
-                self._reintentar_si_sigue()
-                return
-            finally:
-                self._poner_valor("MaxFacesToDetectSlider", 1)
-        caras = list(getattr(self.ventana, "target_faces", {}).values())
-        if not caras:
+        try:
+            resultado = self._detectar_sin_botones(store, redetectar=redetectar)
+        except Exception:
+            logging.getLogger("drako").exception(
+                "No pude detectar la cara en el directo"
+            )
+            self.mensaje = "Preparando…"
+            self._reintentar_si_sigue()
+            return
+        if resultado == "esperar":
+            self.mensaje = MENSAJE_PREPARANDO
+            self._reintentar_si_sigue()
+            return
+        if resultado == "sin_cara":
             self.mensaje = "No te veo. Ponte frente a la cámara."
             self._reintentar_si_sigue()
             return
-        elegidas = self._elegir_destinos(caras)
-        for destino in caras:
-            if destino in elegidas:
-                destino.assigned_input_faces = {boton.face_id: boton.embedding_store}
-            else:
-                destino.assigned_input_faces.clear()
-            try:
-                destino.calculate_assigned_input_embedding()
-            except Exception:
-                pass
-        principal = elegidas[0]
-        self.ventana.selected_target_face_id = principal.face_id
-        self.ventana.cur_selected_target_face_button = principal
         self.mensaje = ""
 
     def _elegir_destinos(self, caras: list):
@@ -752,20 +803,134 @@ class MotorEnVivo:
                 break
         self.elegir_camara(posicion)
 
-    def _pedir_embedding(self, ruta: Path) -> None:
-        from functools import partial
+    def _clave_foto(self, ruta) -> str:
+        try:
+            return str(Path(ruta).resolve())
+        except OSError:
+            return str(ruta)
 
-        from app.ui.widgets.actions.list_view_actions import (
-            add_media_thumbnail_to_source_faces_list,
-        )
+    def _embedding_de(self, ruta):
+        return self._embeddings.get(self._clave_foto(ruta))
+
+    def _pedir_embedding(self, ruta: Path) -> None:
+        clave = self._clave_foto(ruta)
+        guardado = self._embeddings.get(clave)
+        if guardado is not None:
+            self._ciclo.listo(guardado)
+            return
         from app.ui.widgets.ui_workers import InputFacesLoaderWorker
 
+        self._ciclo.nueva_foto(clave)
         worker = InputFacesLoaderWorker(self.ventana, files_list=[str(ruta)])
-        worker.thumbnail_ready.connect(
-            partial(add_media_thumbnail_to_source_faces_list, self.ventana)
-        )
+        worker.thumbnail_ready.connect(self._guardar_embedding)
+        worker.finished.connect(self._cerrar_lectura)
         self._loader = worker
         worker.start()
+
+    def _guardar_embedding(self, ruta, _cara, embedding_store, _imagen, _face_id) -> None:
+        import logging
+
+        clave = self._clave_foto(ruta)
+        self._embeddings[clave] = embedding_store
+        self._ciclo.listo(embedding_store)
+        logging.getLogger("drako").info("Embedding de la foto guardado: %s", clave)
+        try:
+            from app.ui.widgets.actions.list_view_actions import (
+                add_media_thumbnail_to_source_faces_list,
+            )
+
+            add_media_thumbnail_to_source_faces_list(
+                self.ventana, ruta, _cara, embedding_store, _imagen, _face_id
+            )
+        except Exception:
+            logging.getLogger("drako").exception(
+                "La miniatura de la foto no se pudo pintar. El embedding sigue."
+            )
+        if self.en_vivo and not self._entrando:
+            self._aplicar_cara(redetectar=True)
+
+    def _cerrar_lectura(self) -> None:
+        if not self._ciclo.en_curso:
+            return
+        exc = getattr(self._loader, "error_lectura", None)
+        if exc:
+            self._ciclo.fallo(str(exc))
+        else:
+            self._ciclo.sin_cara()
+
+    def _detectar_sin_botones(self, embedding_fuente: dict, redetectar: bool) -> str:
+        import uuid
+
+        from app.ui.estudio.caras import CaraEnVivo, quitar_muertos
+        from app.ui.widgets.actions.common_actions import create_parameter_dict_for_face_id
+
+        ventana = self.ventana
+        caras = getattr(ventana, "target_faces", None)
+        if isinstance(caras, dict):
+            quitar_muertos(caras)
+        if not redetectar and isinstance(caras, dict) and caras:
+            viva = next(iter(caras.values()))
+            if isinstance(viva, CaraEnVivo):
+                viva.assigned_input_faces = {"foto": embedding_fuente}
+                viva.main_window = ventana
+                viva.calculate_assigned_input_embedding()
+                ventana.selected_target_face_id = viva.face_id
+                ventana.cur_selected_target_face_button = None
+                return "ok"
+        procesador = getattr(ventana, "video_processor", None)
+        frame = getattr(procesador, "current_frame", None)
+        if frame is None or getattr(frame, "size", 0) == 0:
+            return "esperar"
+        import numpy as np
+        import torch
+
+        control = getattr(ventana, "control", {}) or {}
+        rgb = np.ascontiguousarray(frame[..., ::-1])
+        img = torch.from_numpy(rgb.astype("uint8")).to(ventana.models_processor.device)
+        img = img.permute(2, 0, 1)
+        modelo = str(control.get("RecognitionModelSelection", "Inswapper128ArcFace"))
+        _, kpss, _ = ventana.function_worker.run_detect(
+            img,
+            str(control.get("DetectorModelSelection", "RetinaFace")),
+            max_num=1,
+            score=float(control.get("DetectorScoreSlider", 50)) / 100.0,
+            input_size=(512, 512),
+            use_landmark_detection=False,
+            landmark_detect_mode="203",
+            landmark_score=0.5,
+            from_points=False,
+            rotation_angles=[0],
+        )
+        if kpss is None or len(kpss) == 0:
+            return "sin_cara"
+        emb, _recorte = ventana.function_worker.run_recognize_direct(
+            img, kpss[0], "Auto", modelo
+        )
+        if emb is None:
+            return "sin_cara"
+        cara = CaraEnVivo(str(uuid.uuid1()), {modelo: emb})
+        cara.main_window = ventana
+        cara.assigned_input_faces = {"foto": embedding_fuente}
+        cara.calculate_assigned_input_embedding()
+        if not isinstance(getattr(ventana, "target_faces", None), dict):
+            ventana.target_faces = {}
+        for clave, valor in list(ventana.target_faces.items()):
+            from app.ui.estudio.caras import es_widget
+
+            if es_widget(valor):
+                del ventana.target_faces[clave]
+        ventana.target_faces.clear()
+        ventana.target_faces[cara.face_id] = cara
+        if not getattr(ventana, "parameters", None):
+            ventana.parameters = {}
+        if cara.face_id not in ventana.parameters:
+            try:
+                create_parameter_dict_for_face_id(ventana, cara.face_id)
+            except Exception:
+                ventana.parameters[cara.face_id] = {}
+        ventana.selected_target_face_id = cara.face_id
+        ventana.cur_selected_target_face_button = None
+        return "ok"
 
     def _muestra_de_cara(self):
         foto = self._foto_seleccionada()

@@ -265,8 +265,15 @@ def _run_app(argv: list[str] | None = None) -> int:
             "sigue desde lo ya descargado.",
         )
 
-    pantalla.poner("Preparando la ventana y la cámara…", 70)
+    pantalla.poner("Preparando la ventana y la cámara…", 40)
     ventana = main_ui.MainWindow(gpu_id=args.gpu_id)
+    from app.drako.rendimiento.precalentar import precalentar
+
+    def _estado_motor(texto: str, valor: int) -> None:
+        pantalla.poner(texto, 45 + int(max(0, min(100, valor)) * 0.45))
+        aplicacion.processEvents()
+
+    precalentar(ventana, _estado_motor)
     instalar_menu(ventana, contexto, claves, al_cambiar_codigo=vigilante.pedir_cambio)
 
     def cortar_directo() -> None:

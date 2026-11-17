@@ -86,7 +86,17 @@ def update_control(
     exec_function_args = exec_function_args or []
     from app.ui.qt_vivo import slider_responde, valor_slider
 
-    current_position = valor_slider(main_window, 0) if slider_responde(main_window) else None
+    try:
+        current_position = (
+            valor_slider(main_window, 0) if slider_responde(main_window) else None
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger("drako").exception(
+            "No pude leer la línea de tiempo al actualizar un control"
+        )
+        current_position = None
 
     # Update marker control too
     # FIX: We MUST update the dictionary value regardless of the exec_function,
@@ -152,7 +162,17 @@ def update_parameter(
     exec_function_args = exec_function_args or []
     from app.ui.qt_vivo import slider_responde, valor_slider
 
-    current_position = valor_slider(main_window, 0) if slider_responde(main_window) else None
+    try:
+        current_position = (
+            valor_slider(main_window, 0) if slider_responde(main_window) else None
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger("drako").exception(
+            "No pude leer la línea de tiempo al actualizar un parámetro"
+        )
+        current_position = None
     face_id = main_window.selected_target_face_id
 
     # Get the old value for comparison before any updates

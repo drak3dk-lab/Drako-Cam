@@ -292,9 +292,15 @@ def find_target_faces(main_window: "MainWindow"):
                 # Loop through all faces in video frame
                 for face in faces_list:
                     found = False
-                    # Check if this face has already been found
-                    for face_id, target_face in main_window.target_faces.items():
-                        parameters = main_window.parameters[target_face.face_id]
+                    from app.ui.estudio.caras import es_widget, quitar_muertos
+                    from app.ui.qt_vivo import qt_sigue
+
+                    quitar_muertos(main_window.target_faces)
+                    quitar_muertos(main_window.input_faces)
+                    for face_id, target_face in list(main_window.target_faces.items()):
+                        if es_widget(target_face) and not qt_sigue(target_face):
+                            continue
+                        parameters = main_window.parameters.get(target_face.face_id, {})
                         threshhold = parameters.get("SimilarityThresholdSlider", 0.6)
                         if main_window.function_worker.findCosineDistance(
                             target_face.get_embedding(
@@ -355,7 +361,9 @@ def find_target_faces(main_window: "MainWindow"):
                                     input_face_id,
                                     input_face_button,
                                 ) in main_window.input_faces.items():
-                                    if input_face_button.isChecked():
+                                    from app.ui.qt_vivo import marcado
+
+                                    if marcado(input_face_button):
                                         new_target_face.assigned_input_faces[
                                             input_face_id
                                         ] = input_face_button.embedding_store
@@ -365,7 +373,9 @@ def find_target_faces(main_window: "MainWindow"):
                                     embed_id,
                                     embed_button,
                                 ) in main_window.merged_embeddings.items():
-                                    if embed_button.isChecked():
+                                    from app.ui.qt_vivo import marcado as _marcado
+
+                                    if _marcado(embed_button):
                                         new_target_face.assigned_merged_embeddings[
                                             embed_id
                                         ] = embed_button.embedding_store
@@ -375,7 +385,13 @@ def find_target_faces(main_window: "MainWindow"):
 
             # Select the first target face if no target face is already selected
             if main_window.target_faces and not main_window.selected_target_face_id:
-                list(main_window.target_faces.values())[0].click()
+                from app.ui.qt_vivo import tocar
+
+                primero = next(iter(main_window.target_faces.values()))
+                if not tocar(primero, lambda boton: boton.click()):
+                    main_window.selected_target_face_id = getattr(
+                        primero, "face_id", None
+                    )
 
     # --- WEBCAM GUARD ---
     if main_window.video_processor.processing:

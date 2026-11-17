@@ -704,9 +704,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # Initialize the dedicated progress dialog for TensorRT builds.
         # This object is created here, in the main GUI thread.
         self.build_progress_dialog = QtWidgets.QProgressDialog(self)
-        flags = self.build_progress_dialog.windowFlags()
-        flags &= ~QtCore.Qt.WindowCloseButtonHint
-        self.build_progress_dialog.setWindowFlags(flags)
         self.build_progress_dialog.setCancelButton(None)
         self.build_progress_dialog.setWindowModality(
             QtCore.Qt.WindowModality.WindowModal
@@ -715,9 +712,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.build_progress_dialog.close()  # Ensure it's hidden on startup
 
         self.scan_progress_dialog = QtWidgets.QProgressDialog(self)
-        scan_flags = self.scan_progress_dialog.windowFlags()
-        scan_flags &= ~QtCore.Qt.WindowCloseButtonHint
-        self.scan_progress_dialog.setWindowFlags(scan_flags)
         self.scan_progress_dialog.setWindowModality(
             QtCore.Qt.WindowModality.WindowModal
         )
@@ -999,11 +993,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         from app.ui.pantalla_carga import asegurar
 
         pantalla = asegurar()
-        pantalla.poner(
-            "Preparando el motor TensorRT. La primera vez puede tardar unos minutos.",
-            None,
-        )
+        if not getattr(pantalla, "en_arranque", False):
+            pantalla.poner(
+                "Preparando el motor TensorRT. La primera vez puede tardar unos minutos.",
+                None,
+            )
         pantalla.barra.setRange(0, 0)
+        pantalla.show()
         QtCore.QCoreApplication.processEvents()
 
     @QtCore.Slot()
@@ -1011,7 +1007,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         from app.ui.pantalla_carga import obtener
 
         pantalla = obtener()
-        if pantalla is not None and pantalla.isVisible():
+        if (
+            pantalla is not None
+            and pantalla.isVisible()
+            and not getattr(pantalla, "en_arranque", False)
+        ):
             pantalla.barra.setRange(0, 100)
             pantalla.poner("Motor TensorRT listo.", 100)
             pantalla.cerrar()

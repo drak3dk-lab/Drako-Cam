@@ -216,7 +216,7 @@ def valor_de(widget, por_defecto: int = 0) -> int:
         return por_defecto
     try:
         return int(widget.value())
-    except (RuntimeError, TypeError, ValueError):
+    except Exception:
         return por_defecto
 
 

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from app.ui.estudio.ojo import ROJO, pixmap_simbolo
 
 from app.drako.arranque import ContextoArranque, cambiar_contrasena
 from app.drako.auditoria import ClavesAuditoria
@@ -32,9 +34,25 @@ class _DialogoBase(QtWidgets.QDialog):
         self.setModal(True)
         self.setMinimumWidth(420)
         self.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, True)
+        icono = pixmap_simbolo(72)
+        self.setWindowIcon(QtGui.QIcon(pixmap_simbolo(32)))
+        self.setStyleSheet(
+            "QDialog { background: #04060A; color: #F1F4F9; }"
+            "QLabel { color: #F1F4F9; background: transparent; }"
+            "QLineEdit { font-size: 16px; padding: 8px; background: #0B0E14; "
+            "color: #F1F4F9; border: 1px solid #2A3140; border-radius: 8px; }"
+            "QPushButton { min-height: 44px; background: #1A1F2B; color: #F1F4F9; "
+            "border: none; border-radius: 8px; padding: 0 12px; }"
+            f"QPushButton#primario {{ background: {ROJO}; color: #FFF6F6; }}"
+        )
         self._layout = QtWidgets.QVBoxLayout(self)
         self._layout.setContentsMargins(20, 20, 20, 20)
         self._layout.setSpacing(12)
+        marca = QtWidgets.QLabel(self)
+        marca.setPixmap(icono)
+        marca.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+        self._layout.addWidget(marca)
 
     def agregar(self, widget: QtWidgets.QWidget) -> None:
         self._layout.addWidget(widget)
@@ -76,6 +94,7 @@ def _crear_primera(almacen, padre):
         confirmacion.setPlaceholderText("Repite la contraseña")
         fila = QtWidgets.QHBoxLayout()
         aceptar = _boton("Guardar y entrar", dialogo)
+        aceptar.setObjectName("primario")
         cancelar = _boton("Salir", dialogo)
         aceptar.clicked.connect(dialogo.accept)
         cancelar.clicked.connect(dialogo.reject)
@@ -111,6 +130,7 @@ def _entrar(contexto: ContextoArranque, padre):
         clave.setPlaceholderText("Contraseña")
         fila = QtWidgets.QHBoxLayout()
         aceptar = _boton("Entrar", dialogo)
+        aceptar.setObjectName("primario")
         cancelar = _boton("Salir", dialogo)
         aceptar.clicked.connect(dialogo.accept)
         cancelar.clicked.connect(dialogo.reject)

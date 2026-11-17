@@ -78,6 +78,12 @@ def _conectar(estudio: Estudio, motor: MotorEnVivo) -> None:
     estudio.pedir_favorita.connect(
         lambda ident, activa: _hacer(estudio, motor, lambda: motor.fijar_favorita(ident, activa) or "")
     )
+    estudio.pedir_borrar_cara.connect(
+        lambda ident: _hacer(estudio, motor, lambda: motor.quitar_foto(ident) or "")
+    )
+    estudio.pedir_renombrar_cara.connect(
+        lambda ident, nombre: _hacer(estudio, motor, lambda: motor.renombrar_foto(ident, nombre) or "")
+    )
     estudio.pedir_camara.connect(lambda indice: _hacer(estudio, motor, lambda: motor.elegir_camara(indice)))
     estudio.pedir_refrescar_camaras.connect(
         lambda: _hacer(estudio, motor, lambda: motor.refrescar_camaras() or "")

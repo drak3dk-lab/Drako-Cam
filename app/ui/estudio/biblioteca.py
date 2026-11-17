@@ -6,6 +6,7 @@ archivo que la persona elige y recuerda el nombre.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from dataclasses import dataclass
@@ -80,10 +81,70 @@ class Biblioteca:
         if not extension_admitida(origen.name):
             raise ValueError("Usa una foto JPG, PNG, WEBP o BMP.")
         self.asegurar()
+        try:
+            mismo = origen.resolve()
+        except OSError:
+            mismo = origen
+        huella = _huella(origen)
+        for foto in self.listar():
+            try:
+                if foto.ruta.resolve() == mismo or _huella(foto.ruta) == huella:
+                    return foto
+            except OSError:
+                continue
         destino = self._destino_libre(nombre_seguro(origen.name))
-        if origen.resolve() != destino.resolve():
+        if mismo != destino.resolve():
             shutil.copy2(origen, destino)
         return Foto(id=destino.name, nombre=destino.stem, ruta=destino, favorita=False)
+
+    def borrar(self, ident: str) -> None:
+        ruta = self.carpeta / ident
+        if ruta.is_file():
+            ruta.unlink()
+        estado = self.estado()
+        favoritas = [nombre for nombre in (estado.get("favoritas") or []) if nombre != ident]
+        ajustes = dict(estado.get("ajustes") or {}) if isinstance(estado.get("ajustes"), dict) else {}
+        ajustes.pop(ident, None)
+        cambios: dict[str, object] = {"favoritas": favoritas, "ajustes": ajustes}
+        if estado.get("ultima_cara") == ident:
+            cambios["ultima_cara"] = ""
+        self.guardar_estado(**cambios)
+
+    def renombrar(self, ident: str, nuevo: str) -> Foto:
+        origen = self.carpeta / ident
+        if not origen.is_file():
+            raise FileNotFoundError(ident)
+        pedido = nombre_seguro(nuevo.strip())
+        if Path(pedido).suffix.lower() not in {origen.suffix.lower()}:
+            pedido = f"{Path(pedido).stem}{origen.suffix}"
+        if pedido == ident:
+            return Foto(
+                id=ident,
+                nombre=origen.stem,
+                ruta=origen,
+                favorita=ident in set(self.estado().get("favoritas") or []),
+            )
+        destino = self._destino_libre(pedido)
+        origen.rename(destino)
+        estado = self.estado()
+        favoritas = [
+            destino.name if nombre == ident else nombre
+            for nombre in (estado.get("favoritas") or [])
+            if isinstance(nombre, str)
+        ]
+        ajustes = dict(estado.get("ajustes") or {}) if isinstance(estado.get("ajustes"), dict) else {}
+        if ident in ajustes:
+            ajustes[destino.name] = ajustes.pop(ident)
+        cambios: dict[str, object] = {"favoritas": favoritas, "ajustes": ajustes}
+        if estado.get("ultima_cara") == ident:
+            cambios["ultima_cara"] = destino.name
+        self.guardar_estado(**cambios)
+        return Foto(
+            id=destino.name,
+            nombre=destino.stem,
+            ruta=destino,
+            favorita=destino.name in set(self.estado().get("favoritas") or []),
+        )
 
     def fijar_favorita(self, ident: str, favorita: bool) -> list[str]:
         estado = self.estado()
@@ -126,3 +187,11 @@ class Biblioteca:
             if not prueba.exists():
                 return prueba
             indice += 1
+
+
+def _huella(ruta: Path) -> str:
+    resumen = hashlib.sha256()
+    with ruta.open("rb") as archivo:
+        for bloque in iter(lambda: archivo.read(1024 * 1024), b""):
+            resumen.update(bloque)
+    return resumen.hexdigest()

@@ -25,9 +25,33 @@ class VentanaSalida(QtWidgets.QWidget):
         self.setMinimumSize(320, 180)
         self.resize(max(320, ancho), max(180, alto))
         self.setWindowFlags(
-            QtCore.Qt.WindowType.Window | QtCore.Qt.WindowType.FramelessWindowHint
+            QtCore.Qt.WindowType.Window
+            | QtCore.Qt.WindowType.WindowTitleHint
+            | QtCore.Qt.WindowType.WindowCloseButtonHint
+            | QtCore.Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
+        self._barra = QtWidgets.QWidget(self)
+        self._barra.setObjectName("barraSalida")
+        self._barra.setFixedHeight(36)
+        fila = QtWidgets.QHBoxLayout(self._barra)
+        fila.setContentsMargins(12, 0, 4, 0)
+        titulo = QtWidgets.QLabel(TITULO_VENTANA, self._barra)
+        titulo.setObjectName("tituloSalida")
+        cerrar = QtWidgets.QPushButton("×", self._barra)
+        cerrar.setObjectName("cerrarSalida")
+        cerrar.setAccessibleName("Cerrar")
+        cerrar.setFixedSize(44, 32)
+        cerrar.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        cerrar.clicked.connect(self.cerrar)
+        fila.addWidget(titulo, 1)
+        fila.addWidget(cerrar)
+        self._barra.setStyleSheet(
+            "#barraSalida { background: #04060A; }"
+            "#tituloSalida { color: #F1F4F9; background: transparent; }"
+            "#cerrarSalida { color: #F1F4F9; background: transparent; border: none; font-size: 18px; }"
+            "#cerrarSalida:hover { background: #F20A1C; color: #FFF6F6; }"
+        )
         self.setAutoFillBackground(False)
         self.setMouseTracking(True)
         self._frame = None
@@ -39,9 +63,10 @@ class VentanaSalida(QtWidgets.QWidget):
         self._guardar.setSingleShot(True)
         self._guardar.setInterval(400)
         self._guardar.timeout.connect(self._emitir_geometria)
-        atajo = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+O"), self)
-        atajo.setContext(QtCore.Qt.ShortcutContext.WindowShortcut)
-        atajo.activated.connect(self.cerrar)
+        for secuencia in ("Ctrl+O", "Esc"):
+            atajo = QtGui.QShortcut(QtGui.QKeySequence(secuencia), self)
+            atajo.setContext(QtCore.Qt.ShortcutContext.WindowShortcut)
+            atajo.activated.connect(self.cerrar)
 
     def aplicar_geometria(self, datos: dict | None) -> None:
         if not isinstance(datos, dict):
@@ -105,9 +130,11 @@ class VentanaSalida(QtWidgets.QWidget):
         frame = self._frame
         if frame is not None:
             alto, ancho = frame.shape[0], frame.shape[1]
+            margen = self._barra.height()
             x, y, destino_ancho, destino_alto = rect_con_relacion(
-                self.width(), self.height(), ancho, alto
+                self.width(), max(1, self.height() - margen), ancho, alto
             )
+            y += margen
             imagen = QtGui.QImage(
                 frame.data,
                 ancho,
@@ -155,7 +182,13 @@ class VentanaSalida(QtWidgets.QWidget):
 
     def resizeEvent(self, evento: QtGui.QResizeEvent) -> None:
         super().resizeEvent(evento)
+        self._barra.setGeometry(0, 0, self.width(), self._barra.height())
         self._guardar.start()
+
+    def showEvent(self, evento: QtGui.QShowEvent) -> None:
+        super().showEvent(evento)
+        self._barra.setGeometry(0, 0, self.width(), self._barra.height())
+        self._barra.raise_()
 
     def moveEvent(self, evento: QtGui.QMoveEvent) -> None:
         super().moveEvent(evento)
@@ -164,6 +197,12 @@ class VentanaSalida(QtWidgets.QWidget):
     def closeEvent(self, evento: QtGui.QCloseEvent) -> None:
         evento.ignore()
         self.cerrar()
+
+    def keyPressEvent(self, evento: QtGui.QKeyEvent) -> None:
+        if evento.key() == QtCore.Qt.Key.Key_Escape:
+            self.cerrar()
+            return
+        super().keyPressEvent(evento)
 
     def _emitir_geometria(self) -> None:
         rect = self.geometry()

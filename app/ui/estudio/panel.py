@@ -114,9 +114,17 @@ class MarcoVista(QtWidgets.QWidget):
         pintor.end()
 
 
+def texto_recortado(nombre: str, fuente: QtGui.QFont, ancho: int) -> str:
+    if ancho <= 8:
+        return nombre
+    return QtGui.QFontMetrics(fuente).elidedText(nombre, QtCore.Qt.TextElideMode.ElideRight, ancho)
+
+
 class FichaCara(QtWidgets.QFrame):
     elegida = QtCore.Signal(str)
     favorita = QtCore.Signal(str, bool)
+    borrar = QtCore.Signal(str)
+    renombrar = QtCore.Signal(str)
 
     def __init__(self, cara: CaraVista, parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
@@ -130,14 +138,18 @@ class FichaCara(QtWidgets.QFrame):
         self.foto.setFixedSize(88, 88)
         self.foto.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._pintar(cara.ruta, False)
-        self.nombre = QtWidgets.QLabel(cara.nombre)
+        self._nombre_completo = cara.nombre
+        self.nombre = QtWidgets.QLabel()
         self.nombre.setObjectName("pista")
-        self.nombre.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.nombre.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         fuente = self.nombre.font()
         fuente.setPixelSize(12)
         self.nombre.setFont(fuente)
+        self.nombre.setMinimumWidth(0)
+        self.nombre.setToolTip(cara.nombre)
         fila = QtWidgets.QHBoxLayout()
         fila.addWidget(self.nombre, 1)
+        self._poner_nombre(cara.nombre)
         self.estrella = QtWidgets.QToolButton()
         self.estrella.setText("★" if cara.favorita else "☆")
         self.estrella.setFixedSize(28, 28)
@@ -153,6 +165,20 @@ class FichaCara(QtWidgets.QFrame):
             "background: rgba(0,0,0,0.66); color: #F1F4F9; border-radius: 6px; padding: 1px 5px;"
         )
         self.atajo.move(6, 6)
+        self.quitar = QtWidgets.QToolButton(self.foto)
+        self.quitar.setText("×")
+        self.quitar.setToolTip("Quitar esta foto")
+        self.quitar.setAccessibleName("Quitar foto")
+        self.quitar.setFixedSize(22, 22)
+        self.quitar.setVisible(False)
+        self.quitar.setStyleSheet(
+            "QToolButton { background: rgba(4,6,10,0.82); color: #F1F4F9; border: none; border-radius: 11px; }"
+            "QToolButton:hover { background: #F20A1C; color: #FFF6F6; }"
+        )
+        self.quitar.clicked.connect(lambda: self.borrar.emit(self.cara_id))
+        self.quitar.move(60, 4)
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._menu)
 
     def _pintar(self, ruta: str, seleccionada: bool) -> None:
         imagen = QtGui.QImage(ruta)
@@ -178,7 +204,30 @@ class FichaCara(QtWidgets.QFrame):
         self.estrella.setText("★" if cara.favorita else "☆")
         self.atajo.setText(cara.atajo)
         self.atajo.setVisible(bool(cara.atajo))
-        self.nombre.setText(cara.nombre)
+        self._poner_nombre(cara.nombre)
+
+    def _poner_nombre(self, nombre: str) -> None:
+        self._nombre_completo = nombre
+        self.nombre.setToolTip(nombre)
+        self.nombre.setText(texto_recortado(nombre, self.nombre.font(), 58))
+
+    def enterEvent(self, evento) -> None:
+        self.quitar.setVisible(True)
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento) -> None:
+        self.quitar.setVisible(False)
+        super().leaveEvent(evento)
+
+    def mouseDoubleClickEvent(self, evento: QtGui.QMouseEvent) -> None:
+        self.renombrar.emit(self.cara_id)
+        super().mouseDoubleClickEvent(evento)
+
+    def _menu(self, punto: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Renombrar", lambda: self.renombrar.emit(self.cara_id))
+        menu.addAction("Borrar", lambda: self.borrar.emit(self.cara_id))
+        menu.exec(self.mapToGlobal(punto))
 
     def mousePressEvent(self, evento: QtGui.QMouseEvent) -> None:
         self.elegida.emit(self.cara_id)
@@ -255,6 +304,8 @@ class Estudio(QtWidgets.QWidget):
     pedir_camara = QtCore.Signal(int)
     pedir_refrescar_camaras = QtCore.Signal()
     pedir_favorita = QtCore.Signal(str, bool)
+    pedir_borrar_cara = QtCore.Signal(str)
+    pedir_renombrar_cara = QtCore.Signal(str, str)
     pedir_fotos = QtCore.Signal(list)
     pedir_original = QtCore.Signal(bool)
     pedir_virtual = QtCore.Signal(bool)
@@ -301,7 +352,14 @@ class Estudio(QtWidgets.QWidget):
         cuerpo.setSpacing(0)
         self.rail = self._rail()
         cuerpo.addWidget(self.rail)
-        cuerpo.addWidget(self._centro(), 1)
+        self.scroll_pagina = QtWidgets.QScrollArea()
+        self.scroll_pagina.setObjectName("scrollPagina")
+        self.scroll_pagina.setWidgetResizable(True)
+        self.scroll_pagina.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll_pagina.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_pagina.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_pagina.setWidget(self._centro())
+        cuerpo.addWidget(self.scroll_pagina, 1)
         self.columna = self._columna_obs()
         cuerpo.addWidget(self.columna)
         raiz.addWidget(self.cuerpo, 1)
@@ -442,6 +500,10 @@ class Estudio(QtWidgets.QWidget):
         self.camara.setMinimumWidth(0)
         self.camara.setMaximumWidth(360)
         self.camara.setMinimumHeight(44)
+        from app.ui.estudio.ajuste_panel import FiltroRueda, preparar_rueda
+
+        self._filtro_rueda = FiltroRueda(self)
+        preparar_rueda(self.camara, self._filtro_rueda)
         self.camara.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.camara.setMinimumContentsLength(8)
         self.camara.setSizePolicy(
@@ -458,6 +520,7 @@ class Estudio(QtWidgets.QWidget):
         self.refrescar_camara.clicked.connect(self.pedir_refrescar_camaras.emit)
         self.virtual_compacto = QtWidgets.QCheckBox("Cámara virtual")
         self.virtual_compacto.setToolTip("Envía la imagen a la cámara virtual.")
+        self.virtual_compacto.setMinimumHeight(44)
         self.virtual_compacto.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Minimum,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -478,13 +541,17 @@ class Estudio(QtWidgets.QWidget):
         caja.addWidget(titulo)
         self.scroll = QtWidgets.QScrollArea()
         self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.scroll.setFixedHeight(168)
+        self.scroll.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.tira = QtWidgets.QWidget()
         self.tira_caja = QtWidgets.QHBoxLayout(self.tira)
-        self.tira_caja.setContentsMargins(0, 0, 0, 0)
-        self.tira_caja.setSpacing(8)
+        self.tira_caja.setContentsMargins(12, 8, 12, 8)
+        self.tira_caja.setSpacing(10)
         self.boton_anadir = BotonPildora("Añadir foto")
         self.boton_anadir.setObjectName("anadirFoto")
         self.boton_anadir.setFixedSize(120, 128)
@@ -876,6 +943,8 @@ class Estudio(QtWidgets.QWidget):
             ficha = FichaCara(cara)
             ficha.elegida.connect(self.pedir_cara.emit)
             ficha.favorita.connect(self.pedir_favorita.emit)
+            ficha.borrar.connect(self._confirmar_borrado)
+            ficha.renombrar.connect(self._pedir_nombre)
             ficha.marcar(cara.id == seleccion, cara)
             self._caras[cara.id] = ficha
             self.tira_caja.insertWidget(self.tira_caja.count() - 1, ficha)
@@ -896,6 +965,26 @@ class Estudio(QtWidgets.QWidget):
             nota.setObjectName("pista")
             nota.setWordWrap(True)
             self.favoritos.addWidget(nota)
+        self.scroll.horizontalScrollBar().setValue(0)
+
+    def _confirmar_borrado(self, ident: str) -> None:
+        respuesta = QtWidgets.QMessageBox.question(
+            self,
+            "Quitar foto",
+            "¿Quitar esta foto de la galería?",
+        )
+        if respuesta != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self.pedir_borrar_cara.emit(ident)
+
+    def _pedir_nombre(self, ident: str) -> None:
+        actual = ""
+        ficha = self._caras.get(ident)
+        if ficha is not None:
+            actual = ficha._nombre_completo
+        nombre, ok = QtWidgets.QInputDialog.getText(self, "Renombrar foto", "Nombre", text=actual)
+        if ok and nombre.strip():
+            self.pedir_renombrar_cara.emit(ident, nombre.strip())
 
     def mostrar_camaras(self, nombres: list[str], indice: int) -> None:
         firma = (tuple(nombres), indice)
@@ -1230,12 +1319,22 @@ class Estudio(QtWidgets.QWidget):
             return
         self.ajustes.show()
         self.scroll_ajustes.setVisible(True)
-        if self._compacto:
-            self.scroll_ajustes.setMinimumHeight(96)
-            self.scroll_ajustes.setMaximumHeight(220)
-        else:
-            self.scroll_ajustes.setMinimumHeight(240)
-            self.scroll_ajustes.setMaximumHeight(560)
+        self.scroll_ajustes.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll_ajustes.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        alto = max(self.ajustes.sizeHint().height(), self.ajustes.minimumSizeHint().height())
+        self.scroll_ajustes.setMinimumHeight(alto)
+        self.scroll_ajustes.setMaximumHeight(alto)
+        if hasattr(self, "scroll_pagina"):
+            politica = (
+                QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+                if self._compacto
+                else QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.scroll_pagina.setVerticalScrollBarPolicy(politica)
 
     def _anclar_ajustes(self, en_centro: bool) -> None:
         """En compacto el panel usa el ancho de la ventana, no la columna fija."""
@@ -1275,9 +1374,9 @@ class Estudio(QtWidgets.QWidget):
             self._vivos_filas[0].addWidget(self.boton_vivo)
             self._vivos_filas[0].addWidget(self.antes, 1)
             self._vivos_filas[1].addWidget(self.segmento_vista, 1)
-            self._vivos_filas[2].addWidget(self.camara, 1)
-            self._vivos_filas[2].addWidget(self.refrescar_camara)
-            self._vivos_filas[2].addWidget(self.virtual_compacto)
+            self._vivos_filas[2].addWidget(self.camara, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self._vivos_filas[2].addWidget(self.refrescar_camara, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self._vivos_filas[2].addWidget(self.virtual_compacto, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
             return
         self._vivos_filas[0].addWidget(self.boton_vivo)
         self._vivos_filas[0].addWidget(self.antes)

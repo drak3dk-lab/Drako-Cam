@@ -2088,7 +2088,7 @@ class LoadingDialog(QtWidgets.QDialog):
         super().__init__()
         self.setWindowTitle("Loading Models")
         self.setWindowIcon(QtGui.QIcon(":/media/media/visomaster_small.png"))
-        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
+        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, True)
         self.setModal(True)  # Block interaction with other windows
         self.setFixedSize(225, 125)  # Increased size for better layout
 
@@ -2298,7 +2298,7 @@ class JobLoadingDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("Loading Job Data...")
         self.setWindowIcon(QtGui.QIcon(":/media/media/visomaster_small.png"))
-        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
+        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, True)
         self.setModal(True)
         self.setFixedSize(300, 120)
 

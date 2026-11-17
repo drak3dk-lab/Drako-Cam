@@ -2,38 +2,84 @@
 
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from app.ui.estudio.ojo import ROJO, pixmap_simbolo
 
 _actual: PantallaCarga | None = None
+
+_HOJA = f"""
+QDialog {{
+    background: #04060A;
+    color: #F1F4F9;
+}}
+QLabel {{
+    color: #F1F4F9;
+    background: transparent;
+}}
+QProgressBar {{
+    background: #1A1F2B;
+    border: none;
+    border-radius: 3px;
+}}
+QProgressBar::chunk {{
+    background: {ROJO};
+    border-radius: 3px;
+}}
+"""
 
 
 class PantallaCarga(QtWidgets.QDialog):
     def __init__(self) -> None:
         super().__init__(None)
+        self.en_arranque = True
         self.setWindowTitle("Drako Cam")
         self.setModal(False)
         self.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, True)
         self.setMinimumWidth(480)
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(280)
+        self.setStyleSheet(_HOJA)
+        icono = pixmap_simbolo(64)
+        self.setWindowIcon(QtGui.QIcon(icono))
         caja = QtWidgets.QVBoxLayout(self)
         caja.setContentsMargins(24, 22, 24, 22)
         caja.setSpacing(14)
+        marca = QtWidgets.QLabel(self)
+        marca.setPixmap(icono)
+        marca.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
         titulo = QtWidgets.QLabel("Drako Cam", self)
+        titulo.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
         fuente = titulo.font()
         fuente.setPointSize(fuente.pointSize() + 4)
         fuente.setBold(True)
         titulo.setFont(fuente)
         self.texto = QtWidgets.QLabel("Abriendo el directo…", self)
         self.texto.setWordWrap(True)
+        self.texto.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
         self.barra = QtWidgets.QProgressBar(self)
         self.barra.setRange(0, 100)
         self.barra.setValue(0)
         self.barra.setTextVisible(False)
         self.barra.setMinimumHeight(10)
+        caja.addWidget(marca)
         caja.addWidget(titulo)
         caja.addWidget(self.texto)
         caja.addWidget(self.barra)
         publicar(self)
+
+    def keyPressEvent(self, evento: QtGui.QKeyEvent) -> None:
+        if evento.key() == QtCore.Qt.Key.Key_Escape:
+            self.hide()
+            return
+        super().keyPressEvent(evento)
+
+    def closeEvent(self, evento: QtGui.QCloseEvent) -> None:
+        if self.en_arranque:
+            evento.ignore()
+            self.hide()
+            return
+        super().closeEvent(evento)
 
     def poner(self, texto: str, valor: int | None) -> None:
         self.texto.setText(texto)

@@ -344,6 +344,7 @@ class InputFacesLoaderWorker(qtc.QThread):
         self.files_list = files_list or []
         self.face_ids = face_ids or []
         self._running = True  # Flag to control the running state
+        self.error_lectura = None
 
         # SNAPSHOT : get parameters in main thread before run()
         self.control_snapshot = (
@@ -425,6 +426,12 @@ class InputFacesLoaderWorker(qtc.QThread):
                 # WORKER SAFETY: Wrap the entire GPU image processing in a try/except block.
                 # All CUDA tensor operations MUST execute here synchronously to prevent
                 # Context errors or GPU race conditions.
+                import logging
+                import time
+
+                _log_foto = logging.getLogger("drako")
+                _t_foto = time.perf_counter()
+                _log_foto.info("Embedding de la foto: inicio %s", image_file_path)
                 try:
                     img = torch.from_numpy(frame.astype("uint8")).to(
                         self.main_window.models_processor.device
@@ -454,6 +461,11 @@ class InputFacesLoaderWorker(qtc.QThread):
                     )
 
                     if kpss_5 is None or len(kpss_5) == 0:
+                        _log_foto.info(
+                            "Embedding de la foto: fin %s en %.1f s, sin cara",
+                            image_file_path,
+                            time.perf_counter() - _t_foto,
+                        )
                         continue
 
                     face_kps = kpss_5[0]
@@ -500,8 +512,17 @@ class InputFacesLoaderWorker(qtc.QThread):
                         self.thumbnail_ready.emit(
                             image_file_path, face_img, embedding_store, q_image, face_id
                         )
+                        _log_foto.info(
+                            "Embedding de la foto: fin %s en %.1f s",
+                            image_file_path,
+                            time.perf_counter() - _t_foto,
+                        )
 
                 except Exception as e:
+                    self.error_lectura = e
+                    _log_foto.exception(
+                        "Embedding de la foto: excepción en %s", image_file_path
+                    )
                     print(
                         f"[ERROR] InputFacesLoaderWorker: Failed to process {image_file_path}. Reason: {e}"
                     )
