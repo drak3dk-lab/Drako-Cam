@@ -2981,6 +2981,12 @@ class VideoProcessor(QObject):
             _abrir, str(backend_pedido), pausa=time.sleep, al_fallar=_anotar_fallo
         )
         if resultado.camara is None:
+            import logging
+
+            logging.getLogger("drako").info(
+                "Cámara virtual no abierta: backend pedido=%s",
+                backend_pedido,
+            )
             print(
                 "[ERROR] No se pudo abrir la cámara virtual «Drako Cam» ni el respaldo OBS."
             )
@@ -2990,6 +2996,13 @@ class VideoProcessor(QObject):
             return
 
         self.virtcam = resultado.camara
+        import logging
+
+        logging.getLogger("drako").info(
+            "Cámara virtual abierta: backend=%s dispositivo=%s",
+            resultado.backend,
+            resultado.dispositivo or NOMBRE_DRAKO,
+        )
         if resultado.codigo == "drako":
             print(
                 f"[INFO] Cámara virtual «{NOMBRE_DRAKO}» lista "
@@ -3076,6 +3089,13 @@ class VideoProcessor(QObject):
         self._virtcam_error_latch = False
 
         if self.virtcam:
+            import logging
+
+            logging.getLogger("drako").info(
+                "Cámara virtual cerrada: backend=%s dispositivo=%s",
+                getattr(self.virtcam, "backend", ""),
+                getattr(self.virtcam, "device", ""),
+            )
             print(f"[INFO] Disabling virtual camera '{self.virtcam.device}'.")
             try:
                 self.virtcam.close()

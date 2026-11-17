@@ -105,7 +105,7 @@ class AsistenteObs(QtWidgets.QDialog):
     def _resumen(estado: EstadoObs) -> str:
         obs = "OBS está instalado." if estado.obs_instalado else "No encuentro OBS. Instálalo desde obsproject.com."
         if estado.eleccion.backend == "unitycapture":
-            camara = "La cámara que tienes que elegir es Unity Video Capture."
+            camara = "La cámara que tienes que elegir es Drako Cam."
         elif estado.eleccion.backend == "obs":
             camara = "La cámara que tienes que elegir es OBS Virtual Camera."
         else:

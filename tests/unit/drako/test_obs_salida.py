@@ -1,5 +1,7 @@
 """La salida a OBS no cambia de tamaño ni se corta si falta la cara."""
 
+from pathlib import Path
+
 import numpy as np
 
 from app.drako.rendimiento.camara_virtual import encajar
@@ -24,6 +26,35 @@ def test_unity_es_la_camara_que_obs_puede_elegir():
     assert "no es la salida" in eleccion.motivo
     assert elegir(False, True).backend == "obs"
     assert elegir(False, False).modo == "ventana"
+
+
+def test_drako_cam_se_detecta_en_la_carpeta_de_la_app_y_en_el_registro(tmp_path):
+    from app.drako.rendimiento.camara_virtual import CLSID_64
+    from app.drako.rendimiento.obs_salida import conviene_probar_camara
+
+    dll = tmp_path / "vendor" / "unitycapture" / "UnityCaptureFilter64.dll"
+    dll.parent.mkdir(parents=True)
+    dll.write_bytes(b"filtro")
+    por_carpeta = detectar(
+        existe=lambda ruta: Path(ruta) == dll,
+        procesos=[],
+        leer_registro=lambda _clsid: None,
+        raiz=tmp_path,
+    )
+    assert por_carpeta.unity
+    assert por_carpeta.eleccion.backend == "unitycapture"
+    assert por_carpeta.eleccion.nombre == "Drako Cam"
+
+    registrada = r"D:\DrakoCam\vendor\unitycapture\UnityCaptureFilter64.dll"
+    por_registro = detectar(
+        existe=lambda ruta: ruta == registrada,
+        procesos=[],
+        leer_registro=lambda clsid: registrada if clsid == CLSID_64 else None,
+    )
+    assert por_registro.unity
+    assert por_registro.eleccion.nombre == "Drako Cam"
+    assert por_registro.eleccion.modo == "camara"
+    assert conviene_probar_camara(elegir(False, False))
 
 
 def test_detecta_obs_sin_un_windows_real():

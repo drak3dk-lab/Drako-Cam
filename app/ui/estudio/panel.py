@@ -69,6 +69,25 @@ class BotonPildora(QtWidgets.QPushButton):
         pintor.end()
 
 
+class _FiltroEncaje(QtCore.QObject):
+    """Al cambiar el marco, el vídeo vuelve a llenarlo sin estirarse."""
+
+    def __init__(self, vista: QtWidgets.QWidget, estudio: QtWidgets.QWidget):
+        super().__init__(vista)
+        self._vista = vista
+        self._estudio = estudio
+
+    def eventFilter(self, obj, evento) -> bool:
+        if obj is self._vista and evento.type() == QtCore.QEvent.Type.Resize:
+            self.encajar()
+        return False
+
+    def encajar(self) -> None:
+        from app.ui.estudio.vista import encajar_si_hay_imagen
+
+        encajar_si_hay_imagen(self._vista)
+
+
 class MarcoVista(QtWidgets.QWidget):
     """La luz azul respira solo mientras el directo está encendido."""
 
@@ -1089,8 +1108,16 @@ class Estudio(QtWidgets.QWidget):
     def adoptar_vista(self, vista: QtWidgets.QWidget) -> None:
         self.aviso_vacio.hide()
         vista.setParent(self.hueco_vista)
-        self.vista_caja.addWidget(vista)
+        vista.setMinimumSize(0, 0)
+        vista.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        self.vista_caja.addWidget(vista, 1)
+        self._filtro_encaje = _FiltroEncaje(vista, self)
+        vista.installEventFilter(self._filtro_encaje)
         vista.show()
+        QtCore.QTimer.singleShot(0, self._filtro_encaje.encajar)
 
     def resizeEvent(self, evento: QtGui.QResizeEvent) -> None:
         super().resizeEvent(evento)

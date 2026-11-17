@@ -1,18 +1,22 @@
-"""Salida hacia OBS, sin un paso extra al pulsar EN VIVO.
+"""Salida hacia Meet, Zoom u OBS, sin un paso extra al pulsar EN VIVO.
 
-Unity Capture es la opción principal: OBS la ve como una cámara más
-(«Unity Video Capture»). La cámara virtual de OBS es la salida del
-propio OBS; elegirla dentro de OBS no está soportado y puede hacer
-un bucle. Si no hay ningún controlador, queda la ventana limpia.
+La cámara principal es «Drako Cam» (Unity Capture registrado por el
+instalador, a menudo desde la carpeta de la app y no desde Program
+Files). La cámara virtual de OBS es la salida del propio OBS; elegirla
+dentro de OBS no está soportado y puede hacer un bucle. Si no se puede
+abrir ninguna, queda la ventana limpia.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-NOMBRE_UNITY = "Unity Video Capture"
+from app.drako.rendimiento.camara_virtual import CLSID_64, NOMBRE_DRAKO
+
+NOMBRE_UNITY = NOMBRE_DRAKO
 NOMBRE_OBS = "OBS Virtual Camera"
 TITULO_VENTANA = "Drako Cam - Salida OBS"
 
@@ -53,7 +57,7 @@ def elegir(unity: bool, obs_virtual: bool) -> EleccionSalida:
             "unitycapture",
             NOMBRE_UNITY,
             "camara",
-            "Unity Capture es más estable para OBS: aparece como una cámara y no es la salida del propio OBS.",
+            "Drako Cam es la cámara virtual. En Meet, Zoom u OBS aparece con ese nombre y no es la salida del propio OBS.",
         )
     if obs_virtual:
         return EleccionSalida(
@@ -70,14 +74,62 @@ def elegir(unity: bool, obs_virtual: bool) -> EleccionSalida:
     )
 
 
+def rutas_unity(raiz: Path | str | None = None) -> tuple[str, ...]:
+    """Program Files, la carpeta vendor de esta app y, si se pasa, la carpeta instalada."""
+    vistas: list[str] = list(_RUTAS_UNITY)
+    bases: list[Path] = [Path(__file__).resolve().parents[3]]
+    if raiz:
+        bases.insert(0, Path(raiz))
+    try:
+        bases.append(Path(sys.argv[0]).resolve().parent)
+    except OSError:
+        pass
+    for base in bases:
+        vistas.append(str(base / "vendor" / "unitycapture" / "UnityCaptureFilter64.dll"))
+    unicas: list[str] = []
+    for ruta in vistas:
+        if ruta not in unicas:
+            unicas.append(ruta)
+    return tuple(unicas)
+
+
+def servidor_registrado(clsid: str) -> str | None:
+    """Ruta de InprocServer32 para ese CLSID, o None si el registro no la tiene."""
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT, rf"CLSID\{clsid}\InprocServer32"
+        ) as clave:
+            valor, _tipo = winreg.QueryValueEx(clave, "")
+    except OSError:
+        return None
+    texto = str(valor or "").strip().strip('"')
+    return texto or None
+
+
+def conviene_probar_camara(eleccion: EleccionSalida) -> bool:
+    """Aunque la detección no vea la DLL, se intenta abrir pyvirtualcam antes de la ventana."""
+    return eleccion.modo == "ventana" or bool(eleccion.backend)
+
+
 def detectar(
     existe=None,
     procesos: list[str] | None = None,
+    leer_registro=None,
+    raiz: Path | str | None = None,
 ) -> EstadoObs:
-    """existe(ruta) permite probarlo sin un Windows real."""
+    """existe(ruta) y leer_registro(clsid) permiten probarlo sin un Windows real."""
     mirar = existe or (lambda ruta: Path(ruta).is_file())
+    consultar = servidor_registrado if leer_registro is None else leer_registro
     obs = any(mirar(ruta) for ruta in _RUTAS_OBS)
-    unity = any(mirar(ruta) for ruta in _RUTAS_UNITY)
+    candidatas = list(rutas_unity(raiz))
+    servidor = consultar(CLSID_64) if consultar is not None else None
+    if servidor:
+        candidatas.append(servidor)
+    unity = any(mirar(ruta) for ruta in candidatas)
     virtual = any(mirar(ruta) for ruta in _RUTAS_OBS_VIRTUAL)
     nombres = {nombre.lower() for nombre in (procesos or [])}
     en_marcha = bool(nombres & {"obs64.exe", "obs.exe", "obs32.exe"})

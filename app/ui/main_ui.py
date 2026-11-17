@@ -1292,7 +1292,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             list_view_actions.clear_stop_loading_target_media(self)
         except Exception:
             pass
-        if not getattr(self, "quit_without_saving", False):
+        if not getattr(self, "quit_without_saving", False) and not getattr(self, "_estudio", None):
             try:
                 save_load_actions.save_current_workspace(
                     self, str(self.last_workspace_path)
@@ -1309,9 +1309,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         If no workspace is found (first launch or deleted config), prompts the user
         to select an Execution Provider to prevent unwanted TensorRT engine generation.
         """
-        # Show the load workspace dialog if the file exists
+        from app.ui.estudio.logica import debe_preguntar_workspace
+
+        # Drako Cam guarda su estado en %APPDATA%\DrakoCam. El workspace
+        # del editor viejo no se carga y no se pregunta.
         last_workspace_path = self.last_workspace_path
-        if last_workspace_path.is_file():
+        if debe_preguntar_workspace() and last_workspace_path.is_file():
             auto_load_workspace_toggle = (
                 save_load_actions.get_auto_load_workspace_toggle(
                     self, str(last_workspace_path)
@@ -1322,25 +1325,25 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             else:
                 load_dialog = widget_components.LoadLastWorkspaceDialog(self)
                 load_dialog.exec_()
-        else:
-            provider = _proveedor_del_directo()
-            print(f"[INFO] Proveedor del directo: {provider}")
-            self.control["ProvidersPrioritySelection"] = provider
-            provider_widget = self.parameter_widgets.get("ProvidersPrioritySelection")
-            if provider_widget and hasattr(provider_widget, "setCurrentText"):
-                provider_widget.setCurrentText(provider)
-            try:
-                control_actions.change_execution_provider(self)
-            except Exception as e:
-                print(f"[ERROR] No se pudo aplicar el proveedor {provider}: {e}")
-                if provider != "CUDA" and "CUDA" in platform_support.available_execution_providers():
-                    self.control["ProvidersPrioritySelection"] = "CUDA"
-                    if provider_widget and hasattr(provider_widget, "setCurrentText"):
-                        provider_widget.setCurrentText("CUDA")
-                    try:
-                        control_actions.change_execution_provider(self)
-                    except Exception as exc:
-                        print(f"[ERROR] El respaldo CUDA tampoco arrancó: {exc}")
+            return
+        provider = _proveedor_del_directo()
+        print(f"[INFO] Proveedor del directo: {provider}")
+        self.control["ProvidersPrioritySelection"] = provider
+        provider_widget = self.parameter_widgets.get("ProvidersPrioritySelection")
+        if provider_widget and hasattr(provider_widget, "setCurrentText"):
+            provider_widget.setCurrentText(provider)
+        try:
+            control_actions.change_execution_provider(self)
+        except Exception as e:
+            print(f"[ERROR] No se pudo aplicar el proveedor {provider}: {e}")
+            if provider != "CUDA" and "CUDA" in platform_support.available_execution_providers():
+                self.control["ProvidersPrioritySelection"] = "CUDA"
+                if provider_widget and hasattr(provider_widget, "setCurrentText"):
+                    provider_widget.setCurrentText("CUDA")
+                try:
+                    control_actions.change_execution_provider(self)
+                except Exception as exc:
+                    print(f"[ERROR] El respaldo CUDA tampoco arrancó: {exc}")
 
         # Re-populate and set current selection for dynamic widgets like DenoiserUNetModelSelection
         self._populate_denoiser_unet_models()

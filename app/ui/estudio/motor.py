@@ -326,25 +326,42 @@ class MotorEnVivo:
         return estado
 
     def _encender_salida(self) -> str:
+        import logging
+
         from app.drako.rendimiento.emision import fijar_prioridad
+        from app.drako.rendimiento.obs_salida import conviene_probar_camara
 
         estado = self._estado_obs()
         fijar_prioridad(True)
-        if estado.eleccion.backend:
-            self._poner_valor("VirtCamBackendSelection", estado.eleccion.backend)
+        procesador = getattr(self.ventana, "video_processor", None)
+        abierta = None
+        if conviene_probar_camara(estado.eleccion) and procesador is not None and hasattr(
+            procesador, "enable_virtualcam"
+        ):
+            backend = estado.eleccion.backend or "auto"
+            self._poner_valor("VirtCamBackendSelection", backend)
             self._virtual = True
             self.biblioteca.recordar(camara_virtual=True)
             self._poner_toggle("SendVirtCamFramesEnableToggle", True)
-            procesador = getattr(self.ventana, "video_processor", None)
-            if procesador is not None and hasattr(procesador, "enable_virtualcam"):
-                try:
-                    procesador.enable_virtualcam(backend=estado.eleccion.backend)
-                except Exception as exc:
-                    self.mensaje = f"No pude abrir la cámara virtual. {exc}"
-        else:
-            self.abrir_ventana_salida()
+            try:
+                procesador.enable_virtualcam(backend=backend)
+            except Exception as exc:
+                logging.getLogger("drako").exception("No pude abrir la cámara virtual")
+                self.mensaje = f"No pude abrir la cámara virtual. {exc}"
+            abierta = getattr(procesador, "virtcam", None)
+        if abierta is not None:
+            self._salida_activa = True
+            self.mensaje = ""
+            return self.texto_salida()
+        self._virtual = False
+        self._poner_toggle("SendVirtCamFramesEnableToggle", False)
+        self.abrir_ventana_salida()
         self._salida_activa = True
-        self.mensaje = "" if estado.eleccion.backend else estado.eleccion.motivo
+        self.mensaje = estado.eleccion.motivo
+        logging.getLogger("drako").info(
+            "Cámara virtual no abierta. Se usa la ventana de salida. %s",
+            estado.eleccion.motivo,
+        )
         return self.texto_salida()
 
     def abrir_ventana_salida(self) -> None:
@@ -737,6 +754,10 @@ class MotorEnVivo:
             self.mensaje = "No te veo. Ponte frente a la cámara."
             self._reintentar_si_sigue()
             return
+        nombre = getattr(foto, "nombre", "") or self._cara_id
+        logging.getLogger("drako").info(
+            "Cara lista en el directo: %s. El cambio queda activo.", nombre
+        )
         self.mensaje = ""
 
     def _elegir_destinos(self, caras: list):

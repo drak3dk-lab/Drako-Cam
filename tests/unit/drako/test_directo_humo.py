@@ -134,6 +134,86 @@ def test_la_ventana_de_salida_se_cierra_con_la_x_y_con_esc(tmp_path):
     assert motor.estado()["ventana_abierta"] is False
 
 
+def test_el_arranque_no_pregunta_por_el_workspace():
+    from app.ui.estudio.logica import debe_preguntar_workspace
+
+    assert debe_preguntar_workspace() is False
+
+
+def test_el_swap_del_directo_se_anota_una_vez():
+    import logging
+
+    from app.drako.rendimiento.diagnostico import anotar_swap_en_directo
+
+    class Cara:
+        face_id = "abc"
+
+    class Proc:
+        file_type = "webcam"
+
+    class Ventana:
+        video_processor = Proc()
+
+    class Worker:
+        main_window = Ventana()
+
+    registro = logging.getLogger("drako")
+    registro.handlers.clear()
+    registro.propagate = True
+    with caplog_de(registro) as lineas:
+        anotar_swap_en_directo(Worker(), Cara())
+        anotar_swap_en_directo(Worker(), Cara())
+    assert lineas.count("Cara aplicada en el directo: abc") == 1
+
+
+def caplog_de(registro):
+    import logging
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm():
+        lineas: list[str] = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                lineas.append(record.getMessage())
+
+        handler = _Handler()
+        registro.addHandler(handler)
+        nivel = registro.level
+        registro.setLevel(logging.INFO)
+        try:
+            yield lineas
+        finally:
+            registro.removeHandler(handler)
+            registro.setLevel(nivel)
+
+    return _cm()
+
+
+def test_la_vista_llena_el_marco():
+    pytest.importorskip("PySide6")
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    from app.ui.estudio.vista import encajar_si_hay_imagen
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    vista = QtWidgets.QGraphicsView()
+    vista.resize(800, 450)
+    escena = QtWidgets.QGraphicsScene()
+    vista.setScene(escena)
+    pixmap = QtGui.QPixmap(36, 36)
+    pixmap.fill(QtGui.QColor("#F20A1C"))
+    escena.addPixmap(pixmap)
+    vista.show()
+    app.processEvents()
+
+    assert encajar_si_hay_imagen(vista)
+    escala = vista.transform().m11()
+    assert escala > 5
+    assert vista.transform().m11() == pytest.approx(vista.transform().m22())
+
+
 def test_la_rueda_no_mueve_el_deslizador_sin_foco():
     pytest.importorskip("PySide6")
     from PySide6 import QtCore, QtGui, QtTest, QtWidgets

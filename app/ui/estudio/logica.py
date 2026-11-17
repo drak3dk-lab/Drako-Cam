@@ -17,6 +17,11 @@ MENSAJE_CAMARA = "No hay cámara. Conéctala y pulsa actualizar."
 MENSAJE_CARA_PERDIDA = "No te veo bien. Acércate un poco y mira a la cámara."
 MENSAJE_CARGANDO = "Preparando la foto. Un momento."
 
+
+def debe_preguntar_workspace() -> bool:
+    """El editor viejo preguntaba por el último workspace. Drako Cam no lo usa."""
+    return False
+
 _FONDO_MOTOR = {
     "Normal": "Ninguno",
     "Verde": "Verde",

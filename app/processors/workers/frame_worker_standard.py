@@ -536,6 +536,11 @@ class StandardProcessor:
                                 dfm_model_name=params["DFMModelSelection"],
                                 kv_map=_reaging_kv,
                             )
+                            from app.drako.rendimiento.diagnostico import (
+                                anotar_swap_en_directo,
+                            )
+
+                            anotar_swap_en_directo(self.worker, target_face)
                             if edit_button_is_checked_global and any(
                                 params[f]
                                 for f in (
@@ -686,6 +691,11 @@ class StandardProcessor:
                                     kv_map=_reaging_kv,
                                 )
                             )
+                            from app.drako.rendimiento.diagnostico import (
+                                anotar_swap_en_directo,
+                            )
+
+                            anotar_swap_en_directo(self.worker, best_target)
                             if edit_button_is_checked_global and any(
                                 params[f]
                                 for f in (
