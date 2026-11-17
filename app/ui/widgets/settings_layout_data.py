@@ -442,9 +442,9 @@ SETTINGS_LAYOUT_DATA: Any = {
         "DetectorModelSelection": {
             "level": 1,
             "label": "Face Detect Model",
-            "options": ["SCRFD"],
-            "default": "SCRFD",
-            "help": "Detector rápido del directo. El seguimiento ByteTrack va con él.",
+            "options": ["RetinaFace", "SCRFD", "Yolov8"],
+            "default": "RetinaFace",
+            "help": "Detector del directo. RetinaFace trae los 5 puntos y es el que se descarga. SCRFD y YOLO no se bajan solos.",
         },
         "DetectorScoreSlider": {
             "level": 1,

@@ -979,6 +979,65 @@ function Crear-Accesos {
     Nuevo-Acceso (Join-Path $menu "Drako Cam.lnk")
 }
 
+function Instalar-Modelos {
+    $python = Python-DelVenv
+    if (-not (Test-Path -LiteralPath $python)) {
+        throw "No encuentro el Python del entorno para bajar los modelos."
+    }
+    $scriptPy = Join-Path $script:Raiz "download_models.py"
+    if (-not (Test-Path -LiteralPath $scriptPy)) {
+        throw "Falta download_models.py."
+    }
+    Write-Log "Bajo y verifico solo los modelos del cambio de cara en vivo."
+    Write-Log "Si se corta internet, se reanuda desde lo ya bajado. No termino hasta que el hash coincida."
+    Emitir-Ventana "DRAKO_ESTADO Bajando los modelos de la cara"
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $python
+    $psi.Arguments = "-u `"$scriptPy`""
+    $psi.WorkingDirectory = $script:Raiz
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = $script:Utf8
+    $psi.StandardErrorEncoding = $script:Utf8
+    try { $psi.EnvironmentVariables["PYTHONUTF8"] = "1" } catch { }
+    try { $psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8" } catch { }
+    try { $psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1" } catch { }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    try {
+        [void]$proc.Start()
+    } catch {
+        throw ("No se pudo iniciar la descarga de modelos: {0}" -f $_.Exception.Message)
+    }
+    $errAsync = $null
+    try { $errAsync = $proc.StandardError.ReadToEndAsync() } catch { $errAsync = $null }
+    while (-not $proc.StandardOutput.EndOfStream) {
+        $linea = $proc.StandardOutput.ReadLine()
+        if ($null -eq $linea) { break }
+        if ($linea.StartsWith("DRAKO_")) {
+            Emitir-Ventana $linea
+        }
+        Write-Log $linea
+    }
+    try { $proc.WaitForExit() } catch { }
+    if ($errAsync) {
+        try {
+            $err = ([string]$errAsync.Result).Trim()
+            if ($err) { Write-Log $err }
+        } catch { }
+    }
+    $codigo = -1
+    try { $codigo = $proc.ExitCode } catch { $codigo = -1 }
+    try { $proc.Dispose() } catch { }
+    if ($codigo -ne 0) {
+        throw "Los modelos del cambio de cara no quedaron completos y verificados (código $codigo). La instalación no termina hasta que pasen. Vuelve a ejecutar Instalar.bat: continúa desde lo ya bajado."
+    }
+    Write-Log "Todos los modelos requeridos están completos y el hash coincide."
+    Emitir-Ventana "DRAKO_PORCIENTO 100"
+}
+
 function Mirar-Nvidia {
     $smi = Buscar-NvidiaSmi
     if (-not $smi) {
@@ -1044,7 +1103,7 @@ try {
         exit 0
     }
 
-    Paso "1/7" "Comprobando el equipo"
+    Paso "1/8" "Comprobando el equipo"
     Assert-AppCerrada
     $prueba = Join-Path $script:Raiz (".drako-escritura-" + [guid]::NewGuid().ToString("n"))
     try {
@@ -1091,22 +1150,25 @@ try {
         Emitir-Ventana "DRAKO_AVISO No veo una tarjeta NVIDIA. Se instala igual; el directo puede ir más lento."
     }
 
-    Paso "2/7" "Preparando uv"
+    Paso "2/8" "Preparando uv"
     Asegurar-Uv
 
-    Paso "3/7" "Preparando Python 3.12"
+    Paso "3/8" "Preparando Python 3.12"
     Asegurar-Python
 
-    Paso "4/7" "Preparando FFmpeg 7.1.1"
+    Paso "4/8" "Preparando FFmpeg 7.1.1"
     Asegurar-Ffmpeg
 
-    Paso "5/7" "Instalando los componentes"
+    Paso "5/8" "Instalando los componentes"
     Instalar-Componentes
 
-    Paso "6/7" "Comprobando la tarjeta NVIDIA"
+    Paso "6/8" "Descargando los modelos del cambio de cara"
+    Instalar-Modelos
+
+    Paso "7/8" "Comprobando la tarjeta NVIDIA"
     Probar-Cuda
 
-    Paso "7/7" "Creando los accesos directos"
+    Paso "8/8" "Creando los accesos directos"
     Crear-Accesos
 
     Write-Host ""

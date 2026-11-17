@@ -109,12 +109,28 @@ def comprobar_importaciones() -> int:
 
 
 def _avisar_modelos(al_estado=None) -> bool:
+    """Comprueba los seis modelos del directo. Si se corta la red, se reanuda.
+
+    ``al_estado`` recibe (texto, porcentaje) para la pantalla de carga.
+    """
     print("[INFO] Comprobando los modelos del cambio de cara en vivo.")
-    print("[INFO] Si ya están y no han cambiado, el arranque sigue al momento.")
+    print("[INFO] Si se corta internet, se reanuda. No hace falta volver a empezar.")
+    ultimo = {"texto": "Comprobando los modelos del cambio de cara", "valor": 0}
+
+    def estado(texto: str) -> None:
+        ultimo["texto"] = texto
+        if al_estado is not None:
+            al_estado(texto, ultimo["valor"])
+
+    def porcentaje(valor: int) -> None:
+        ultimo["valor"] = int(valor)
+        if al_estado is not None:
+            al_estado(ultimo["texto"], ultimo["valor"])
+
     try:
         from download_models import descargar_modelos
 
-        return descargar_modelos(al_estado=al_estado)
+        return descargar_modelos(al_estado=estado, al_porcentaje=porcentaje)
     except Exception as exc:
         print(f"[ERROR] No se pudieron comprobar los modelos: {exc}")
         return False
@@ -243,8 +259,10 @@ def _run_app(argv: list[str] | None = None) -> int:
         QtWidgets.QMessageBox.warning(
             pantalla,
             "Drako Cam — modelos",
-            "Algunos modelos del directo no se descargaron o no pasaron la verificación. "
-            "Puedes volver a abrir el programa cuando haya red.",
+            "No se pudieron dejar listos los modelos del cambio de cara "
+            "después de reintentarlo. Revisa el registro. "
+            "Cuando haya red y espacio en el disco, vuelve a abrir Drako Cam: "
+            "sigue desde lo ya descargado.",
         )
 
     pantalla.poner("Preparando la ventana y la cámara…", 70)

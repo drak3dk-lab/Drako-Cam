@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.processors.models_data import models_list
+from app.processors.models_data import ORDEN_REQUERIDO, models_list
 
 ESENCIAL = "esencial"
 OPCIONAL = "opcional"
@@ -285,7 +285,8 @@ class Ficha:
 
 
 def fichas() -> list[Ficha]:
-    """Solo los modelos que el directo descarga y carga."""
+    """Todo el registro, clasificado. Esencial es solo el directo."""
+    requeridos = set(ORDEN_REQUERIDO)
     salida: list[Ficha] = []
     for item in models_list:
         nombre = item["model_name"]
@@ -295,7 +296,7 @@ def fichas() -> list[Ficha]:
                 nombre=nombre,
                 bytes=bytes_,
                 grupo=grupo,
-                clase=ESENCIAL,
+                clase=ESENCIAL if nombre in requeridos else OPCIONAL,
                 porque=porque,
                 url=item["url"],
                 local_path=item["local_path"],
@@ -313,7 +314,8 @@ def ficha(nombre: str) -> Ficha:
 
 
 def esenciales() -> list[Ficha]:
-    return [item for item in fichas() if item.esencial]
+    por_nombre = {item.nombre: item for item in fichas()}
+    return [por_nombre[nombre] for nombre in ORDEN_REQUERIDO]
 
 
 def opcionales() -> list[Ficha]:

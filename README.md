@@ -101,7 +101,7 @@ También vale un doble clic en `Start.bat`, o desde la carpeta del proyecto, sin
 1. La primera vez el programa pide **crear** la contraseña de administrador (8 caracteres como mínimo) y repetirla. Esa contraseña es de este PC. No está escrita en el programa.
 2. Después, cada apertura pide esa contraseña.
 3. La primera vez muestra el aviso de privacidad (se registran el uso, la IP y la ciudad y el país aproximados) y pide el código de acceso. El código se guarda cifrado y no se vuelve a pedir.
-4. Comprueba los modelos del directo (1,14 GB) y, si no han cambiado, no vuelve a verificar el hash. Drako Cam solo cambia caras de la cámara hacia OBS. El detalle está en [docs/modelos.md](docs/modelos.md).
+4. Comprueba los modelos del directo (960 MB) y no termina hasta que el SHA-256 coincide. Si se corta la red, sigue desde lo ya bajado. El detalle está en [docs/modelos.md](docs/modelos.md).
 5. Si no ve CUDA, muestra un aviso. No cambia a CPU sin decirlo.
 6. En la pantalla: elige una foto (o arrástrala) o un perfil y pulsa **EN VIVO**. Para OBS, enciende la cámara virtual y, en OBS, añade un dispositivo de captura de vídeo llamado **Drako Cam**.
 
