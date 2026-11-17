@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.estudio.ojo import ROJO, pixmap_simbolo
 
-from app.drako.arranque import ContextoArranque, cambiar_contrasena
-from app.drako.auditoria import ClavesAuditoria
-from app.drako.telegram_cliente import credenciales_telegram
+if TYPE_CHECKING:
+    from app.drako.arranque import ContextoArranque
+    from app.drako.auditoria import ClavesAuditoria
 
 
 def _campo_clave(padre: QtWidgets.QWidget) -> QtWidgets.QLineEdit:
@@ -212,6 +213,8 @@ def _dialogo_cambiar(
     dialogo._layout.addLayout(fila)
     if dialogo.exec() != QtWidgets.QDialog.DialogCode.Accepted:
         return
+    from app.drako.arranque import cambiar_contrasena
+
     resultado = cambiar_contrasena(
         contexto, claves, actual.text(), nueva.text(), confirmacion.text()
     )
@@ -222,6 +225,8 @@ def _dialogo_cambiar(
 
 
 def _dialogo_telegram(ventana, contexto: ContextoArranque) -> None:
+    from app.drako.telegram_cliente import credenciales_telegram
+
     token_actual, chat_actual = credenciales_telegram(
         contexto.config.datos, dict(os.environ)
     )
